@@ -14,7 +14,24 @@ Read the pages yourself before you rely on them, because they change.
 | Consumer Terms of Service (UK version): https://www.anthropic.com/legal/consumer-terms | effective 8 Oct 2025 |
 | How long data is kept: https://privacy.claude.com/en/articles/7996866 | updated 1 Jul 2026 |
 
-## Possible blocker: which terms cover the API account
+## Decision, 24 Nov 2026
+
+Run on an API organisation under the Commercial Terms; confirm in Console › Settings.
+
+Kith's API usage runs on an API organisation in the Anthropic Console. That organisation is linked to Demi's Max plan
+credit but separate from her claude.ai account. Demi considers it covered by the Commercial Terms. The build keeps every
+minors safeguard listed below:
+
+- an AI notice each session;
+- a safety check on every message, both ways;
+- reports to the parent, told to the child first;
+- Childline and 999;
+- a public compliance statement in the README.
+
+**Anyone running Kith must use their own API key on an organisation under the Commercial Terms.** The open-source
+release is bring-your-own-key. Setup docs say so.
+
+## The question that led to the decision: which terms cover the API account
 
 **Which terms apply depends on who holds the Console account.**
 
