@@ -81,8 +81,24 @@ grown-up content unsuitable for a 14-year-old (graphic violence, drugs how-to, e
 Warmth, encouragement, jokes, homework help, stories with age-appropriate peril, suggesting they talk to friends,
 family or Childline are all fine. When in doubt about something genuinely harmful, set ok=false. reason: one short line.`;
 
-/** `lang`: the practice language, when the text may be in it (see `needsGloss`). */
-export interface CheckOpts { lang?: string }
+/**
+ * `lang`: the practice language, when the text may be in it (see `needsGloss`).
+ * `rulesOnly`: skip the safety model (Kith is resting at the hard stop). The fixed rules still run,
+ * and so does the English gloss when the rules can't read the language, since crisis detection needs it.
+ */
+export interface CheckOpts { lang?: string; rulesOnly?: boolean }
+
+/** How long one safety-model attempt may take before it counts as failed. */
+export const SAFETY_TIMEOUT_MS = 20_000;
+
+/** What the child sees when the check couldn't run and their message is held. */
+export const CHECK_UNAVAILABLE = "I couldn't check that just now, try again in a moment.";
+
+function withTimeout<T>(p: Promise<T>, ms = SAFETY_TIMEOUT_MS): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => { t = setTimeout(() => reject(new Error("the safety check timed out")), ms); });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+}
 export interface SafetyChecker {
   checkInput(text: string, context: string[], opts?: CheckOpts): Promise<InputVerdict>;
   checkOutput(reply: string, childText: string, bucket?: "chat" | "desk", opts?: CheckOpts): Promise<OutputVerdict>;
@@ -110,7 +126,7 @@ export class Safety implements SafetyChecker {
   /** An English version made only for the fixed rules: never stored or shown. Throws if it can't run. */
   async gloss(text: string): Promise<string> {
     if (!this.llm.available) throw new Error("no model for the gloss");
-    const v = await callJson(this.llm, {
+    const v = await withTimeout(callJson(this.llm, {
       bucket: "chat", kind: "safety",
       params: {
         model: config.anthropic.safetyModel, max_tokens: 2000, output_config: { effort: "low" },
@@ -118,7 +134,7 @@ export class Safety implements SafetyChecker {
       } as never,
       schema: { type: "object", additionalProperties: false, required: ["english"], properties: { english: { type: "string" } } },
       parse: (x) => z.object({ english: z.string() }).parse(x),
-    });
+    }));
     return v.english;
   }
 
@@ -131,43 +147,47 @@ export class Safety implements SafetyChecker {
         const g = checkInputRules(await this.gloss(text));
         rules = { level: maxLevel(rules.level, g.level), categories: [...new Set([...rules.categories, ...g.categories])] };
       } catch (err) {
-        console.warn("[safety] couldn't make the English gloss; holding the message", err);
+        console.warn("[safety] couldn't make the English gloss; holding the message", (err as Error).message);
         return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: "", source: "rules", held: true };
       }
     }
     const steerFromRules = rules.categories.map((c) => STEER_DEFAULT[c]).filter(Boolean).join(" ");
-    if (!this.llm.available) {
+    if (!this.llm.available || opts.rulesOnly) {
       return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: steerFromRules, source: "rules" };
     }
     const redacted = redactPersonal(text).text;
     const ctx = context.slice(-4).map((c) => redactPersonal(c).text).join("\n");
-    try {
-      const v = await callJson(this.llm, {
-        bucket: "chat",
-        kind: "safety",
-        params: {
-          model: config.anthropic.safetyModel,
-          max_tokens: 1500,
-          output_config: { effort: "low" },
-          system: INPUT_PROMPT(config.people.parentLabel),
-          messages: [{ role: "user", content: `Recent context:\n${ctx || "(none)"}\n\nTheir latest message:\n${redacted}` }],
-        } as never,
-        schema: INPUT_JSON_SCHEMA,
-        parse: (x) => InputSchema.parse(x),
-      });
-      const level: Level = maxLevel(rules.level, v.level);
-      const categories = [...new Set([...rules.categories, ...v.categories])];
-      return {
-        level,
-        categories,
-        parentSummary: level === "none" ? "" : v.parent_summary || rulesSummary(categories),
-        steer: [v.steer, steerFromRules].filter(Boolean).join(" "),
-        source: "rules+model",
-      };
-    } catch (err) {
-      console.warn("[safety] input check model failed; using the fixed rules only", err);
-      return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: steerFromRules, source: "rules" };
+    // Fail closed: one retry, then the message is held rather than let through on the rules alone.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const v = await withTimeout(callJson(this.llm, {
+          bucket: "chat",
+          kind: "safety",
+          params: {
+            model: config.anthropic.safetyModel,
+            max_tokens: 1500,
+            output_config: { effort: "low" },
+            system: INPUT_PROMPT(config.people.parentLabel),
+            messages: [{ role: "user", content: `Recent context:\n${ctx || "(none)"}\n\nTheir latest message:\n${redacted}` }],
+          } as never,
+          schema: INPUT_JSON_SCHEMA,
+          parse: (x) => InputSchema.parse(x),
+        }));
+        const level: Level = maxLevel(rules.level, v.level);
+        const categories = [...new Set([...rules.categories, ...v.categories])];
+        return {
+          level,
+          categories,
+          parentSummary: level === "none" ? "" : v.parent_summary || rulesSummary(categories),
+          steer: [v.steer, steerFromRules].filter(Boolean).join(" "),
+          source: "rules+model",
+        };
+      } catch (err) {
+        console.warn(`[safety] input check model failed (attempt ${attempt + 1})`, (err as Error).message);
+      }
     }
+    // Whatever the rules found still counts (and is reported); the message itself isn't answered.
+    return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: steerFromRules, source: "rules", held: true };
   }
 
   async checkOutput(reply: string, childText: string, bucket: "chat" | "desk" = "chat", opts: CheckOpts = {}): Promise<OutputVerdict> {
@@ -185,7 +205,7 @@ export class Safety implements SafetyChecker {
     // Fail closed: if the check can't run, the reply isn't shown.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const v = await callJson(this.llm, {
+        const v = await withTimeout(callJson(this.llm, {
           bucket,
           kind: "safety",
           params: {
@@ -197,10 +217,10 @@ export class Safety implements SafetyChecker {
           } as never,
           schema: OUTPUT_JSON_SCHEMA,
           parse: (x) => OutputSchema.parse(x),
-        });
+        }));
         return { ok: v.ok && v.categories.length === 0, categories: v.categories, reason: v.reason };
       } catch (err) {
-        console.warn("[safety] output check failed", err);
+        console.warn("[safety] output check failed", (err as Error).message);
       }
     }
     return { ok: false, categories: [], reason: "The safety check couldn't run, so the reply was held back." };

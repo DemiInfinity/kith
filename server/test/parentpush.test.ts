@@ -12,7 +12,7 @@ import { manifestFor } from "../src/manifest.js";
 
 const NOON = Date.UTC(2026, 10, 25, 12, 0); // outside quiet hours (London)
 const NIGHT = Date.UTC(2026, 10, 25, 23, 30); // inside them
-const sub = (n: string) => ({ endpoint: `https://push.example/${n}`, keys: { p256dh: "p", auth: "a" } });
+const sub = (n: string) => ({ endpoint: `https://web.push.apple.com/${n}`, keys: { p256dh: "p", auth: "a" } });
 const sent: { endpoint: string; body: { title: string; body: string; url: string; tag: string } }[] = [];
 beforeAll(() => {
   config.push.publicKey = "test-public";
@@ -32,10 +32,10 @@ describe("notifications to the parent", () => {
     const db = setup();
     expect(deviceCount(db, "parent")).toBe(1);
     await notifyParent(db, { kind: "report-now", summary: "Sam seemed very upset about school." }, NOON);
-    expect(sent.map((x) => x.endpoint)).toEqual(["https://push.example/mum-phone"]);
+    expect(sent.map((x) => x.endpoint)).toEqual(["https://web.push.apple.com/mum-phone"]);
     sent.length = 0;
     await pushToChild(db, { title: "Pip", body: "hi" }, "test");
-    expect(sent.map((x) => x.endpoint)).toEqual(["https://push.example/kid-phone"]);
+    expect(sent.map((x) => x.endpoint)).toEqual(["https://web.push.apple.com/kid-phone"]);
   });
   it("say only that something needs you, unless the parent chose to show the summary", async () => {
     const db = setup();

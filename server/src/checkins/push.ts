@@ -11,8 +11,26 @@ if (pushReady()) webpush.setVapidDetails(config.push.subject, config.push.public
 
 export type Audience = "child" | "parent";
 
+// Web push only ever goes to the browsers' own push services. Kith posts to whatever endpoint is
+// saved, so anything else would let a signed-in device make the server call any address it likes.
+const PUSH_HOSTS = [
+  { exact: "web.push.apple.com" }, { suffix: ".push.apple.com" },                       // Safari (Mac, iPhone)
+  { exact: "fcm.googleapis.com" }, { exact: "android.googleapis.com" },                  // Chrome, Android
+  { exact: "updates.push.services.mozilla.com" }, { suffix: ".push.services.mozilla.com" }, // Firefox
+  { suffix: ".notify.windows.com" },                                                    // Edge (Windows)
+];
+
+/** Whether an endpoint is on a known browser push service (https, default port). */
+export function isPushEndpoint(endpoint: string): boolean {
+  let u: URL;
+  try { u = new URL(endpoint); } catch { return false; }
+  if (u.protocol !== "https:" || u.port !== "" || u.username || u.password) return false;
+  const host = u.hostname.toLowerCase();
+  return PUSH_HOSTS.some((h) => ("exact" in h ? host === h.exact : host.endsWith(h.suffix!) && host.length > h.suffix!.length));
+}
+
 export function saveSubscription(db: DB, sub: { endpoint: string; keys: { p256dh: string; auth: string } }, audience: Audience = "child") {
-  if (!/^https:\/\//.test(sub.endpoint)) throw new Error("bad endpoint");
+  if (!isPushEndpoint(sub.endpoint)) throw new Error("bad endpoint");
   run(db, "INSERT INTO push_subs(endpoint, json, created, audience) VALUES (?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET json = excluded.json, audience = excluded.audience",
     sub.endpoint, JSON.stringify(sub), Date.now(), audience);
 }

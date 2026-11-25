@@ -70,6 +70,22 @@ beforeAll(async () => {
 });
 afterAll(() => provider.close());
 
+type H = { id: string; secret: string };
+async function fresh() {
+  const db = openDb(":memory:");
+  const app = Fastify();
+  await app.register(cookie);
+  registerAuth(app, db);
+  return { app, db };
+}
+async function startHandoff(app: ReturnType<typeof Fastify>, appName?: string): Promise<H> {
+  const r = await app.inject({ method: "POST", url: "/auth/handoff/start", payload: appName ? { app: appName } : {} });
+  expect(r.statusCode).toBe(200);
+  return r.json() as H;
+}
+const pollH = (app: ReturnType<typeof Fastify>, h: H, secret = h.secret) =>
+  app.inject({ method: "GET", url: `/auth/handoff/${h.id}`, headers: secret ? { "x-kith-handoff-secret": secret } : {} });
+
 async function signIn(claims: Record<string, unknown>, handoff?: string, existing?: { app: ReturnType<typeof Fastify>; db: ReturnType<typeof openDb> }, appHint?: string) {
   user = claims;
   const db = existing?.db ?? openDb(":memory:");
@@ -160,11 +176,20 @@ describe("signing in with Pocket ID", () => {
       expect((await signIn(both)).back.headers.location).toBe("/parent");
     });
     it("hands the error back to an installed app's handoff", async () => {
-      const id = crypto.randomBytes(32).toString("base64url");
-      const { app } = await signIn(both, id, undefined, "child");
-      const poll = await app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      const f = await fresh();
+      const h = await startHandoff(f.app, "child");
+      await signIn(both, h.id, f, "child");
+      const poll = await pollH(f.app, h);
       expect(poll.statusCode).toBe(403);
       expect(poll.json()).toEqual({ error: "use-parent-app" });
+    });
+    it("a handoff keeps the app it was started for", async () => {
+      const f = await fresh();
+      const h = await startHandoff(f.app, "child");
+      expect((await f.app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&app=parent` })).statusCode).toBe(400);
+      // Without ?app= on the login, the start's app still applies.
+      const r = await signIn(both, h.id, f);
+      expect(r.back.headers.location).toBe("/?signin=done-use-parent-app");
     });
     it("refuses an unknown app name", async () => {
       const app = Fastify(); await app.register(cookie); registerAuth(app, openDb(":memory:"));
@@ -186,45 +211,44 @@ describe("signing in with Pocket ID", () => {
   describe("from an installed web app (Dock or Home Screen)", () => {
     const newId = () => crypto.randomBytes(32).toString("base64url");
     it("hands the session to the app's poll once, and the sign-in window finishes on a 'done' page", async () => {
-      const id = newId();
-      const first = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" }, id);
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      const first = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" }, h.id, f);
       expect(first.back.headers.location).toBe("/?signin=done");
-      const poll = await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      const poll = await pollH(f.app, h);
       expect(poll.json()).toEqual({ ok: true, redirect: "/" });
       const sid = /kith_sid=([^;]+)/.exec(String(poll.headers["set-cookie"]))![1];
-      const me = await first.app.inject({ method: "POST", url: "/auth/logout", cookies: { kith_sid: sid } });
+      const me = await f.app.inject({ method: "POST", url: "/auth/logout", cookies: { kith_sid: sid } });
       expect(me.statusCode).toBe(200);
-      // Single use.
-      expect((await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
+      // Single use: the handoff is gone.
+      expect((await pollH(f.app, h)).statusCode).toBe(410);
     });
     it("says pending until sign-in finishes, and passes on a refusal", async () => {
-      const id = newId();
-      const db = openDb(":memory:");
-      const app = Fastify();
-      await app.register(cookie);
-      registerAuth(app, db);
-      expect((await app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
-      const r = await signIn({ sub: "u-9", groups: ["family"] }, id, { app, db });
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
+      const r = await signIn({ sub: "u-9", groups: ["family"] }, h.id, f);
       expect(r.back.headers.location).toBe("/?signin=done-not-allowed");
-      const poll = await app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      const poll = await pollH(f.app, h);
       expect(poll.statusCode).toBe(403);
       expect(poll.headers["set-cookie"]).toBeUndefined();
     });
     it("expires after 2 minutes, and rejects malformed ids", async () => {
-      const id = newId();
-      const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, id);
-      first.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 3 * 60_000);
-      expect((await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
-      expect((await first.app.inject({ method: "GET", url: "/auth/handoff/short" })).statusCode).toBe(400);
-      expect((await first.app.inject({ method: "GET", url: "/auth/login?handoff=bad!" })).statusCode).toBe(400);
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      f.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 3 * 60_000);
+      expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
+      // And the started handoff itself after 15 minutes.
+      f.db.prepare("UPDATE auth_handoff_start SET created = ?").run(Date.now() - 16 * 60_000);
+      expect((await pollH(f.app, h)).statusCode).toBe(410);
+      expect((await f.app.inject({ method: "GET", url: "/auth/handoff/short" })).statusCode).toBe(400);
+      expect((await f.app.inject({ method: "GET", url: "/auth/login?handoff=bad!" })).statusCode).toBe(400);
     });
     it("gives the provider's address as JSON for the app to open in the browser, and that sign-in still hands over", async () => {
-      const id = newId();
-      const db = openDb(":memory:");
-      const app = Fastify();
-      await app.register(cookie);
-      registerAuth(app, db);
-      const r = await app.inject({ method: "GET", url: `/auth/login?handoff=${id}&json=1` });
+      const { app } = await fresh();
+      const h = await startHandoff(app);
+      const r = await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` });
       expect(r.statusCode).toBe(200);
       const auth = new URL(r.json().url);
       expect(auth.origin + auth.pathname).toBe(`${issuer}/authorize`);
@@ -233,16 +257,52 @@ describe("signing in with Pocket ID", () => {
       codes.set(code, { challenge: auth.searchParams.get("code_challenge")!, nonce: auth.searchParams.get("nonce")! });
       const back = await app.inject({ method: "GET", url: `/auth/callback?code=${code}&state=${auth.searchParams.get("state")}&iss=${encodeURIComponent(issuer)}` });
       expect(back.headers.location).toBe("/?signin=done");
-      expect((await app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ ok: true, redirect: "/" });
+      expect((await pollH(app, h)).json()).toEqual({ ok: true, redirect: "/" });
       // Without a handoff, json=1 changes nothing.
       expect((await app.inject({ method: "GET", url: "/auth/login?json=1" })).statusCode).toBe(302);
     });
-    it("never stores the id itself, or puts a session id in a URL", async () => {
-      const id = newId();
-      const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, id);
-      const stored = first.db.prepare("SELECT id_hash, sid FROM auth_handoff").all() as { id_hash: string; sid: string }[];
-      expect(stored[0].id_hash).not.toContain(id);
+    it("never stores the id or secret, or puts a session id in a URL", async () => {
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      const stored = f.db.prepare("SELECT id_hash, sid FROM auth_handoff").all() as { id_hash: string; sid: string }[];
+      expect(stored[0].id_hash).not.toContain(h.id);
+      const started = JSON.stringify(f.db.prepare("SELECT * FROM auth_handoff_start").all());
+      expect(started).not.toContain(h.id);
+      expect(started).not.toContain(h.secret);
       expect(String(first.back.headers.location)).not.toContain(stored[0].sid);
+    });
+
+    // The hijack: someone makes up (or reads from a log) a handoff id, gets the victim to sign in
+    // with it, and polls for their session.
+    it("refuses a handoff the app didn't start", async () => {
+      const { app } = await fresh();
+      const id = newId();
+      expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${id}&json=1` })).statusCode).toBe(400);
+      expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${id}` })).statusCode).toBe(400);
+    });
+    it("uses a started handoff for one sign-in only", async () => {
+      const { app } = await fresh();
+      const h = await startHandoff(app);
+      expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` })).statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` })).statusCode).toBe(400);
+    });
+    it("only hands the session to a poll with the handoff's secret", async () => {
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      const noSecret = await pollH(f.app, h, "");
+      expect(noSecret.statusCode).toBe(403);
+      expect(noSecret.headers["set-cookie"]).toBeUndefined();
+      const wrong = await pollH(f.app, h, crypto.randomBytes(32).toString("base64url"));
+      expect(wrong.statusCode).toBe(403);
+      expect(wrong.headers["set-cookie"]).toBeUndefined();
+      // A wrong guess doesn't use it up: the real app still collects it.
+      expect((await pollH(f.app, h)).json()).toEqual({ ok: true, redirect: "/" });
+    });
+    it("refuses an unknown app when starting", async () => {
+      const { app } = await fresh();
+      expect((await app.inject({ method: "POST", url: "/auth/handoff/start", payload: { app: "admin" } })).statusCode).toBe(400);
     });
   });
 });

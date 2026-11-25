@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CATEGORY_KEYS, type Category } from "./desk/blocklist.js";
 import type { DB } from "./db.js";
 import { get, run } from "./db.js";
+import { CONN_SECRET } from "./config.js";
 
 // ── Parent settings (money, limits, safety contacts, connections) ────────────────────────────
 
@@ -16,7 +17,7 @@ export const Budgets = z.object({
   // Unused Full power from quieter windows earlier in the week can top a window up by at most this much.
   rolloverCapUsd: z.number().min(0).max(50).default(2.5),
   // Everything stops here. Keep it a little under the Console's monthly cap (e.g. $48 under a $50 cap).
-  hardStopUsd: z.number().min(0).max(1000).default(48),
+  hardStopUsd: z.number().gt(0).max(1000).default(48),
   // Below this much energy, Low power (the small model) is used, which carries on until the hard stop.
   lowPowerAtPercent: z.number().min(0).max(100).default(15),
   // 0 = Sunday … 1 = Monday. The weekly energy tops up at midnight on this day.
@@ -30,6 +31,14 @@ export const Helpline = z.object({
   sub: z.string().max(80).default(""),
   kind: z.enum(["helpline", "emergency"]).default("helpline"),
 });
+export type Helpline = z.infer<typeof Helpline>;
+
+export const EMERGENCY: Helpline = { name: "Emergency", number: "999", sub: "If you or someone is in danger now", kind: "emergency" };
+const is999 = (h: { number: string }) => h.number.replace(/\D/g, "") === "999";
+/** At least one number, and 999 is always there (added at the end if it's missing). */
+export const Helplines = z.array(Helpline).min(1, "Keep at least one number.").max(7)
+  .refine((l) => l.length < 7 || l.some(is999), "Up to 6 numbers, plus 999.")
+  .transform((l) => (l.some(is999) ? l : [...l, EMERGENCY]));
 
 export const ConnectionLevel = z.enum(["look", "act"]);
 export const Connection = z.object({
@@ -39,8 +48,8 @@ export const Connection = z.object({
   enabled: z.boolean().default(false),
   level: ConnectionLevel.default("look"),
   url: z.string().max(300).default(""),
-  // Name of the environment variable holding the token. The token itself never touches the database.
-  tokenEnv: z.string().max(80).default(""),
+  // Name of the environment variable holding the token (KITH_CONN_…). The token itself never touches the database.
+  tokenEnv: z.string().max(80).refine((v) => v === "" || CONN_SECRET.test(v), "Token variables must start with KITH_CONN_.").default(""),
   // MCP tools the parent allows (empty = none).
   allowedTools: z.array(z.string().max(80)).max(50).default([]),
   // Home Assistant: the only entities the companion may see or change (the child's room).
@@ -96,9 +105,9 @@ export const ParentSettings = z.object({
     .object({ start: z.string().regex(/^\d\d:\d\d$/), end: z.string().regex(/^\d\d:\d\d$/) })
     .default({ start: "22:00", end: "07:00" }),
   maxCheckinsPerDay: z.number().int().min(0).max(2).default(2),
-  helplines: z.array(Helpline).max(6).default([
+  helplines: Helplines.default([
     { name: "Childline", number: "0800 1111", sub: "Free, any time, any worry", kind: "helpline" },
-    { name: "Emergency", number: "999", sub: "If you or someone is in danger now", kind: "emergency" },
+    { ...EMERGENCY },
   ]),
   retentionDays: z.number().int().min(1).max(30).default(30),
   connections: z.array(Connection).max(20).default(defaultConnections()),
@@ -208,11 +217,28 @@ export type CompanionProfile = z.infer<typeof CompanionProfile>;
 
 export function loadParentSettings(db: DB): ParentSettings {
   const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'parent'");
-  const s = ParentSettings.parse(row ? JSON.parse(row.json) : {});
+  const s = ParentSettings.parse(row ? upgradeStored(JSON.parse(row.json)) : {});
   // Connections added in later versions appear (switched off) for existing installs too.
   for (const d of defaultConnections()) if (!s.connections.some((c) => c.kind === d.kind)) s.connections.push(d);
   return s;
 }
+/**
+ * Settings saved before the stricter checks: an empty helpline list gets the defaults back, a hard
+ * stop of 0 stays (practically) stopped, and a connection token that isn't a KITH_CONN_ variable is
+ * dropped (it would never have been read). Nothing here loosens a limit.
+ */
+function upgradeStored(raw: Record<string, unknown>): Record<string, unknown> {
+  const s = { ...raw };
+  if (Array.isArray(s.helplines) && s.helplines.length === 0) delete s.helplines;
+  const b = s.budgets as Record<string, unknown> | undefined;
+  if (b && typeof b.hardStopUsd === "number" && b.hardStopUsd <= 0) s.budgets = { ...b, hardStopUsd: 0.01 };
+  if (Array.isArray(s.connections)) {
+    s.connections = s.connections.map((c: Record<string, unknown>) =>
+      c && typeof c.tokenEnv === "string" && c.tokenEnv !== "" && !CONN_SECRET.test(c.tokenEnv) ? { ...c, tokenEnv: "" } : c);
+  }
+  return s;
+}
+
 export function saveParentSettings(db: DB, s: ParentSettings) {
   const valid = ParentSettings.parse(s);
   run(db, "INSERT INTO settings(key, json) VALUES('parent', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(valid));

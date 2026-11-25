@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import * as oidc from "openid-client";
 import type { DB } from "./db.js";
-import { get, run } from "./db.js";
+import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 
 export type Role = "child" | "parent";
@@ -13,7 +13,8 @@ export interface SessionUser { sid: string; sub: string; role: Role; name: strin
 
 const COOKIE = "kith_sid";
 const DAY = 86_400_000;
-const SESSION_DAYS: Record<Role, number> = { child: 30, parent: 14 };
+// Grown-up sessions are shorter: the parent view can change settings and see reports.
+export const SESSION_DAYS: Record<Role, number> = { child: 30, parent: 7 };
 
 declare module "fastify" {
   interface FastifyRequest { user?: SessionUser }
@@ -108,13 +109,36 @@ function setCookie(reply: FastifyReply, sid: string, role: Role) {
 
 // ── Sign-in from an installed web app (Dock or Home Screen) ─────────────────────────────────
 // The provider's page is outside the app, so the system opens it in a separate window, and that
-// window may not share cookies with the app. So the app makes a random one-time id, opens
-// /auth/login?handoff=<id>, and polls /auth/handoff/<id>. After the callback the new session is tied
-// to that id (only its SHA-256 is stored), for one use within 2 minutes; the poll sets the cookie in
-// the app's own context. No session id ever goes in a URL.
+// window may not share cookies with the app. So the app starts a handoff first:
+//   1. POST /auth/handoff/start {app} → {id, secret}. Only the SHA-256 of each is stored.
+//   2. GET /auth/login?handoff=<id>&json=1 → the provider's address (once per handoff).
+//   3. GET /auth/handoff/<id> with the X-Kith-Handoff-Secret header, until it's done.
+// After the callback the new session is tied to that handoff, for one use within 2 minutes; the poll
+// sets the cookie in the app's own context. The id travels in URLs (and so can end up in logs or
+// history); the secret never does, so knowing an id isn't enough to collect someone's session. No
+// session id ever goes in a URL.
 export const HANDOFF_ID = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
+export const HANDOFF_SECRET_HEADER = "x-kith-handoff-secret";
 const HANDOFF_MS = 2 * 60_000;
+// A started handoff can wait as long as the sign-in state it leads to (the app prepares it early).
+const HANDOFF_START_MS = 15 * 60_000;
 const hashId = (id: string) => crypto.createHash("sha256").update(id).digest("hex");
+const sameHash = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/** The started handoffs (kept here so auth owns its own table). */
+export function ensureAuthTables(db: DB) {
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_handoff_start (
+    id_hash TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, app TEXT, created INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
+  )`);
+}
+
+/** Starts a handoff for an installed app: a random id (goes in URLs) and secret (only in a header). */
+export function startHandoff(db: DB, app: AppHint | null): { id: string; secret: string } {
+  const id = crypto.randomBytes(32).toString("base64url");
+  const secret = crypto.randomBytes(32).toString("base64url");
+  run(db, "INSERT INTO auth_handoff_start(id_hash, secret_hash, app, created) VALUES (?,?,?,?)", hashId(id), hashId(secret), app, Date.now());
+  return { id, secret };
+}
 
 function finishHandoff(db: DB, handoff: string | null | undefined, result: { sid: string; role: Role } | { error: string }) {
   if (!handoff) return;
@@ -125,6 +149,7 @@ function finishHandoff(db: DB, handoff: string | null | undefined, result: { sid
 /** Clears handoffs that were never collected. */
 export function expireHandoffs(db: DB, now = Date.now()) {
   run(db, "DELETE FROM auth_handoff WHERE created < ?", now - HANDOFF_MS);
+  run(db, "DELETE FROM auth_handoff_start WHERE created < ?", now - HANDOFF_START_MS);
 }
 
 // Kept in memory only, to hint the provider at sign-out.
@@ -150,14 +175,24 @@ function discover() {
 export function resetOidcForTests() { oidcConfig = null; }
 
 export function registerAuth(app: FastifyInstance, db: DB) {
+  ensureAuthTables(db);
   const redirectUri = `${config.publicUrl}/auth/callback`;
 
   app.get("/auth/login", async (req, reply) => {
     if (!config.oidc.issuer) return reply.code(503).send({ error: "Sign-in isn't set up yet (KITH_OIDC_ISSUER)." });
     const handoffId = (req.query as { handoff?: string }).handoff;
     if (handoffId !== undefined && !HANDOFF_ID.test(handoffId)) return reply.code(400).send({ error: "bad handoff" });
-    const appHint = (req.query as { app?: string }).app;
+    let appHint = (req.query as { app?: string }).app;
     if (appHint !== undefined && !APP_HINT.test(appHint)) return reply.code(400).send({ error: "bad app" });
+    if (handoffId !== undefined) {
+      // Only a handoff the app started (POST /auth/handoff/start), once, for the app it started for.
+      expireHandoffs(db);
+      const started = get<{ app: AppHint | null; used: number }>(db, "SELECT app, used FROM auth_handoff_start WHERE id_hash = ?", hashId(handoffId));
+      if (!started || started.used) return reply.code(400).send({ error: "unknown handoff" });
+      if (appHint !== undefined && started.app && appHint !== started.app) return reply.code(400).send({ error: "bad app" });
+      appHint = started.app ?? appHint;
+      run(db, "UPDATE auth_handoff_start SET used = 1 WHERE id_hash = ?", hashId(handoffId));
+    }
     const cfg = await discover();
     const verifier = oidc.randomPKCECodeVerifier();
     const state = oidc.randomState();
@@ -218,16 +253,29 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     }
   });
 
-  // The installed app polls here. Single use: the first successful poll sets the cookie and the
-  // handoff is gone.
+  // The installed app starts a handoff here before sign-in. It needs no session (it's for signing in).
+  app.post("/auth/handoff/start", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const app = (req.body as { app?: unknown } | undefined)?.app;
+    if (app !== undefined && app !== null && (typeof app !== "string" || !APP_HINT.test(app))) return reply.code(400).send({ error: "bad app" });
+    expireHandoffs(db);
+    return { ...startHandoff(db, (app as AppHint | undefined) ?? null), expiresIn: HANDOFF_START_MS / 1000 };
+  });
+
+  // The installed app polls here, with the handoff's secret. Single use: the first successful poll
+  // sets the cookie and the handoff is gone.
   app.get("/auth/handoff/:id", { config: { rateLimit: { max: 90, timeWindow: "1 minute" } } }, async (req, reply) => {
     const id = (req.params as { id: string }).id;
     if (!HANDOFF_ID.test(id)) return reply.code(400).send({ error: "bad handoff" });
     expireHandoffs(db);
     const h = hashId(id);
+    const secret = req.headers[HANDOFF_SECRET_HEADER];
+    const started = get<{ secret_hash: string }>(db, "SELECT secret_hash FROM auth_handoff_start WHERE id_hash = ?", h);
+    if (!started) return reply.code(410).send({ error: "expired" });
+    if (typeof secret !== "string" || !sameHash(hashId(secret), started.secret_hash)) return reply.code(403).send({ error: "bad handoff secret" });
     const row = get<{ sid: string | null; role: Role | null; error: string | null }>(db, "SELECT sid, role, error FROM auth_handoff WHERE id_hash = ?", h);
     if (!row) return { pending: true };
     run(db, "DELETE FROM auth_handoff WHERE id_hash = ?", h);
+    run(db, "DELETE FROM auth_handoff_start WHERE id_hash = ?", h);
     if (row.error || !row.sid || !row.role) return reply.code(403).send({ error: row.error ?? "failed" });
     if (!get(db, "SELECT id FROM sessions WHERE id = ?", row.sid)) return reply.code(410).send({ error: "expired" });
     setCookie(reply, row.sid, row.role);
@@ -266,9 +314,9 @@ export function registerAuth(app: FastifyInstance, db: DB) {
   });
 
   // Every API call needs a session; changes also need the X-Kith header (blocks cross-site forms).
+  // Decided on the matched route, not the raw URL, so encoding or extra slashes can't slip past.
   app.addHook("preHandler", async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!req.url.startsWith("/api/")) return;
-    if (req.url.startsWith("/api/public/")) return;
+    if (!needsSession(req.routeOptions?.url)) return;
     const user = sessionFor(db, req.cookies[COOKIE]);
     if (!user) return reply.code(401).send({ error: "Please sign in." });
     if (req.method !== "GET" && req.method !== "HEAD" && req.headers["x-kith"] !== "1") return reply.code(403).send({ error: "Missing X-Kith header." });
@@ -278,6 +326,69 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       return reply.code(403).send({ error: wrongAppText(hint as AppHint), code: "wrong-app", role: user.role });
     }
     req.user = user;
+  });
+}
+
+/** Whether a matched route needs a session: every /api/ route except /api/public/. */
+export function needsSession(route: string | undefined): boolean {
+  if (!route) return false; // nothing matched: it's a 404 either way
+  return route.startsWith("/api/") && !route.startsWith("/api/public/");
+}
+
+/**
+ * The key for rate limits (wired into @fastify/rate-limit's keyGenerator in index.ts): a signed-in
+ * session gets its own allowance, so the child's devices don't share one with everyone behind the
+ * same address; anything else is limited by address. Only a real session counts, so made-up
+ * cookies can't buy extra allowance.
+ */
+export function rateLimitKey(db: DB) {
+  return (req: FastifyRequest): string => {
+    const sid = req.cookies?.[COOKIE];
+    if (sid && sessionFor(db, sid)) return `s:${hashId(sid).slice(0, 32)}`;
+    return `ip:${req.ip}`;
+  };
+}
+
+// ── Sign out everywhere (parent) ─────────────────────────────────────────────────────────────
+// People are shown by a short hash of who they are, never their session ids.
+const personId = (sub: string) => hashId(`person:${sub}`).slice(0, 16);
+
+export function listSignedIn(db: DB, now = Date.now()) {
+  const rows = all<{ sub: string; role: Role; name: string; created: number; expires: number }>(db, "SELECT sub, role, name, created, expires FROM sessions WHERE expires > ?", now);
+  const people = new Map<string, { person: string; role: Role; name: string; sessions: number; lastSignIn: number }>();
+  for (const r of rows) {
+    const id = personId(r.sub);
+    const p = people.get(id) ?? { person: id, role: r.role, name: r.name, sessions: 0, lastSignIn: 0 };
+    p.sessions++;
+    p.lastSignIn = Math.max(p.lastSignIn, r.created);
+    people.set(id, p);
+  }
+  return [...people.values()].sort((a, b) => b.lastSignIn - a.lastSignIn);
+}
+
+/** Ends sessions: everyone's, or one person's. `keep` is a session to leave alone (the caller's). Returns how many ended. */
+export function signOutEverywhere(db: DB, opts: { person?: string; keep?: string } = {}): number {
+  const rows = all<{ id: string; sub: string }>(db, "SELECT id, sub FROM sessions");
+  let n = 0;
+  for (const r of rows) {
+    if (opts.keep && r.id === opts.keep) continue;
+    if (opts.person && personId(r.sub) !== opts.person) continue;
+    run(db, "DELETE FROM sessions WHERE id = ?", r.id);
+    n++;
+  }
+  return n;
+}
+
+export function registerSessionAdmin(app: FastifyInstance, db: DB) {
+  const parent = requireRole("parent");
+  app.get("/api/parent/sessions", { preHandler: parent }, async () => ({ people: listSignedIn(db) }));
+  app.post("/api/parent/sessions/sign-out", { preHandler: parent, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const b = (req.body ?? {}) as { person?: unknown; keepThisDevice?: unknown };
+    if (b.person !== undefined && (typeof b.person !== "string" || !/^[0-9a-f]{16}$/.test(b.person))) return reply.code(400).send({ error: "bad person" });
+    const keep = b.keepThisDevice === false ? undefined : req.user!.sid;
+    const ended = signOutEverywhere(db, { person: b.person as string | undefined, keep });
+    if (!keep) reply.clearCookie(COOKIE, { path: "/" });
+    return { ok: true, ended };
   });
 }
 

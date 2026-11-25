@@ -128,6 +128,14 @@ describe("files", () => {
     // A yes only works once.
     expect((await apply(db, drive, p.id)).ok).toBe(false);
   });
+  it("applies once even if she taps Yes twice at the same moment", async () => {
+    const g = fakeGoogle();
+    const drive = new GoogleDrive(db, () => undefined, g.f);
+    const p = proposeFileEdit(db, { fileId: DOC, summary: "Fix", changes: [{ op: "append", text: "The end." }] });
+    const results = await Promise.all([apply(db, drive, p.id), apply(db, drive, p.id)]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(g.writes()).toHaveLength(1);
+  });
   it("can be declined, and then nothing happens", async () => {
     const g = fakeGoogle();
     const p = proposeFileEdit(db, { fileId: SHEET, summary: "Add two words", changes: [{ op: "append_rows", rows: [["el gato", "the cat"]] }] });

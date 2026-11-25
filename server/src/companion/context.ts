@@ -7,6 +7,7 @@ import { all, get, run } from "../db.js";
 import { config } from "../config.js";
 import { textOf, type LLM } from "../llm.js";
 import { redactPersonal } from "../safety/rules.js";
+import type { SafetyChecker } from "../safety/check.js";
 
 export interface Msg { id: number; ts: number; role: string; text: string; mode: string }
 export interface Rolling { upToId: number; text: string; ts: number }
@@ -50,9 +51,11 @@ export function splitForSummary(msgs: Msg[], max = HISTORY_MAX_TOKENS, keep = HI
  * The conversation context for a turn: a rolling summary plus recent messages, for one thread.
  * This is the compactor: when the thread gets long, the oldest messages are folded into the summary
  * (small model) and their full text is archived to a history .md file for recall later.
+ * The new summary goes back into every later prompt, so it passes the output safety check first;
+ * if it doesn't (or the check can't run), the old summary is kept and the turn carries on.
  */
 export async function conversationContext(
-  db: DB, llm: LLM, companionName: string, thread = 1, archive?: (folded: Msg[], summary: string) => void,
+  db: DB, llm: LLM, companionName: string, thread = 1, safety?: SafetyChecker, archive?: (folded: Msg[], summary: string) => void,
 ): Promise<{ summary: string; recent: Msg[] }> {
   let rolling = loadRolling(db, thread);
   const since = rolling?.upToId ?? 0;
@@ -72,9 +75,11 @@ export async function conversationContext(
           messages: [{ role: "user", content: `Summary so far:\n${rolling?.text || "(none)"}\n\nNewer messages to fold in:\n${transcript}` }],
         } as never,
       });
-      const text = textOf(msg);
-      if (text) {
-        rolling = { upToId: fold[fold.length - 1].id, text: text.slice(0, 3000), ts: Date.now() };
+      const text = textOf(msg).slice(0, 3000);
+      const check = text && safety ? await safety.checkOutput(text, "", "chat") : { ok: !!text, reason: "" };
+      if (text && !check.ok) console.warn("[context] new summary held back by the safety check:", check.reason);
+      if (text && check.ok) {
+        rolling = { upToId: fold[fold.length - 1].id, text, ts: Date.now() };
         saveRolling(db, rolling, thread);
         try { archive?.(fold, rolling.text); } catch (err) { console.warn("[context] couldn't write history", (err as Error).message); }
         return { summary: rolling.text, recent: keep };

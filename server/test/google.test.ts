@@ -58,7 +58,8 @@ describe("connecting", () => {
   });
   it("refuses the wrong account when one is configured", async () => {
     config.google.expectedEmail = "kid@gmail.com";
-    await expect(exchangeCode("c", "v", respond({ refresh_token: "rt", access_token: "at", id_token: idToken("mum@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.toThrow(/Please connect kid@gmail.com/);
+    await expect(exchangeCode("c", "v", respond({ refresh_token: "rt", access_token: "at", id_token: idToken("mum@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.toThrow(/different Google account/);
+    await expect(exchangeCode("c", "v", respond({ refresh_token: "rt", access_token: "at", id_token: idToken("mum@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.not.toThrow(/@/);
     config.google.expectedEmail = "";
   });
   it("needs offline access", async () => {

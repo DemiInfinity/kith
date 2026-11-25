@@ -4,7 +4,8 @@ import type { DB } from "./db.js";
 import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
 import { callJson, OfflineError, type LLM } from "./llm.js";
-import type { SafetyChecker } from "./safety/check.js";
+import { CHECK_UNAVAILABLE, type SafetyChecker } from "./safety/check.js";
+import { noteSafetyUnavailable } from "./safety/unavailable.js";
 import { checkInputRules, checkOutputRules } from "./safety/rules.js";
 import { energyNow } from "./companion/chat.js";
 import { loadProfile } from "./settings.js";
@@ -21,7 +22,7 @@ import { markdownToHtml, MIME } from "./storage/google.js";
 import {
   addExtraLanguage, addLangCards, addLanguage, catalogue, decideLanguage, dismissDeclined, dueLangCards, gradeLangCard, isActive, KANA_RE,
   kanaProgress, langCardStats, LangCode, langInfo, langName, languageSummary, loadLangProfiles, markKana, practiceWeek, removeLanguage,
-  saveLangProfile, STARTERS, topicFor,
+  LangLocked, saveLangProfile, STARTERS, topicFor,
 } from "./study/languages.js";
 import { askForLanguage, dismissUnlisted, unlistedAsks } from "./study/languageRequests.js";
 import type { Storage } from "./storage/storage.js";
@@ -54,6 +55,12 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
 
   async function okInput(reply: FastifyReply, text: string) {
     const v = await safety.checkInput(text, []);
+    if (v.held) {
+      // The check couldn't run: hold it, and let the parent know the check was down.
+      noteSafetyUnavailable(db, { companionName: loadProfile(db).name, childName: childName(db) });
+      reply.code(503).send({ error: CHECK_UNAVAILABLE, code: "safety-unavailable" });
+      return false;
+    }
     if (v.level !== "none" || v.categories.some((c) => ["sexual", "romance"].includes(c))) {
       reply.code(422).send({ error: "That's one to talk through in chat instead, where I can help properly." });
       return false;
@@ -173,7 +180,9 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   };
   app.get("/api/languages", { preHandler: child }, async () => languagesView());
   app.put("/api/languages/:lang", { preHandler: either }, async (req, reply) => {
-    try { return saveLangProfile(db, langParam(req), req.body); } catch (e) { return reply.code(404).send({ error: (e as Error).message }); }
+    try { return saveLangProfile(db, langParam(req), req.body, req.user!.role); } catch (e) {
+      return e instanceof LangLocked ? reply.code(403).send({ error: e.message }) : reply.code(404).send({ error: (e as Error).message });
+    }
   });
   // "Add a language": asks the grown-up first.
   const AskBody = z.object({

@@ -31,9 +31,14 @@ What the child says:
    - **today**: bullying, not eating, substances, being really not okay.
    - **fyi**: a gentle heads-up.
    - **none**: everything else, which is most messages.
-3. **The model can raise the fixed rules' level, but never lower it.** If the model is unavailable, the fixed rules
-   still work.
-4. **Personal details are removed** (address, postcode, phone, email, school) before the message is stored or sent to
+3. **The model can raise the fixed rules' level, but never lower it.**
+4. **If the safety model fails or times out, it's tried once more; then the message is held (fail closed).** The
+   child sees "I couldn't check that just now, try again in a moment", nothing is answered, and the parent gets an
+   "fyi" that the safety check was unavailable (at most one an hour, and never what the message said). Anything the
+   fixed rules caught still counts: a worry is still answered with the safety reply and reported. The same goes for
+   soul.md, identity notes and memories the child writes, desk ideas and changes, and study and language topics: they
+   wait (a 503) rather than go through unchecked.
+5. **Personal details are removed** (address, postcode, phone, email, school) before the message is stored or sent to
    the API.
 
 What the companion says:
@@ -49,7 +54,14 @@ What the companion says:
 3. **A reply that fails is regenerated once** with the reason. If it fails again, it's replaced with a kind refusal.
 4. **If the check itself can't run, the reply is held back (fail closed).**
 
-Desk items, check-ins, the journal and the weekly summary go through the same output check.
+Desk items, check-ins, the journal and the weekly summary go through the same output check. So do the rolling chat
+summary (it goes back into every later prompt: one that fails isn't kept, and the old one stays) and every word of a
+Google proposal (an edit, calendar event or homework task) before the child sees the card.
+
+**Resting (the monthly hard stop):** the companion doesn't think, and the safety model isn't called either, to keep
+spending at the stop. The fixed rules still read every message, so a crisis is still caught, answered with the safety
+reply and helplines, and reported. A practice language without hand-written rules still gets its English gloss, since
+the rules can't spot a crisis without it.
 
 ## Told first, then reported
 
@@ -58,12 +70,14 @@ When something reaches a report level:
 1. The companion is told (by a system message the child can't see but which is listed here) to **tell the child, in that
    reply**, what it will share, why, and that they're not in trouble.
 2. The chat shows a card with the exact words the parent will receive.
-3. Only after the reply exists does the report go to the reporters, at its level. For "now", the "Grown-up?"
+3. The report is recorded before the reply is made (so a turn that dies part-way still leaves it to be sent), but only
+   after the reply exists does it go to the reporters, at its level. For "now", the "Grown-up?"
    sheet opens too.
 4. The child sees every report in "What … sees". There are no secret reports.
 
 "Grown-up?" is always one tap away: it messages the parent (a "now" report the child sends themselves), and gives
-Childline (0800 1111) and 999. The numbers are configurable in the parent view.
+Childline (0800 1111) and 999. The numbers are configurable in the parent view: there must be at least one, and 999 is
+always kept (added back if it's removed). If the list were ever empty, the safety reply falls back to Childline.
 
 ## What the parent sees, and doesn't
 
@@ -71,6 +85,7 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 |---|---|
 | Spending (in money; the child sees energy) | Everyday chats |
 | Reports, at three levels, with what the child was told | Memories (they're the child's) |
+| A note if the safety check was unavailable | The companion's files and schedule (soul.md, the chat summary, check-ins) |
 | A weekly summary at topic level, the same one the child sees | |
 | Everything on the desk, and the journal | |
 | Every tool or connection the companion used | |
@@ -93,6 +108,8 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
   messaging, sharing, buying, paying or ordering.
 - **Home Assistant** is limited to the listed entities. **Websites** are limited to the listed sites, https only, with
   redirects checked.
+- **Tokens stay in the server's environment**, named in the settings by a `KITH_CONN_…` variable. No other variable can
+  be named, so a connection can never be pointed at Kith's own keys.
 - **Every use is logged**, and the child and parent both see the log.
 
 ## The desk
@@ -129,6 +146,19 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 - **Every visit is logged** with its URL, time and the task it was for, and shown to the child and the parent. "Watch
   live" shows a screenshot of what it's reading.
 
+## Signing in and sessions
+
+- **Only the configured people get in**, through your sign-in provider (Pocket ID or similar). The child's app lets in
+  only the child, the parent's app only a parent.
+- **Sessions last 30 days for the child and 7 for a grown-up.** The parent view can sign everyone out, or one person,
+  everywhere (`POST /api/parent/sessions/sign-out`); taking someone out of the config ends their sessions too.
+- **Installed apps hand over sign-in with a secret.** The app starts a handoff (`POST /auth/handoff/start`) and gets an
+  id and a secret. The id goes in the sign-in address; the secret only ever goes in a header when the app collects the
+  session, and only hashes of both are stored. A made-up or leaked id gets nothing.
+- **Rate limits** count per signed-in session, otherwise per address, with one proxy trusted (`KITH_TRUST_PROXY`).
+- **Logs never keep query strings** (sign-in codes, states, handoff ids), or the Google account's email.
+- **Notifications only go to the browsers' own push services** (Apple, Google, Mozilla, Microsoft).
+
 ## Coursework (academic integrity)
 
 - **For anything marked as coursework (non-exam assessment), the companion is a tutor only.** It explains, asks
@@ -137,6 +167,9 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 - **Desk tools are removed in coursework mode**, so it can't "make" anything.
 - **It reminds the child** that the work must be their own and that AI help should be acknowledged.
 - **Every coursework conversation is noted in a help log** the child can print for their teacher.
+- **Only the parent can take a coursework mark off** a Google file. In the same way, a language the parent switched off
+  stays off until the parent switches it back on.
+- **A "yes" to a Google change applies once**, even if it's tapped twice.
 
 ## Writing with a friend
 
@@ -164,6 +197,7 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 ## Things to know
 
 - **The safety check is good, not perfect.** No filter catches everything, which is why the grown-up is in the loop.
-- **Low power uses a smaller model** for chat; the safety check is the same either way.
+- **Low power uses a smaller model** for chat; the safety check is the same either way. While resting at the hard
+  stop, only the fixed rules run (see above).
 - **Anthropic may decline requests itself** (a `refusal`). Kith treats that as "held back" and doesn't retry it on
   another model.

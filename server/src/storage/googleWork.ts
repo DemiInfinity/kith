@@ -197,7 +197,10 @@ export async function apply(db: DB, drive: GoogleDrive, id: number): Promise<{ o
   const r = get<{ status: string; payload: string; title: string; ts: number }>(db, "SELECT status, payload, title, ts FROM google_actions WHERE id = ?", id);
   if (!r || r.status !== "pending" || Date.now() - r.ts > 86_400_000) return { ok: false, message: "That suggestion has expired. Ask again?" };
   const p = JSON.parse(r.payload) as Payload;
-  run(db, "UPDATE google_actions SET status = 'applying' WHERE id = ? AND status = 'pending'", id);
+  // Claiming it is the one-time step: if two taps race, only the one that moved it out of
+  // "pending" applies anything.
+  const claimed = run(db, "UPDATE google_actions SET status = 'applying' WHERE id = ? AND status = 'pending'", id);
+  if (Number(claimed.changes) !== 1) return { ok: false, message: "That one's already being done." };
   try {
     let message = "Done.";
     if (p.kind === "file") message = await applyFile(db, drive, p.fileId, p.changes);
