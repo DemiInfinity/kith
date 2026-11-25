@@ -13,6 +13,7 @@ export default defineConfig({
     outDir: "dist", sourcemap: false,
     // Two pages: the app, and the public welcome page as real HTML that search engines can read
     // (the server sends welcome.html for "/" when nobody's signed in).
-    rollupOptions: { input: { main: resolve(import.meta.dirname, "index.html"), welcome: resolve(import.meta.dirname, "welcome.html") } },
+    rollupOptions: { input: { main: resolve(import.meta.dirname, "index.html"), welcome: resolve(import.meta.dirname, "welcome.html"),
+      terms: resolve(import.meta.dirname, "terms.html"), privacy: resolve(import.meta.dirname, "privacy.html"), setup: resolve(import.meta.dirname, "setup.html") } },
   },
 });

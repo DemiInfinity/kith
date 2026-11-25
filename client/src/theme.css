@@ -855,3 +855,5 @@ dialog.sheet h3:focus { outline: none; }
 .toast .x { width: 32px; height: 32px; color: var(--text-3); }
 /* The sign-in code an installed app shows while the browser asks "Finish signing in?" */
 .signin-code { font-family: var(--serif); font-size: 3rem; font-weight: 700; letter-spacing: 0.3em; padding: 6px 4px 6px 0.3em; border-radius: 16px; background: var(--card); border: 1.5px solid var(--field-line); color: var(--text); font-variant-numeric: tabular-nums; }
+.signin-print { max-width: 360px; margin-top: 8px; }
+.signin-print a { color: var(--lilac-soft); }

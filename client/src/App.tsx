@@ -161,7 +161,7 @@ function SignIn() {
             <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
           </div>
         )}
-        {info && !info.oidc && !info.dev && <span className="small">Sign-in isn’t set up yet. See docs/setup.md.</span>}
+        {info && !info.oidc && !info.dev && <span className="small">Sign-in isn’t set up yet. See the <a href="/setup">setup guide</a>.</span>}
         {info?.dev && (
           <div className="stack" style={{ width: "100%" }}>
             <span className="small">Local testing (KITH_DEV_LOGIN is on)</span>
@@ -169,6 +169,7 @@ function SignIn() {
             <a className="btn ghost" href="/auth/dev?role=parent" style={{ textDecoration: "none" }}>Try as the parent</a>
           </div>
         )}
+        <span className="small signin-print">By signing in you agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>. The <a href="/privacy" target="_blank" rel="noopener">privacy policy</a> says what’s kept and who sees it.</span>
       </div>
     </div>
   );

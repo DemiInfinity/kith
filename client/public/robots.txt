@@ -2,6 +2,9 @@
 User-agent: *
 Allow: /$
 Allow: /welcome/
+Allow: /terms$
+Allow: /privacy$
+Allow: /setup$
 Allow: /assets/
 Allow: /favicon.ico
 Allow: /favicon.svg
@@ -11,6 +14,9 @@ Disallow: /api/
 Disallow: /auth/
 Disallow: /signin
 Disallow: /welcome.html
+Disallow: /terms.html
+Disallow: /privacy.html
+Disallow: /setup.html
 Disallow: /talk
 Disallow: /study
 Disallow: /languages

@@ -142,6 +142,7 @@ body.kw {
 .num { display: block; font-family: var(--serif); font-size: 3.375rem; font-weight: 700; line-height: 1; }
 .num.n1 { color: #efa6b8; } .num.n2 { color: #f0a383; } .num.n3 { color: #f7a055; }
 #get .kw-fine { margin-top: 20px; }
+.kw-operator { max-width: 720px; color: var(--text-3) !important; }
 
 /* FAQ */
 .kw-faq { margin: 34px 0 0; }
@@ -152,6 +153,8 @@ body.kw {
 .kw-foot { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 40px var(--pad) 50px; border-top: 1px solid var(--card-line); }
 .kw-foot-name { font-family: var(--serif); font-size: 1.5rem; font-weight: 700; color: var(--text); }
 .kw-foot .btn { margin-left: auto; }
+.kw-foot-links { display: flex; gap: 18px; flex-wrap: wrap; }
+.kw-foot-links a { font-weight: 800; color: var(--text-3); padding: 8px 0; }
 
 /* Narrower screens */
 @media (max-width: 1180px) {

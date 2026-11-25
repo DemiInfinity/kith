@@ -52,8 +52,58 @@ describe("what crawlers may see", () => {
     for (const p of ["/api/", "/auth/", "/signin", "/settings", "/talk", "/"]) expect(robots).toContain(`Disallow: ${p}\n`);
     expect(robots).toContain("Sitemap: https://ai.hearthstream.xyz/sitemap.xml");
   });
-  it("the sitemap has just the home page", () => {
-    expect(sitemap.match(/<loc>/g)).toHaveLength(1);
-    expect(sitemap).toContain("<loc>https://ai.hearthstream.xyz/</loc>");
+  it("the sitemap has the home page and the three public pages", () => {
+    expect(sitemap.match(/<loc>/g)).toHaveLength(4);
+    for (const p of ["", "setup", "terms", "privacy"]) expect(sitemap).toContain(`<loc>https://ai.hearthstream.xyz/${p}</loc>`);
+  });
+  it("robots.txt allows the public pages", () => {
+    for (const p of ["/terms$", "/privacy$", "/setup$"]) expect(robots).toContain(`Allow: ${p}\n`);
+  });
+});
+
+describe("terms, privacy and the setup guide (real HTML too)", () => {
+  const read = (f: string) => readFileSync(resolve(root, f), "utf8");
+  const words = (h: string) => h.slice(h.indexOf("<main"), h.indexOf("</main>")).replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
+  for (const [file, path] of [["terms.html", "/terms"], ["privacy.html", "/privacy"], ["setup.html", "/setup"]] as const) {
+    it(`${file} has its own title, description and canonical, and one h1`, () => {
+      const h = read(file);
+      expect(h).toContain(`<link rel="canonical" href="https://ai.hearthstream.xyz${path}" />`);
+      expect(h).toMatch(/<title>[^<]+ · Kith<\/title>/);
+      const desc = /<meta name="description" content="([^"]+)"/.exec(h)?.[1] ?? "";
+      expect(desc.length).toBeGreaterThan(110);
+      expect(desc.length).toBeLessThanOrEqual(160);
+      expect(h.match(/<h1[\s>]/g)).toHaveLength(1);
+      expect(h).toContain('<a href="/terms">Terms of use</a>');
+      expect(h).toContain('<a href="/privacy">Privacy</a>');
+    });
+  }
+  it("the terms say who runs a Kith is responsible for it, and aren't legal advice", () => {
+    const h = read("terms.html");
+    expect(h).toContain("Last updated: 25 November 2026");
+    expect(h).toContain('id="t-operator">If you run your own Kith');
+    expect(h).toContain("Not legal advice:</b> check with a professional if you run Kith for others.");
+    expect(h).toContain("AGPL-3.0");
+    expect(words(h)).toBeGreaterThan(600);
+  });
+  it("the privacy policy covers what's kept, who it's shared with and the operator's own notice", () => {
+    const h = read("privacy.html");
+    expect(h).toContain("Last updated: 25 November 2026");
+    expect(h).toContain("If you run Kith yourself, you're the data controller and need your own privacy notice (you can adapt this one).");
+    for (const t of ["30 days", "anthropic.com/legal", "one cookie", "Age Appropriate Design Code"]) expect(h).toContain(t);
+    expect(words(h)).toBeGreaterThan(600);
+  });
+  it("the setup guide has eleven steps, a table of contents, commands and HowTo data", () => {
+    const h = read("setup.html");
+    expect(h.match(/class="card step"/g)).toHaveLength(11);
+    expect(h).toContain('aria-label="Setup steps"');
+    expect(h).toContain("./scripts/setup-secrets.sh");
+    const ld = JSON.parse(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(h)![1]);
+    expect(ld["@type"]).toBe("HowTo");
+    expect(ld.step).toHaveLength(11);
+  });
+  it("the welcome page points at the setup guide and carries the operator note", () => {
+    expect(html).toContain('<a class="btn ghost" href="/setup">Read the setup guide</a>');
+    expect(html).toContain('<li><a href="/setup">Setup guide</a></li>');
+    expect(html).toContain("If you set up Kith, you run it");
   });
 });
