@@ -376,7 +376,6 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             {today?.google && <span className="pchip" style={{ background: "rgba(127,216,164,0.18)", color: "#9BE3B8" }}><Icon name="cloud" size={14} /> Drive synced</span>}
             {power && <span className="pchip" style={{ background: power.mode === "full" ? "rgba(245,150,70,0.2)" : "rgba(156,194,232,0.2)", color: power.mode === "full" ? "#F7B57A" : "#B8D4F0" }}><Icon name={power.mode === "full" ? "fire" : power.mode === "low" ? "battery" : "moon"} size={14} /> {power.mode === "full" ? "Full power" : power.mode === "low" ? `Low power${power.fullBackAt ? ` until ${clock(power.fullBackAt)}` : ""}` : "Resting"}</span>}
             <b>{new Date(now).toLocaleDateString("en-GB", { weekday: "short" })} {clock(now)}</b>
-            <button className="pfull" onClick={() => setFull(!full)} aria-label={full ? "Leave full screen" : "Full screen"} title={full ? "Leave full screen" : "Full screen"}><Icon name={full ? "shrink" : "expand"} size={16} /></button>
           </div>
           <div className={`pscreen ${win === "max" ? "hasmax" : ""}`} onPointerDown={poke} onKeyDown={poke} onWheel={poke}>
             {!awake && (
@@ -452,7 +451,12 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
       <div className="deskmain">
         {full ? (
           <button className="pmonitor-away" onClick={() => setFull(false)} style={{ height: 160 }}>{name}’s computer is open full screen. Click to bring it back here.</button>
-        ) : monitor}
+        ) : (
+          <div className="pmonitor-wrap">
+            <button className="pfull" onClick={() => setFull(true)} aria-label={`Open ${name}’s computer full screen`}><Icon name="expand" size={16} /><span>Full screen</span></button>
+            {monitor}
+          </div>
+        )}
         {full && createPortal(
           <div className="deskmodal" role="dialog" aria-modal="true" aria-label={`${name}’s computer, full screen`} onClick={(e) => { if (e.target === e.currentTarget) setFull(false); }}>
             <button className="deskmodal-x" onClick={() => setFull(false)} aria-label="Close full screen"><Icon name="close" size={22} /></button>

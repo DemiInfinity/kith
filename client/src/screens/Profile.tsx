@@ -85,11 +85,6 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
           <span style={{ fontSize: 14, fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
           <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
         </div>
-        <div className="row">
-          <button className="callbtn" onClick={() => go("/talk")}><Icon name="call" size={17} /> Call</button>
-          <button className="btn ghost small" onClick={() => (panel ? onClose?.() : go("/"))}><IL i="chat2">Message</IL></button>
-          <button className="btn ghost small" onClick={() => go("/me")}><IL i="pencil">Edit</IL></button>
-        </div>
       </div>
       <div className="chips" role="tablist">
         {tabs.map(([t, ic, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); if (!panel) history.replaceState(null, "", on(t)); }}><IL i={ic}>{l}</IL></button>)}
@@ -204,7 +199,7 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
   const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
   const rows: [string, IconName, string, string][] = [
     ["/pip", "idcard", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
-    ["/me", "sparkle", "Personality", "Name, look, traits and voice"],
+    ["/me", "pencil", `Edit ${name}`, "Name, look, personality and voice"],
     ["/notifications", "bell", "Notifications", "Turn on, test, and choose what reaches your phone"],
     ["/memory", "brain", `What ${name} remembers`, "See and delete memories; check-ins"],
     ["/shared", "eye", `What ${me.parentLabel} sees`, "Nothing secret here"],
