@@ -20,7 +20,7 @@ export function ConfirmCard({ p, onDone }: { p: GooglePending; onDone?: () => vo
   return (
     <div className="confirmcard" role="group" aria-label={p.title}>
       <b style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Icon name={p.kind === "calendar" ? "calendar" : p.kind === "tasks" ? "check" : "note"} size={16} />{p.title}</b>
-      <div className="difflines">
+      <div className="difflines" tabIndex={0} aria-label={`The change: ${p.lines.length} line${p.lines.length === 1 ? "" : "s"}`}>
         {p.lines.map((l, i) => <div key={i} className={`dl dl-${l.op === "+" ? "add" : l.op === "-" ? "del" : l.op === "~" ? "chg" : "note"}`}><span aria-hidden>{MARK[l.op]}</span>{l.text}</div>)}
       </div>
       {state === "ask" && (

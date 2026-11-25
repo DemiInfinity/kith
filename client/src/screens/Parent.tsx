@@ -7,6 +7,7 @@ import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
 import { usePoll } from "../lib/poll";
 import { isMacApp } from "../lib/native";
+import { parentStatusWords } from "../lib/worry";
 import { ParentHelp } from "./HelpCentre";
 
 // The desk is big (a whole little computer), so it loads the first time it's opened.
@@ -874,7 +875,7 @@ export function Parent({ me }: { me: Me }) {
         <div key={r.id} className="preport">
           <span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span>
           <span style={{ flex: 1, fontSize: "0.875rem" }}>{r.parentText}</span>
-          <span className="small preport-when">{dayLabel(r.ts)}, {clock(r.ts)} · {r.status}</span>
+          <span className="small preport-when">{dayLabel(r.ts)}, {clock(r.ts)} · {parentStatusWords(r.status)}</span>
         </div>
       ))}
     </div>

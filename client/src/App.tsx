@@ -1,5 +1,5 @@
 import { appHint, withApp, wrongAppWords } from "./lib/appHint";
-import { handoffDevice, handoffWords, isInstalledApp, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
+import { doneWords, handoffDevice, handoffWords, isInstalledApp, signinWords, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
@@ -17,13 +17,14 @@ import { KidHelp } from "./screens/HelpCentre";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
-import { registerServiceWorker } from "./lib/push";
+import { registerServiceWorker, resyncPush } from "./lib/push";
 import { Google } from "./screens/Google";
 import { Notifications } from "./screens/Notifications";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
 import { usePoll } from "./lib/poll";
 import { action, Toaster } from "./lib/action";
+import { WorrySheet } from "./components/WorrySheet";
 
 // The bigger screens load when they're first opened, so the chat starts quickly on a phone.
 const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
@@ -64,12 +65,13 @@ function TalkLoading({ name, openHelp, go }: { name: string; openHelp: () => voi
 /** Shown in the sign-in window opened by an installed app, once it's done. */
 function SignInDone({ error }: { error: string | null }) {
   useEffect(() => { const t = setTimeout(() => { try { window.close(); } catch { /* the browser decides */ } }, 600); return () => clearTimeout(t); }, []);
+  const w = doneWords(error, wrongAppWords);
   return (
     <div className="main">
-      <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+      <div className="screen narrow" role="status" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
-        <h2 style={{ fontSize: "1.875rem" }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
-        <span style={{ color: "var(--text-2)" }}>{error && wrongAppWords(error) ? wrongAppWords(error) : error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
+        <h2 style={{ fontSize: "1.875rem" }}>{w.title}</h2>
+        <span style={{ color: "var(--text-2)" }}>{w.text}</span>
       </div>
     </div>
   );
@@ -145,17 +147,15 @@ function SignIn() {
         <LogoMark size={88} />
         <h1 style={{ fontSize: "2.875rem" }}>kith</h1>
         <span className="hand">a companion that grows up with you, kept at home</span>
-        {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}
-        {reason === "failed" && <div className="notice">Sign-in didn’t work. Try again?</div>}
-        {reason && wrongAppWords(reason) && <div className="notice">{wrongAppWords(reason)}</div>}
-        {handoffErr && <div className="notice">{handoffErr}</div>}
+        {signinWords(reason, wrongAppWords) && <div className="notice" role="status">{signinWords(reason, wrongAppWords)}</div>}
+        {handoffErr && <div className="notice" role="status">{handoffErr}</div>}
         {info?.oidc && !waiting && <a className="btn primary" href={withApp("/auth/login")} onClick={signInFromApp} style={{ textDecoration: "none" }}>Sign in with {info.label}</a>}
         {waiting && (
-          <div className="stack" style={{ alignItems: "center" }}>
+          <div className="stack" role="status" style={{ alignItems: "center" }}>
             <span className="typing" aria-hidden><i /><i /><i /></span>
             {code ? <>
               <span>Finish signing in in your browser. Check it shows this code, then tap <b>Yes</b>:</span>
-              <span className="signin-code" aria-label={`Code ${code.split("").join(" ")}`}>{code}</span>
+              <span className="signin-code" role="img" aria-label={`Code ${code.split("").join(" ")}`}>{code}</span>
               <span className="small">If the browser shows a different code, tap No.</span>
             </> : <span>Finish signing in in your browser, then come back here.</span>}
             <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
@@ -289,6 +289,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const doing = doingText(state, baseMood);
   const onProfile = false;
   const openHelp = () => setHelp(true);
+  // A worry typed outside chat: its words are already in the main chat.
+  const goToChat = () => { setProfileOpen(false); pickThread(1); go("/"); };
 
   let screen: React.ReactNode;
   if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
@@ -391,6 +393,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       </div>
       {path !== "/talk" && !onProfile && <ProfilePanel open={profileOpen} tab={profileTab} me={me} state={state} mood={baseMood} go={(to) => { setProfileOpen(false); go(to); }} onClose={() => setProfileOpen(false)} />}
       <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
+      <WorrySheet name={me.profile.name} goToChat={goToChat} openHelp={openHelp} />
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>
   );
@@ -434,6 +437,9 @@ function Root() {
     loadMe();
     void registerServiceWorker();
   }, [loadMe]);
+  // Notifications belong to the session that turned them on: re-register this device for this one.
+  const signedIn = Boolean(me && me !== "signed-out");
+  useEffect(() => { if (signedIn) void resyncPush(); }, [signedIn]);
   // The welcome page's Sign in goes to /signin; once signed in, that's just the app's home.
   useEffect(() => {
     if (me && me !== "signed-out" && location.pathname === "/signin") history.replaceState(null, "", `/${location.search}`);

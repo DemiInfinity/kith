@@ -816,7 +816,9 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 @media (max-width: 599px) { .threadbar { gap: 8px; padding: 8px 12px; } .threadbar .select { padding: 0 22px 0 8px !important; max-width: 84px; background-position: right 6px center; } }
 /* A Google change waiting for her yes */
 .confirmcard { align-self: flex-start; max-width: min(520px, 92%); display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--card); border: 1.5px solid var(--lilac); font-size: 0.875rem; }
-.difflines { display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; border-radius: 10px; overflow: hidden; }
+/* Every line of a Google change (the server no longer shortens them), in a box that scrolls. */
+.difflines { display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; border-radius: 10px; max-height: min(50vh, 360px); overflow-y: auto; overscroll-behavior: contain; }
+.difflines .dl { flex: none; }
 .difflines .dl { display: flex; gap: 8px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
 .difflines .dl span { width: 10px; flex: none; font-weight: 900; }
 .difflines .dl-add { background: rgba(120, 200, 140, 0.14); }
@@ -863,3 +865,8 @@ dialog.sheet h3:focus { outline: none; }
   .preport .level { flex: none; }
   .preport-when { white-space: normal; width: 100%; }
 }
+
+/* A worry typed outside chat: Pip's words, then the helplines (the numbers can be selected too). */
+.worrysheet .worry-words { margin: 0; font-size: 1rem; line-height: 1.5; color: #2a1d3a; white-space: pre-wrap; }
+.worrysheet .worry-notice { margin: 0; font-size: 0.875rem; line-height: 1.5; color: #5a4a63; }
+.worrysheet .worry-number { user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; }

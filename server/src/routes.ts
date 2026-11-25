@@ -554,7 +554,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
   });
   app.post("/api/push/subscribe", { preHandler: either }, async (req) => {
-    saveSubscription(db, Sub.parse(req.body), req.user!.role === "parent" ? "parent" : "child");
+    saveSubscription(db, Sub.parse(req.body), req.user!.role === "parent" ? "parent" : "child", req.user!.sid);
     return { ok: true };
   });
   registerParentInbox(app, db);

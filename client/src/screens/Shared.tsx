@@ -2,6 +2,7 @@ import { Icon } from "../components/Icons";
 import { useEffect, useState } from "react";
 import { api, type Me, type Transparency } from "../api";
 import { dayLabel, when } from "../components/bits";
+import { reportStatusWords } from "../lib/worry";
 
 const LEVEL_WORDS: Record<string, string> = { now: "right now", today: "today", fyi: "just so you know" };
 
@@ -52,7 +53,7 @@ export function Shared({ me }: { me: Me }) {
       {t && t.reports.length === 0 && <span className="small">{name} hasn’t needed to tell {parent} anything.</span>}
       {t?.reports.map((r) => (
         <div key={r.id} className="card">
-          <span className="spread"><span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span><span className="small">{dayLabel(r.ts)} {when(r.ts)}</span></span>
+          <span className="spread"><span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span><span className="small">{dayLabel(r.ts)} {when(r.ts)} · {reportStatusWords(r.status, name)}</span></span>
           <span style={{ fontSize: "0.875rem" }}>“{r.parentText}”</span>
         </div>
       ))}

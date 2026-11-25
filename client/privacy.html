@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Privacy policy · Kith</title>
-    <meta name="description" content="How this family's Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
+    <meta name="description" content="How a family's own Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
     <link rel="canonical" href="https://ai.hearthstream.xyz/privacy" />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#140E10" />
@@ -15,14 +15,14 @@
     <meta property="og:locale" content="en_GB" />
     <meta property="og:url" content="https://ai.hearthstream.xyz/privacy" />
     <meta property="og:title" content="Privacy policy · Kith" />
-    <meta property="og:description" content="How this family's Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
+    <meta property="og:description" content="How a family's own Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
     <meta property="og:image" content="https://ai.hearthstream.xyz/welcome/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Kith's Buddy logo beside the words: An AI friend that lives at home." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Privacy policy · Kith" />
-    <meta name="twitter:description" content="How this family's Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
+    <meta name="twitter:description" content="How a family's own Kith looks after information: what's kept and for how long, who it's shared with, what the grown-up sees, and your rights." />
     <meta name="twitter:image" content="https://ai.hearthstream.xyz/welcome/og.png" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -59,22 +59,22 @@
         <p class="lede">This is how the Kith at this address looks after information about the young person who uses it and their grown-up. The short version: it lives at home, everyday chats stay private, nothing is sold, and nothing is used to train AI.</p>
 
         <aside class="doc-box" aria-label="If you run Kith yourself">
-          <p><b>This policy describes this family's own Kith.</b> If you run Kith yourself, you're the data controller and need your own privacy notice (you can adapt this one).</p>
+          <p><b>Every Kith is run by the family it belongs to, on their own home server.</b> This policy describes how Kith works when a family runs it. Whoever runs a Kith is responsible for it and for the information on it: if you run Kith yourself, you're the data controller and need your own privacy notice (you can adapt this one).</p>
         </aside>
 
         <section aria-labelledby="p-who">
           <h2 id="p-who">Who's responsible</h2>
-          <p>This Kith is run by the family whose home server it lives on. That family is the data controller for its own use: they decide what's kept and for how long, within the limits below. Kith's authors don't run this server and can't see anything on it.</p>
+          <p>Each family's own Kith is run by that family, on their home server. They are the data controller for it: they decide what's kept and for how long, within the limits below. Kith's authors don't run other families' servers and can't see anything on them.</p>
         </section>
 
         <section aria-labelledby="p-what">
           <h2 id="p-what">What's kept</h2>
           <ul>
-            <li><b>Who you are when you sign in:</b> your name and an account ID from the family's sign-in service (Pocket ID), so Kith knows whether you're the young person or the grown-up.</li>
+            <li><b>Who you are when you sign in:</b> your first name, an account ID and the email address from the family's sign-in service (Pocket ID, say), so Kith knows whether you're the young person or the grown-up. They're stored with your session, and deleted when you sign out or the session ends (after 30 days for the young person, 7 for the grown-up).</li>
             <li><b>Chats:</b> kept for 30 days (the grown-up can make it shorter, down to 1 day), then deleted. Check-ins and the log of tools used are kept the same way.</li>
             <li><b>Memories:</b> the things the companion remembers about you. They're yours: you can see them, add to them and delete them, and your grown-up can't read them.</li>
             <li><b>Reports, weekly summaries and the companion's journal:</b> kept for up to a year, so you can both look back.</li>
-            <li><b>Spending records:</b> what each request to Claude cost, so the budget works.</li>
+            <li><b>Spending records:</b> what each request to Claude cost, so the budget works. Kept for 400 days, so a year's spending can be compared, then deleted.</li>
             <li><b>Desk files:</b> the things the companion makes on its desk, and its browser's history and saved site data (the grown-up can clear these).</li>
             <li><b>Google, only if connected:</b> a Kith folder in your own Google Drive, and, if your grown-up switches them on, your Calendar and a Homework list in Google Tasks. Kith only uses files you pick or that it made.</li>
             <li><b>Notifications:</b> if you turn them on, a push subscription for your device, so check-ins and reminders can reach it.</li>
@@ -130,12 +130,12 @@
 
         <section aria-labelledby="p-cookies">
           <h2 id="p-cookies">Cookies</h2>
-          <p>Kith uses one cookie, to keep you signed in. It's needed for Kith to work, so there's nothing to agree to. There are no tracking or advertising cookies, and no analytics.</p>
+          <p>Kith uses two cookies, both needed for it to work, so there's nothing to agree to: <b>kith_sid</b> keeps you signed in, and <b>kith_confirm</b> lasts a few minutes while an installed app finishes signing in (it's only for the "Finish signing in?" page, and is gone once you answer). There are no tracking or advertising cookies, and no analytics.</p>
         </section>
 
         <section aria-labelledby="p-security">
           <h2 id="p-security">Keeping it secure</h2>
-          <p>Only the family's own sign-in gets in. Saved keys, such as the Claude API key and Google tokens, are encrypted on the server. The companion's desk runs in a separate box with no direct internet. Backups are kept privately, away from the server, and deleted on the same schedule as the chats.</p>
+          <p>Only the family's own sign-in gets in. Saved keys, such as the Claude API key and Google tokens, are encrypted on the server. The companion's desk runs in a separate box with no direct internet. Backups aren't made automatically: whoever runs this Kith makes them by hand, and is responsible for keeping them private, away from the server, and for deleting old ones (a backup keeps chats past the 30 days until it's deleted).</p>
         </section>
 
         <section aria-labelledby="p-changes">

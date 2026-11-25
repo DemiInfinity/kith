@@ -28,9 +28,10 @@ import { registerNative } from "./native.js";
 // The Google Picker (choosing a doc to hand to Kith) loads from Google; only allowed when it's set up.
 // (With the shared Kith Connect helper, the Picker key comes from the helper.)
 const PICKER = (config.google.pickerApiKey && config.google.appId) || (config.google.connectUrl && !(config.google.clientId && config.google.clientSecret));
-const APP_CSP = [
+/** The app's Content-Security-Policy; a public page with an inline script adds that script's hash. */
+const appCsp = (scriptHashes: string[] = []) => [
   "default-src 'self'",
-  PICKER ? "script-src 'self' https://apis.google.com" : "script-src 'self'",
+  ["script-src 'self'", ...(PICKER ? ["https://apis.google.com"] : []), ...scriptHashes].join(" "),
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob: data:",
@@ -44,6 +45,7 @@ const APP_CSP = [
   "form-action 'self'",
   "frame-ancestors 'self'",
 ].join("; ");
+const APP_CSP = appCsp();
 
 /** How long a stop (docker compose down, an upgrade) waits for requests in flight. */
 const SHUTDOWN_GRACE_MS = 8_000;
@@ -82,7 +84,7 @@ async function main() {
 
   // Set once the built client is registered (below); until then errors are JSON only.
   let web: Web | null = null;
-  registerRobotsHeader(app);
+  registerRobotsHeader(app, { publicSite: config.publicSite });
 
   app.setErrorHandler((err: Error, req, reply) => {
     if (err instanceof ZodError) return reply.code(400).send({ error: "That doesn't look right.", issues: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
@@ -134,7 +136,9 @@ async function main() {
   registerStudy(app, { db, llm, safety, storage });
   registerNative(app, db);
 
-  web = await registerWeb(app, path.resolve(config.clientDir), (req) => Boolean(sessionFor(db, req.cookies?.kith_sid)));
+  web = await registerWeb(app, path.resolve(config.clientDir), (req) => Boolean(sessionFor(db, req.cookies?.kith_sid)), {
+    publicSite: config.publicSite, publicUrl: config.publicUrl, csp: appCsp,
+  });
   if (!web) app.log.warn(`No built client at ${path.resolve(config.clientDir)}; API only.`);
 
 

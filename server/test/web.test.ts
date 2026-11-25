@@ -3,14 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import Fastify from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { APP_ROUTES, INDEX, isAppRoute, NOINDEX, registerRobotsHeader, registerWeb, sendErrorPage, type Web } from "../src/web.js";
+import { APP_ROUTES, INDEX, inlineScriptHashes, isAppRoute, NOINDEX, PRIVATE_ROBOTS, registerRobotsHeader, registerWeb, sendErrorPage, withOrigin, type Web } from "../src/web.js";
 
 // A small built client: the pages the server serves, each saying what it is.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kith-web-"));
 const files: Record<string, string> = {
   "index.html": "APP", "welcome.html": "WELCOME", "parents.html": "PARENTS", "terms.html": "TERMS", "privacy.html": "PRIVACY", "setup.html": "SETUP",
   "errors/403.html": "E403", "errors/404.html": "E404", "errors/500.html": "E500", "errors/503.html": "E503", "errors/kith-down.html": "DOWN",
-  "assets/app-123.js": "js", "welcome/og.png": "png", "robots.txt": "robots", "llms.txt": "llms", "sw.js": "sw",
+  "assets/app-123.js": "js", "welcome/og.png": "png", "robots.txt": "robots\nSitemap: https://ai.hearthstream.xyz/sitemap.xml", "llms.txt": "llms", "sw.js": "sw",
+  "sitemap.xml": "<loc>https://ai.hearthstream.xyz/parents</loc>",
 };
 for (const [f, body] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), body); }
 
@@ -27,7 +28,7 @@ beforeAll(async () => {
   app.get("/api/boom", async () => { throw new Error("boom"); });
   app.get("/api/me", async () => ({ ok: true }));
   app.get("/broken", async () => { throw new Error("boom"); });
-  web = await registerWeb(app, dir, (req) => req.headers.cookie === "kith_sid=yes");
+  web = await registerWeb(app, dir, (req) => req.headers.cookie === "kith_sid=yes", { publicSite: true, publicUrl: "https://kith.example.org" });
   await app.ready();
 });
 afterAll(async () => { await app.close(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -42,6 +43,14 @@ describe("pages and the app", () => {
     const member = await get("/", { ...HTML, cookie: "kith_sid=yes" });
     expect(member.body).toBe("APP");
     expect(member.headers["x-robots-tag"]).toBe(NOINDEX);
+  });
+  it("/ is the app for a sign-in result or an installed app, even for a visitor", async () => {
+    for (const q of ["/?signin=done", "/?signin=expired", "/?app=child"]) expect((await get(q, HTML)).body, q).toBe("APP");
+  });
+  it("robots.txt and the sitemap point at this Kith's own address", async () => {
+    const robots = await get("/robots.txt");
+    expect(robots.body).toBe("robots\nSitemap: https://kith.example.org/sitemap.xml");
+    expect((await get("/sitemap.xml")).body).toBe("<loc>https://kith.example.org/parents</loc>");
   });
   it("the public pages are indexable", async () => {
     for (const [p, body] of [["/parents", "PARENTS"], ["/terms", "TERMS"], ["/privacy", "PRIVACY"], ["/setup", "SETUP"]]) {
@@ -104,6 +113,50 @@ describe("pages and the app", () => {
   it("can't be talked out of the client folder", async () => {
     const r = await get("/..%2f..%2fetc%2fpasswd", HTML);
     expect(r.statusCode).toBe(404);
+  });
+});
+
+describe("without the public site (KITH_PUBLIC_SITE off, the default)", () => {
+  const priv = Fastify();
+  const head = `<link rel="canonical" href="https://ai.hearthstream.xyz/privacy" /><meta name="robots" content="index, follow" />`;
+  beforeAll(async () => {
+    fs.writeFileSync(path.join(dir, "privacy.html"), head);
+    registerRobotsHeader(priv, { publicSite: false });
+    await registerWeb(priv, dir, () => false, { publicSite: false, publicUrl: "https://home.example.net/" });
+    await priv.ready();
+  });
+  afterAll(async () => { await priv.close(); fs.writeFileSync(path.join(dir, "privacy.html"), "PRIVACY"); });
+  const pget = (url: string) => priv.inject({ method: "GET", url, headers: HTML });
+  it("/ is the app's own sign-in for a visitor", async () => {
+    expect((await pget("/")).body).toBe("APP");
+  });
+  it("still serves the public pages, but noindex, pointed at this address", async () => {
+    const r = await pget("/privacy");
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["x-robots-tag"]).toBe(NOINDEX);
+    expect(r.body).toContain('href="https://home.example.net/privacy"');
+    expect(r.body).not.toContain("hearthstream");
+    expect(r.body).toContain(`<meta name="robots" content="${NOINDEX}"`);
+  });
+  it("says noindex on every response, assets included", async () => {
+    for (const p of ["/assets/app-123.js", "/welcome/og.png", "/terms", "/robots.txt"]) expect((await pget(p)).headers["x-robots-tag"], p).toBe(NOINDEX);
+  });
+  it("robots.txt turns everyone away, and there's no sitemap or llms.txt", async () => {
+    expect((await pget("/robots.txt")).body).toBe(PRIVATE_ROBOTS);
+    expect(PRIVATE_ROBOTS).toBe("User-agent: *\nDisallow: /\n");
+    expect((await pget("/sitemap.xml")).statusCode).toBe(404);
+    expect((await pget("/llms.txt")).statusCode).toBe(404);
+  });
+});
+
+describe("templating", () => {
+  it("swaps the source address for this Kith's", () => {
+    expect(withOrigin('"url": "https://ai.hearthstream.xyz/", x https://ai.hearthstream.xyz/setup#a', "https://k.example/")).toBe('"url": "https://k.example/", x https://k.example/setup#a');
+  });
+  it("hashes inline scripts for the CSP, but not JSON-LD or external ones", () => {
+    const h = inlineScriptHashes(`<script>location.replace("/signin")</script><script type="application/ld+json">{}</script><script type="module" src="/a.js"></script>`);
+    expect(h).toHaveLength(1);
+    expect(h[0]).toMatch(/^'sha256-[A-Za-z0-9+/]+=*'$/);
   });
 });
 

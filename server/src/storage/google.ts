@@ -145,20 +145,25 @@ export async function exchangeCode(code: string, verifier: string, f: Fetch = ti
     });
   const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; id_token?: string; scope?: string; error?: string };
   if (!res.ok || !j.refresh_token) throw new Error(j.error ?? "Google didn't give Kith offline access.");
+  // A sign-in Kith won't keep is given back to Google (revoked) before it's dropped, so no grant is
+  // left behind on the account for a token nobody holds.
+  const refuse = async (why: string): Promise<never> => { await revoke(j.refresh_token!, f); throw new Error(why); };
   const granted = (j.scope ?? "").split(" ");
   const extra = granted.filter((s) => !requested.includes(s) && s !== "https://www.googleapis.com/auth/userinfo.email");
-  if (!granted.includes("https://www.googleapis.com/auth/drive.file")) throw new Error("Drive access wasn't granted.");
-  if (extra.length) throw new Error(`Google granted more than Kith asked for (${extra.join(", ")}); not keeping it.`);
+  if (!granted.includes("https://www.googleapis.com/auth/drive.file")) await refuse("Drive access wasn't granted.");
+  if (extra.length) await refuse(`Google granted more than Kith asked for (${extra.join(", ")}); not keeping it.`);
   // The id_token came straight from Google's token endpoint over TLS, so its claims can be read.
-  const claims = JSON.parse(Buffer.from((j.id_token ?? "..").split(".")[1] ?? "", "base64url").toString("utf8") || "{}") as { email?: string; email_verified?: boolean };
-  if (!claims.email || !claims.email_verified) throw new Error("Couldn't confirm which Google account this is.");
+  let claims: { email?: string; email_verified?: boolean } = {};
+  try { claims = JSON.parse(Buffer.from((j.id_token ?? "..").split(".")[1] ?? "", "base64url").toString("utf8") || "{}"); } catch { /* unreadable: refused below */ }
+  if (!claims.email || !claims.email_verified) return refuse("Couldn't confirm which Google account this is.");
   const expected = config.google.expectedEmail.toLowerCase();
-  if (expected && claims.email.toLowerCase() !== expected) throw new Error("That's a different Google account from the one set up for Kith. Please connect that one.");
+  if (expected && claims.email.toLowerCase() !== expected) await refuse("That's a different Google account from the one set up for Kith. Please connect that one.");
   return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600, scopes: granted };
 }
 
 export async function revoke(refresh: string, f: Fetch = timedFetch) {
-  await f(`${REVOKE_URL}?token=${encodeURIComponent(refresh)}`, { method: "POST" }).catch(() => undefined);
+  // Never throws (a failed revoke shouldn't hide why the sign-in was refused).
+  try { await f(`${REVOKE_URL}?token=${encodeURIComponent(refresh)}`, { method: "POST" }); } catch { /* offline: nothing more to do */ }
 }
 
 // ── Drive client ────────────────────────────────────────────────────────────────────────────

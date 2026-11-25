@@ -62,6 +62,20 @@ describe("connecting", () => {
     await expect(exchangeCode("c", "v", respond({ refresh_token: "rt", access_token: "at", id_token: idToken("mum@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.not.toThrow(/@/);
     config.google.expectedEmail = "";
   });
+  it("revokes a refused sign-in's token before dropping it (wrong account, or extra access)", async () => {
+    const calls: string[] = [];
+    const recording = (body: object) => (async (url: string | URL) => { calls.push(String(url)); return new Response(JSON.stringify(body), { status: 200 }); }) as unknown as typeof fetch;
+    config.google.expectedEmail = "kid@gmail.com";
+    await expect(exchangeCode("c", "v", recording({ refresh_token: "rt-wrong", access_token: "at", id_token: idToken("mum@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.toThrow(/different Google account/);
+    config.google.expectedEmail = "";
+    await expect(exchangeCode("c", "v", recording({ refresh_token: "rt-extra", access_token: "at", id_token: idToken("kid@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive" }))).rejects.toThrow(/more than Kith asked/);
+    const revoked = calls.filter((u) => u.startsWith("https://oauth2.googleapis.com/revoke"));
+    expect(revoked.map((u) => new URL(u).searchParams.get("token"))).toEqual(["rt-wrong", "rt-extra"]);
+    // An accepted one isn't revoked.
+    calls.length = 0;
+    await exchangeCode("c", "v", recording({ refresh_token: "rt-ok", access_token: "at", id_token: idToken("kid@gmail.com"), scope: "https://www.googleapis.com/auth/drive.file" }));
+    expect(calls.some((u) => u.includes("revoke"))).toBe(false);
+  });
   it("needs offline access", async () => {
     await expect(exchangeCode("c", "v", respond({ access_token: "at", scope: "https://www.googleapis.com/auth/drive.file" }))).rejects.toThrow(/offline/);
   });
