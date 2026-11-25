@@ -61,9 +61,9 @@ export function EnergyCard({ energy, compact }: { energy: Energy; compact?: bool
   if (compact) {
     return (
       <div className={`energy compact ${energy.mode}`}>
-        <span className="spread"><b style={{ fontSize: 14, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={w.icon} size={16} />{w.title}</b><span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--lilac-soft)" }}>{energy.mode === "resting" ? w.pct : `${energy.percent}% left`}</span></span>
+        <span className="spread"><b style={{ fontSize: "0.875rem", display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={w.icon} size={16} />{w.title}</b><span style={{ fontSize: "0.7188rem", fontWeight: 800, color: "var(--lilac-soft)" }}>{energy.mode === "resting" ? w.pct : `${energy.percent}% left`}</span></span>
         {fill}
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{energy.mode === "full" ? w.sub : energy.mode === "low" ? "simpler for now · Grown-up? always works" : w.pct}</span>
+        <span style={{ fontSize: "0.7188rem", color: "var(--muted)" }}>{energy.mode === "full" ? w.sub : energy.mode === "low" ? "simpler for now · Grown-up? always works" : w.pct}</span>
       </div>
     );
   }
@@ -71,9 +71,9 @@ export function EnergyCard({ energy, compact }: { energy: Energy; compact?: bool
     <div className={`energy ${energy.mode}`} role="status">
       <span className="big" aria-hidden><Icon name={w.icon} size={30} /></span>
       <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-        <span className="spread"><b style={{ fontSize: 16 }}>{w.title}</b><span style={{ fontSize: 12, fontWeight: 800, color: "var(--lilac-soft)" }}>{w.pct}</span></span>
+        <span className="spread"><b style={{ fontSize: "1rem" }}>{w.title}</b><span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--lilac-soft)" }}>{w.pct}</span></span>
         {fill}
-        <span style={{ fontSize: 12.5, lineHeight: 1.45, color: "var(--text-3)" }}>{w.sub}</span>
+        <span style={{ fontSize: "0.7812rem", lineHeight: 1.45, color: "var(--text-3)" }}>{w.sub}</span>
       </span>
     </div>
   );
@@ -116,7 +116,7 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
       <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
         <span className="grab" />
         <h3 id="help-title">You don’t have to sort this alone</h3>
-        <span style={{ fontSize: 15, lineHeight: 1.5, color: "#5a4a63" }}>Whatever it is, a real person can help. You won’t be in trouble.</span>
+        <span style={{ fontSize: "0.9375rem", lineHeight: 1.5, color: "#5a4a63" }}>Whatever it is, a real person can help. You won’t be in trouble.</span>
         {stage === "pick" && canMessage && (
           <button className="helper parent" onClick={() => setStage("write")}>
             <span className="hic"><Icon name="heart" size={26} /></span><span><b>Message {parentLabel}</b><span className="sub">They get it straight away</span></span>

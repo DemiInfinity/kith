@@ -73,11 +73,11 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />
         <div className="chips" style={{ justifyContent: "center" }}>
           {([["around", "eye", "Looking around"], ["talking", "chat2", "Talking"], ["laptop", "laptop", "At its laptop"], ["thinking", "bulb", "Thinking"], ["sleepy", "moon", "Low power"]] as const).map(([k, ic, l]) => (
-            <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: 13 }} onClick={() => setPose(k)}><IL i={ic}>{l}</IL></button>
+            <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: "0.8125rem" }} onClick={() => setPose(k)}><IL i={ic}>{l}</IL></button>
           ))}
         </div>
         <input className="input" aria-label="Name" value={p.name} maxLength={24} onChange={(e) => set({ name: e.target.value })}
-          style={{ textAlign: "center", fontFamily: "var(--serif)", fontSize: 22, fontWeight: 600, maxWidth: 220 }} />
+          style={{ textAlign: "center", fontFamily: "var(--serif)", fontSize: "1.375rem", fontWeight: 600, maxWidth: 220 }} />
         <span className="small">tap to rename</span>
       </div>
 
@@ -114,7 +114,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <b>Voice</b>
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, me.voices.length)}, 1fr)`, gap: 8 }}>
           {me.voices.map((v) => (
-            <button key={v} className={`look ${p.voice === v ? "on" : ""}`} style={{ aspectRatio: "auto", minHeight: 56, fontSize: 14, fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => preview(v)}>
+            <button key={v} className={`look ${p.voice === v ? "on" : ""}`} style={{ aspectRatio: "auto", minHeight: 56, fontSize: "0.875rem", fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => preview(v)}>
               <span className="hic"><Icon name={playing === v ? "speaker" : "play"} size={18} /></span>{v}
             </button>
           ))}
@@ -123,7 +123,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
 
       <div className="card">
         <span className="eyebrow">How {p.name} sounds now</span>
-        <span style={{ fontSize: 15, lineHeight: 1.5 }}>{sampleLine(p)}</span>
+        <span style={{ fontSize: "0.9375rem", lineHeight: 1.5 }}>{sampleLine(p)}</span>
       </div>
 
       <div className="stack">

@@ -60,12 +60,12 @@ export function Google({ me, isParent = false }: { me: Me; isParent?: boolean })
       {s?.configured && (
         <div className="card" style={{ gap: 10 }}>
           <span className="spread"><b>{s.connected ? `Connected: ${s.email}` : "Not connected"}</b><span className="small">{s.enabled ? "switched on" : `${me.parentLabel} hasn’t switched it on`}</span></span>
-          <span style={{ fontSize: 14, color: "var(--text-3)" }}>
+          <span style={{ fontSize: "0.875rem", color: "var(--text-3)" }}>
             {name} keeps everything on its desk at home anyway. With Google connected, it also saves what it makes into a <b>Kith</b> folder in your Drive
             (Stories, Revision, Presentations, Games &amp; artifacts, OCs): stories as Docs, flashcards as Sheets too, presentations as Slides.
           </span>
-          <b style={{ fontSize: 14 }}>What {name} can do</b>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "var(--text-3)" }}>
+          <b style={{ fontSize: "0.875rem" }}>What {name} can do</b>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: "0.8438rem", color: "var(--text-3)" }}>
             <li>Save what it makes into your Kith folder. {f?.edit ? "It can also read and edit Docs, Sheets and Slides you pick for it below, and ones it made, but only after you say yes to each change. Google keeps every version (File › Version history), and it never edits coursework." : "It never edits your files."}</li>
             {f?.calendar && <li>See your Google Calendar, and add events (revision, tests, reminders) when you say yes. It only changes or removes events it added, and never invites anyone.</li>}
             {f?.tasks && <li>Read your “Homework” list in Google Tasks, and add or tick things off with you.</li>}

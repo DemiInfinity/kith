@@ -51,7 +51,7 @@ export function Notifications({ me, onSaved }: { me: Me; onSaved: (p: Profile) =
       {!mac && iPhone && !standalone && (
         <div className="card">
           <b>On an iPhone, add Kith to your Home Screen first</b>
-          <span style={{ fontSize: 14 }}>1. Tap the Share button in Safari. 2. Choose “Add to Home Screen”. 3. Open Kith from your Home Screen and come back here.</span>
+          <span style={{ fontSize: "0.875rem" }}>1. Tap the Share button in Safari. 2. Choose “Add to Home Screen”. 3. Open Kith from your Home Screen and come back here.</span>
         </div>
       )}
       {!mac && me.push.ready && status !== "unsupported" && (

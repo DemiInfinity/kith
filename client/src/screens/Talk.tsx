@@ -138,7 +138,7 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
     <div className="talk">
       <div className="head">
         <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--muted)" }}>Talking with {name} · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>
+          <span style={{ fontSize: "0.875rem", fontWeight: 800, color: "var(--muted)" }}>Talking with {name} · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>
           <PowerChip energy={energy} />
         </span>
         <button className="grownup" onClick={openHelp}>Grown-up?</button>
@@ -146,7 +146,7 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
       <div className="stage">
         <Avatar look={me.profile.look} mood={mood} mouth={mouth} size={170} variant="halo" talking={phase === "speaking" && mouth === 0 && noVoice} />
         <div className="wave" aria-hidden>{bars.map((h, i) => <span key={i} style={{ height: h }} />)}</div>
-        <span style={{ fontSize: 15, fontWeight: 800, color: "var(--lilac-soft)" }} aria-live="polite">{status}</span>
+        <span style={{ fontSize: "0.9375rem", fontWeight: 800, color: "var(--lilac-soft)" }} aria-live="polite">{status}</span>
       </div>
       <div className="captions" aria-live="polite">
         {heard && <span className="me">{heard}</span>}

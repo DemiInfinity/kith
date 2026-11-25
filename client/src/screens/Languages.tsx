@@ -96,7 +96,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <div className="row" style={{ alignItems: "center", gap: 12 }}>
               <span className="langbadge" aria-hidden>{l.badge}</span>
               <span style={{ flex: 1 }}>
-                <b style={{ fontSize: 18 }}>{l.native}</b> {l.native !== l.name && <span className="small">{l.name}</span>}<br />
+                <b style={{ fontSize: "1.125rem" }}>{l.native}</b> {l.native !== l.name && <span className="small">{l.name}</span>}<br />
                 <span className="small">{l.profile.goal === "school" ? (l.lang === "ja" ? "JLPT N5 path" : `School · ${l.profile.tier}`) : "For fun"}{l.lang === "ja" && nextRow ? ` · Hiragana: ${nextRow.name} row` : ""}</span>
               </span>
               <span className="levelchip">{l.profile.level}</span>
@@ -272,7 +272,7 @@ function Cards({ info, onBack }: { info: LangInfo; onBack: () => void }) {
                 <span className={`fc-word ${lang === "ja" ? "jp" : ""}`} lang={lang}>{c.front}</span>
                 {readingLine(c) && <span className="small" lang={lang}>{readingLine(c)}</span>}
               </>
-            ) : <span className="fc-word" style={{ fontSize: 22 }}>{c.back}</span>}
+            ) : <span className="fc-word" style={{ fontSize: "1.375rem" }}>{c.back}</span>}
             {!flip && <span className="small">tap to flip</span>}
           </button>
           <div className="row" style={{ justifyContent: "center" }}>
@@ -379,7 +379,7 @@ function KanaTrainer({ script, progress, onBack, onScript }: { script: "hiragana
       {step === "learn" && (
         <div className="card" style={{ alignItems: "center", gap: 10 }}>
           <span className="kanabig" lang="ja">{kana}</span>
-          <b style={{ fontSize: 20 }}>{romaji}</b>
+          <b style={{ fontSize: "1.25rem" }}>{romaji}</b>
           <button className="btn ghost small" onClick={() => say(kana, "ja-JP")}><Icon name="speaker" size={18} /> Hear it</button>
           <span className="small">Trace over it with your finger, then try it without looking.</span>
           <DrawPad ghost={kana} clearKey={`${kana}-${clears}`} />
@@ -403,11 +403,11 @@ function KanaTrainer({ script, progress, onBack, onScript }: { script: "hiragana
       {step === "recall" && (
         <div className="card" style={{ alignItems: "center", gap: 10 }}>
           <span className="small">Write the {script} for</span>
-          <b style={{ fontSize: 34 }}>{romaji}</b>
+          <b style={{ fontSize: "2.125rem" }}>{romaji}</b>
           <DrawPad clearKey={`${romaji}-${clears}`} />
           {!shown ? <button className="btn primary small" onClick={() => setShown(true)}>Show me</button> : (
             <>
-              <span className="kanabig" lang="ja" style={{ fontSize: 72 }}>{kana}</span>
+              <span className="kanabig" lang="ja" style={{ fontSize: "4.5rem" }}>{kana}</span>
               <div className="row">
                 <button className="btn ghost small" onClick={() => { void mark(false); next(); }}>Not yet</button>
                 <button className="btn primary small" onClick={() => { void mark(true); next(); }}>I’ve got it</button>

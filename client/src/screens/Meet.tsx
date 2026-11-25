@@ -62,7 +62,7 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
 
         <div className="wiz-body" key={step}>
           {step === "hello" && <>
-            <span className="hand" style={{ fontSize: 28 }}>hello{me.name ? `, ${me.name}` : ""}!</span>
+            <span className="hand" style={{ fontSize: "1.75rem" }}>hello{me.name ? `, ${me.name}` : ""}!</span>
             <h2>Let’s set up your pal</h2>
             <p>I’m an AI, not a person. I live on your family’s home server, not out on the internet. I can chat, help you learn, make things with you and be good company. It takes about a minute to make me yours.</p>
           </>}

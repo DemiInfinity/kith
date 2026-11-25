@@ -67,7 +67,7 @@ function SignInDone({ error }: { error: string | null }) {
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
-        <h2 style={{ fontSize: 30 }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
+        <h2 style={{ fontSize: "1.875rem" }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
         <span style={{ color: "var(--text-2)" }}>{error && wrongAppWords(error) ? wrongAppWords(error) : error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
       </div>
     </div>
@@ -84,7 +84,7 @@ function WrongApp({ text }: { text: string }) {
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
-        <h2 style={{ fontSize: 28 }}>{text}</h2>
+        <h2 style={{ fontSize: "1.75rem" }}>{text}</h2>
         <button className="btn ghost" onClick={signOut}>Sign out</button>
       </div>
     </div>
@@ -129,7 +129,7 @@ function SignIn() {
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
         <LogoMark size={88} />
-        <h1 style={{ fontSize: 46 }}>kith</h1>
+        <h1 style={{ fontSize: "2.875rem" }}>kith</h1>
         <span className="hand">a companion that grows up with you, kept at home</span>
         {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}
         {reason === "failed" && <div className="notice">Sign-in didn’t work. Try again?</div>}

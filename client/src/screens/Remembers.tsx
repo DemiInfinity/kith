@@ -45,7 +45,7 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
       <div className="stack">
         {mems?.map((m) => (
           <div key={m.id} className="memrow">
-            <span style={{ fontSize: 18 }} aria-hidden>{m.icon}</span>
+            <span style={{ fontSize: "1.125rem" }} aria-hidden>{m.icon}</span>
             <span className="t">{m.text}</span>
             <button className="x" aria-label={`Forget “${m.text}”`} onClick={() => forget(m.id)}><Icon name="close" size={16} /></button>
           </div>

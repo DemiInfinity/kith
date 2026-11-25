@@ -34,11 +34,11 @@ export function Connectors({ me }: { me: Me }) {
         <div key={c.id} className="card ccon">
           <div className="row" style={{ gap: 12 }}>
             <span className="psec-ic"><Icon name={ICON[c.kind] ?? "home"} size={18} /></span>
-            <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: 18 }}>{c.name}</b>
+            <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: "1.125rem" }}>{c.name}</b>
             <span className={`clevel ${c.level}`}><IL i={c.level === "act" ? "sparkle" : "eye"} size={13}>{c.level === "act" ? "can act" : "look only"}</IL></span>
           </div>
-          <span style={{ fontSize: 14, color: "var(--text-3)" }}>{(WHAT[c.kind] ?? ((n: string) => `${n} can use this.`))(name, c.level === "act")}</span>
-          {c.tools.length > 0 && <div className="chips">{c.tools.map((t) => <span key={t} className="chip" style={{ minHeight: 28, fontSize: 12 }}>{t.replace(/_/g, " ")}</span>)}</div>}
+          <span style={{ fontSize: "0.875rem", color: "var(--text-3)" }}>{(WHAT[c.kind] ?? ((n: string) => `${n} can use this.`))(name, c.level === "act")}</span>
+          {c.tools.length > 0 && <div className="chips">{c.tools.map((t) => <span key={t} className="chip" style={{ minHeight: 28, fontSize: "0.75rem" }}>{t.replace(/_/g, " ")}</span>)}</div>}
         </div>
       ))}
       {skills.length > 0 && <>
@@ -48,10 +48,10 @@ export function Connectors({ me }: { me: Me }) {
           <div key={k.id} className="card ccon">
             <div className="row" style={{ gap: 12 }}>
               <span className="psec-ic"><Icon name="bulb" size={18} /></span>
-              <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: 18 }}>{k.name}</b>
+              <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: "1.125rem" }}>{k.name}</b>
               {k.command && <span className="pcmd">/{k.command}</span>}
             </div>
-            <span style={{ fontSize: 14, color: "var(--text-3)" }}>{k.description}</span>
+            <span style={{ fontSize: "0.875rem", color: "var(--text-3)" }}>{k.description}</span>
           </div>
         ))}
       </>}

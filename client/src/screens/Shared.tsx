@@ -29,20 +29,20 @@ export function Shared({ me }: { me: Me }) {
         {sees.map(([yes, title, d]) => (
           <div key={title} className="row" style={{ alignItems: "flex-start" }}>
             <span className={`check ${yes ? "yes" : "no"}`} aria-label={yes ? "can see" : "can’t see"}><Icon name={yes ? "check" : "close"} size={14} /></span>
-            <span><b style={{ fontSize: 15 }}>{title}</b><br /><span style={{ fontSize: 13.5, color: "var(--text-3)" }}>{d}</span></span>
+            <span><b style={{ fontSize: "0.9375rem" }}>{title}</b><br /><span style={{ fontSize: "0.8438rem", color: "var(--text-3)" }}>{d}</span></span>
           </div>
         ))}
       </div>
 
       <div className="card glow">
         <span className="eyebrow">This week · you and {parent} both see this</span>
-        <span style={{ fontSize: 15, lineHeight: 1.5 }}>{latest ? latest.text : `The first summary arrives on Sunday evening.`}</span>
+        <span style={{ fontSize: "0.9375rem", lineHeight: 1.5 }}>{latest ? latest.text : `The first summary arrives on Sunday evening.`}</span>
       </div>
 
       <div className="card">
         <b>If {name} ever has to tell {parent}</b>
         {[`${name} tells you what it’s going to say and why.`, `It tells ${parent} on the family board (urgent things straight to their phone).`, `${parent} checks in with you, kindly. You’re not in trouble.`].map((s, i) => (
-          <div key={i} className="row" style={{ alignItems: "flex-start", fontSize: 14 }}><b style={{ color: "var(--lilac)" }}>{i + 1}</b><span>{s}</span></div>
+          <div key={i} className="row" style={{ alignItems: "flex-start", fontSize: "0.875rem" }}><b style={{ color: "var(--lilac)" }}>{i + 1}</b><span>{s}</span></div>
         ))}
       </div>
 
@@ -51,21 +51,21 @@ export function Shared({ me }: { me: Me }) {
       {t?.reports.map((r) => (
         <div key={r.id} className="card">
           <span className="spread"><span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span><span className="small">{dayLabel(r.ts)} {when(r.ts)}</span></span>
-          <span style={{ fontSize: 14 }}>“{r.parentText}”</span>
+          <span style={{ fontSize: "0.875rem" }}>“{r.parentText}”</span>
         </div>
       ))}
 
       <b>Tools {name} used</b>
       {t && t.toolLog.length === 0 && <span className="small">None yet.</span>}
       {t?.toolLog.slice(0, 20).map((l) => (
-        <div key={l.id} className="row" style={{ fontSize: 13.5, color: "var(--text-3)" }}>
+        <div key={l.id} className="row" style={{ fontSize: "0.8438rem", color: "var(--text-3)" }}>
           <span className="hic">{l.ok ? "•" : <Icon name="warn" size={16} />}</span><span style={{ flex: 1 }}><b>{l.connection}</b> · {l.tool.replace(/_/g, " ")}</span><span className="small">{when(l.ts)}</span>
         </div>
       ))}
 
       <div className="card" style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <span className="hic"><Icon name="moon" size={22} /></span>
-        <span><b>Quiet hours {me.quietHours.start}–{me.quietHours.end}</b><br /><span style={{ fontSize: 13.5, color: "var(--text-3)" }}>{name} sleeps too. “Grown-up?” always works.</span></span>
+        <span><b>Quiet hours {me.quietHours.start}–{me.quietHours.end}</b><br /><span style={{ fontSize: "0.8438rem", color: "var(--text-3)" }}>{name} sleeps too. “Grown-up?” always works.</span></span>
       </div>
       <span className="small">Chats are kept for {t?.retentionDays ?? 30} days on the home server, then deleted. They’re never used to train an AI. To think, {name} sends messages to Anthropic’s Claude API, which deletes them within 30 days (longer only if something breaks its safety rules).</span>
     </div>

@@ -37,7 +37,7 @@ function SubjectEditor({ row, boards, onDone }: { row: SubjectRow | null; boards
         <input type="range" min={1} max={5} value={s.confidence} style={{ ["--v" as string]: `${(s.confidence - 1) * 25}%` }} onChange={(e) => setS({ ...s, confidence: Number(e.target.value) })} /></label>
       <Toggle label="Some of this is coursework (NEA)" checked={s.coursework} onChange={(v) => setS({ ...s, coursework: v })} />
       {s.coursework && <span className="small">For coursework I’m a tutor only: I’ll explain, ask questions and give feedback, but the work has to be all yours. That’s an exam board rule.</span>}
-      <b style={{ fontSize: 14 }}>Mocks, exams and deadlines</b>
+      <b style={{ fontSize: "0.875rem" }}>Mocks, exams and deadlines</b>
       {s.dates.map((d, i) => (
         <div key={i} className="row">
           <select className="select" style={{ width: 120 }} value={d.kind} onChange={(e) => setS({ ...s, dates: s.dates.map((x, j) => (j === i ? { ...x, kind: e.target.value as "mock" } : x)) })}><option>mock</option><option>exam</option><option>deadline</option></select>
@@ -85,7 +85,7 @@ function Focus({ subjects, tooLate, full = false }: { subjects: SubjectRow[]; to
         </>
       ) : (
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <b style={{ fontFamily: "var(--serif)", fontSize: 40 }} aria-live="off">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
+          <b style={{ fontFamily: "var(--serif)", fontSize: "2.5rem" }} aria-live="off">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
           <button className="btn ghost small" onClick={() => { clearInterval(timer.current); setLeft(null); }}>Stop</button>
         </div>
       )}
@@ -125,9 +125,9 @@ function Cards({ v, reload }: { v: StudyView; reload: () => void }) {
     <>
       {v.subjects.length > 0 && <select className="select" value={subjectId ?? ""} onChange={(e) => setSubjectId(Number(e.target.value) || null)}><option value="">All subjects</option>{v.subjects.map((s) => <option key={s.id} value={s.id}>{s.subject.name}</option>)}</select>}
       {c ? (
-        <button className="card" style={{ minHeight: 180, justifyContent: "center", alignItems: "center", textAlign: "center", fontSize: 18 }} onClick={() => setFlip(!flip)} aria-label="Flip card">
+        <button className="card" style={{ minHeight: 180, justifyContent: "center", alignItems: "center", textAlign: "center", fontSize: "1.125rem" }} onClick={() => setFlip(!flip)} aria-label="Flip card">
           <span className="eyebrow">{flip ? "answer" : "question"} · {due!.length} due</span>
-          <span style={{ fontSize: 19, lineHeight: 1.4 }}>{flip ? c.back : c.front}</span>
+          <span style={{ fontSize: "1.1875rem", lineHeight: 1.4 }}>{flip ? c.back : c.front}</span>
           {!flip && <span className="small">tap to flip</span>}
         </button>
       ) : <div className="notice" style={{ alignSelf: "stretch" }}>{due ? "Nothing due. Nice!" : "…"}</div>}
@@ -182,16 +182,16 @@ function PracticeQ({ v }: { v: StudyView }) {
       {q && (
         <div className="card">
           <span className="eyebrow">{q.marks} marks · {q.commandWord}</span>
-          <span style={{ fontSize: 16 }}>{q.question}</span>
+          <span style={{ fontSize: "1rem" }}>{q.question}</span>
           <textarea className="textarea" placeholder="Your answer…" value={answer} onChange={(e) => setAnswer(e.target.value)} />
           <button className="btn primary small" disabled={busy || !answer.trim()} onClick={mark}>Mark it</button>
         </div>
       )}
       {marked && (
         <div className="card glow">
-          <b style={{ fontFamily: "var(--serif)", fontSize: 22 }}>{marked.score} / {marked.outOf}</b>
-          {marked.points.map((p, i) => <span key={i} style={{ fontSize: 14 }}><Icon name={p.met ? "check" : "clock"} size={14} style={{ verticalAlign: -2 }} /> {p.point}</span>)}
-          <span style={{ fontSize: 14 }}><b>Next time:</b> {marked.nextStep}</span>
+          <b style={{ fontFamily: "var(--serif)", fontSize: "1.375rem" }}>{marked.score} / {marked.outOf}</b>
+          {marked.points.map((p, i) => <span key={i} style={{ fontSize: "0.875rem" }}><Icon name={p.met ? "check" : "clock"} size={14} style={{ verticalAlign: -2 }} /> {p.point}</span>)}
+          <span style={{ fontSize: "0.875rem" }}><b>Next time:</b> {marked.nextStep}</span>
           <span className="small" style={{ color: "var(--text-3)" }}>{marked.encouragement}</span>
         </div>
       )}
@@ -250,7 +250,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
             <div className="card">
               <b>This week</b>
               {v.plan.map((d) => (
-                <div key={d.date} className="row" style={{ alignItems: "flex-start", fontSize: 14 }}>
+                <div key={d.date} className="row" style={{ alignItems: "flex-start", fontSize: "0.875rem" }}>
                   <b style={{ width: 92, flex: "none" }}>{day(d.date)}</b>
                   <span style={{ color: "var(--text-3)" }}>{d.sessions.length ? d.sessions.map((s) => `${s.subject} (${s.minutes}m, ${s.why})`).join(" · ") : "Rest day"}</span>
                 </div>
@@ -302,7 +302,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
           {log.map((l) => (
             <div key={l.id} className="card">
               <span className="spread"><b>{l.subject}</b><span className="small">{new Date(l.ts).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></span>
-              <span style={{ fontSize: 14 }}>Asked: {l.asked}</span>
+              <span style={{ fontSize: "0.875rem" }}>Asked: {l.asked}</span>
               <span className="small">{l.help}</span>
             </div>
           ))}

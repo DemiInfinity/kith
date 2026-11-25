@@ -43,7 +43,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
       )}
       {v && tab === "today" && (
         <>
-          <div className="card glow"><span className="eyebrow">Today’s challenge</span><span style={{ fontSize: 17, lineHeight: 1.45 }}>{v.challenge}</span></div>
+          <div className="card glow"><span className="eyebrow">Today’s challenge</span><span style={{ fontSize: "1.0625rem", lineHeight: 1.45 }}>{v.challenge}</span></div>
           <div className="card">
             <b>Show {name} your work</b>
             <button className="btn ghost small" disabled title={v.uploads.reason}><Icon name="camera" size={16} /> Add a photo (coming later)</button>
@@ -72,7 +72,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
             <div key={s.id} className="card">
               <span className="spread"><b>{s.title}</b><span className="small">{new Date(s.ts).toLocaleDateString("en-GB")}</span></span>
               <span className="small">{[s.medium, s.minutes ? `${s.minutes} min` : "", s.forCoursework ? "coursework" : ""].filter(Boolean).join(" · ")}</span>
-              {s.notes && <span style={{ fontSize: 14 }}>{s.notes}</span>}
+              {s.notes && <span style={{ fontSize: "0.875rem" }}>{s.notes}</span>}
               <button className="btn ghost small" style={{ alignSelf: "flex-start" }} onClick={async () => { await api(`/api/art/sketchbook/${s.id}`, { method: "DELETE" }); void load(); }}>Remove</button>
             </div>
           ))}
@@ -91,7 +91,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
             {v.mood.map((m) => (
               <button key={m.id} className="card" style={{ padding: 10, minWidth: 90, alignItems: "center", background: m.kind === "colour" ? m.value : undefined, color: m.kind === "colour" ? "#2A1D3A" : undefined }}
                 title="Tap to remove" onClick={async () => { if (confirm("Unpin this?")) { await api(`/api/art/mood/${m.id}`, { method: "DELETE" }); void load(); } }}>
-                <span style={{ fontWeight: 800, fontSize: 14 }}>{m.kind === "reference" ? <Icon name="landmark" size={14} style={{ verticalAlign: -2, marginRight: 4 }} /> : m.kind === "word" ? "“" : ""}{m.value}{m.kind === "word" ? "”" : ""}</span>
+                <span style={{ fontWeight: 800, fontSize: "0.875rem" }}>{m.kind === "reference" ? <Icon name="landmark" size={14} style={{ verticalAlign: -2, marginRight: 4 }} /> : m.kind === "word" ? "“" : ""}{m.value}{m.kind === "word" ? "”" : ""}</span>
               </button>
             ))}
           </div>

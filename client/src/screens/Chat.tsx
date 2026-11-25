@@ -151,14 +151,14 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           : <span className="small">Nothing’s connected yet. {me.parentLabel} chooses connectors.</span>);
       } else if (cmd === "reload-skills") {
         const list = await loadSkills();
-        card(<span style={{ fontSize: 14 }}>{list.length ? <>Got the latest: <b>{list.length}</b> skill{list.length === 1 ? "" : "s"} on{list.some((k) => k.command) ? <>, with {list.filter((k) => k.command).map((k) => `/${k.command}`).join(", ")}</> : null}.</> : "No skills are on right now."}</span>);
+        card(<span style={{ fontSize: "0.875rem" }}>{list.length ? <>Got the latest: <b>{list.length}</b> skill{list.length === 1 ? "" : "s"} on{list.some((k) => k.command) ? <>, with {list.filter((k) => k.command).map((k) => `/${k.command}`).join(", ")}</> : null}.</> : "No skills are on right now."}</span>);
       } else if (cmd === "skills") {
         const r = await api<{ skills: { id: number; name: string; description: string; command: string | null }[] }>("/api/skills");
         card(r.skills.length ? <div className="stack" style={{ gap: 6 }}>{r.skills.map((k) => <span key={k.id} className="row" style={{ gap: 8 }}>{k.command ? <span className="pcmd">/{k.command}</span> : <Icon name="bulb" size={16} />}<span><b>{k.name}</b><span className="small"> · {k.description}</span></span></span>)}</div>
           : <span className="small">No skills yet. {me.parentLabel} can add some.</span>);
       } else if (cmd === "memory") {
         const r = await api<{ memories: Memory[] }>("/api/memories");
-        card(<div className="stack" style={{ gap: 6 }}>{r.memories.length ? r.memories.slice(0, 12).map((mm) => <span key={mm.id} style={{ fontSize: 14 }}>{mm.icon} {mm.text}</span>) : <span className="small">Nothing yet.</span>}<button className="btn ghost small" onClick={() => go("/memory")}>See and delete memories</button></div>);
+        card(<div className="stack" style={{ gap: 6 }}>{r.memories.length ? r.memories.slice(0, 12).map((mm) => <span key={mm.id} style={{ fontSize: "0.875rem" }}>{mm.icon} {mm.text}</span>) : <span className="small">Nothing yet.</span>}<button className="btn ghost small" onClick={() => go("/memory")}>See and delete memories</button></div>);
       }
     } catch (e) {
       setErr((e as Error).message);
@@ -250,7 +250,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>
                   <span style={{ display: "inline-flex" }}><Icon name="note" size={22} /></span>
-                  <span style={{ display: "flex", flexDirection: "column" }}><b style={{ fontSize: 14 }}>{j.title}</b><span style={{ fontSize: 12, color: "var(--muted)" }}>on {name}’s desk · making it now</span></span>
+                  <span style={{ display: "flex", flexDirection: "column" }}><b style={{ fontSize: "0.875rem" }}>{j.title}</b><span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>on {name}’s desk · making it now</span></span>
                 </button>
               ))}
             </div>
@@ -282,7 +282,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         const b = BUILTIN.find((x) => x.cmd === c.cmd);
         return (
           <div className="cmdpop" role="dialog" aria-label={b?.name ?? c.cmd}>
-            <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: 13 }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
+            <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: "0.8125rem" }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
               <button className="x" aria-label="Close" onClick={() => setCards([])}><Icon name="close" size={14} /></button></div>
             <div className="cmdpop-body">{c.body}</div>
             <span className="small" style={{ color: "var(--faint)" }}>Only you see this. {name} wasn’t asked, so no energy was used.</span>

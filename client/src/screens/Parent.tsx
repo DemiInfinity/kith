@@ -520,14 +520,14 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
           <h3 className="psec-h"><span className="psec-ic"><Icon name="bell" size={18} /></span>Notifications to you</h3>
           <span className="small">Notifications to your own phone or computer, separate from your child’s. Turn them on on each device you want them on. “Right now” reports come through even in quiet hours; everything else waits until quiet hours end. Your child’s chat text is never sent.</span>
           <ParentPushControls publicKey={publicKey} />
-          <b style={{ fontSize: 14 }}>Reports</b>
+          <b style={{ fontSize: "0.875rem" }}>Reports</b>
           <Toggle label="Right now (urgent)" checked={s.notify.now} onChange={(v) => setS({ ...s, notify: { ...s.notify, now: v } })} />
           <Toggle label="Today" checked={s.notify.today} onChange={(v) => setS({ ...s, notify: { ...s.notify, today: v } })} />
           <Toggle label="Just so you know" checked={s.notify.fyi} onChange={(v) => setS({ ...s, notify: { ...s.notify, fyi: v } })} />
-          <b style={{ fontSize: 14 }}>Also</b>
+          <b style={{ fontSize: "0.875rem" }}>Also</b>
           <Toggle label="The weekly summary is ready" checked={s.notify.weekly} onChange={(v) => setS({ ...s, notify: { ...s.notify, weekly: v } })} />
           <Toggle label="Budget alerts (Low power started, the monthly hard stop reached)" checked={s.notify.budget} onChange={(v) => setS({ ...s, notify: { ...s.notify, budget: v } })} />
-          <b style={{ fontSize: 14 }}>On the lock screen</b>
+          <b style={{ fontSize: "0.875rem" }}>On the lock screen</b>
           <Toggle label="Show the report’s one-line summary" checked={s.notify.showSummary} onChange={(v) => setS({ ...s, notify: { ...s.notify, showSummary: v } })} />
           <span className="small">{s.notify.showSummary ? "Notifications show the one-line summary you’d see under Reports (never chat text). Anyone who can see your lock screen can read it." : "Notifications only say something needs you (e.g. “Kith: needs you. Something needs you now. Open Kith to read it.”). Open Kith to read the report."}</span>
         </section>
@@ -564,7 +564,7 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
             <option value="base-int8">base (better, about 250 MB)</option>
             <option value="small-int8">small (best of these, about 600 MB; needs a bigger machine)</option>
           </select></label>
-        <b style={{ fontSize: 14 }}>Voices your child can pick (Piper)</b>
+        <b style={{ fontSize: "0.875rem" }}>Voices your child can pick (Piper)</b>
         <span className="small">A name your child sees, and a Piper voice (e.g. en_GB-alba-medium). Piper fetches voices it doesn’t have yet. Leave all empty to use the .env voices.</span>
         {vrows.map((row, i) => {
           const setRow = (p: Partial<{ label: string; voice: string }>) => {
@@ -637,7 +637,7 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
         <label className="field">
           <span className="spread"><span>The safeguards document {s.safeguardsDoc ? <span className="pcmd">edited</span> : <span className="small">(the built-in version)</span>}</span>
             {s.safeguardsDoc && <button type="button" className="btn ghost small" onClick={() => { if (confirm("Go back to the built-in safeguards?")) setS({ ...s, safeguardsDoc: "" }); }}>Reset to the built-in version</button>}</span>
-          <textarea className="textarea" style={{ minHeight: 260, fontSize: 13.5, lineHeight: 1.5 }} maxLength={12000} value={docText}
+          <textarea className="textarea" style={{ minHeight: 260, fontSize: "max(16px, 1rem)", lineHeight: 1.5 }} maxLength={12000} value={docText}
             onChange={(e) => setS({ ...s, safeguardsDoc: e.target.value === builtIn ? "" : e.target.value })} />
         </label>
         <div className="pwarn"><Icon name="shield" size={18} /><span>Edit with care: this is what keeps the companion’s behaviour safe. Whatever it says, every message is still checked by the separate safety check, worries are still reported (and your child is told first), and Grown-up?, Childline and 999 always work.</span></div>
@@ -659,7 +659,7 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
           </select></label>
         {s.browser.mode === "blocklist" && (
           <>
-            <b style={{ fontSize: 14 }}>Always blocked</b>
+            <b style={{ fontSize: "0.875rem" }}>Always blocked</b>
             {CATEGORIES.map(([k, label]) => (
               <Toggle key={k} label={label} checked={s.browser.categories.includes(k)}
                 onChange={(v) => setWeb({ categories: v ? [...s.browser.categories, k] : s.browser.categories.filter((c) => c !== k) })} />
@@ -831,7 +831,7 @@ export function Parent({ me }: { me: Me }) {
       {t?.reports.map((r) => (
         <div key={r.id} className="preport">
           <span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span>
-          <span style={{ flex: 1, fontSize: 14 }}>{r.parentText}</span>
+          <span style={{ flex: 1, fontSize: "0.875rem" }}>{r.parentText}</span>
           <span className="small" style={{ whiteSpace: "nowrap" }}>{dayLabel(r.ts)} {when(r.ts)} · {r.status}</span>
         </div>
       ))}
@@ -864,7 +864,7 @@ export function Parent({ me }: { me: Me }) {
         <header className="phead">
           <span className="phead-dp"><Avatar look={comp.look} size={56} variant="ring" mood={mode === "low" ? "sleepy" : mode === "resting" ? "resting" : "happy"} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span className="hand" style={{ fontSize: 20 }}>parent view</span>
+            <span className="hand" style={{ fontSize: "1.25rem" }}>parent view</span>
             <h2>{comp.name}<span className="pwith">, with {cname}</span></h2>
           </div>
           {o && <span className={`ppower ${mode}`}><Icon name={powerIcon} size={16} /><span className="pw">{powerWord} · </span>{o.energy.percent}%</span>}
