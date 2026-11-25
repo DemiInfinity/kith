@@ -7,7 +7,7 @@ export interface ThreadRow { id: number; title: string; from_text: string | null
 interface HistoryFile { file: string; thread: number; from: string; title: string }
 
 /** The slide-out for switching between the main chat and side chats, and reading archived chats. */
-export function SideChats({ me, open, current, onClose, onPick }: { me: Me; open: boolean; current: number; onClose: () => void; onPick: (id: number) => void }) {
+export function SideChats({ me, open, current, onClose, onPick, docked = false }: { me: Me; open: boolean; current: number; onClose: () => void; onPick: (id: number) => void; docked?: boolean }) {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [history, setHistory] = useState<HistoryFile[]>([]);
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -17,9 +17,9 @@ export function SideChats({ me, open, current, onClose, onPick }: { me: Me; open
     api<{ threads: ThreadRow[] }>("/api/threads").then((r) => setThreads(r.threads)).catch(() => undefined);
     api<{ files: HistoryFile[] }>("/api/history").then((r) => setHistory(r.files)).catch(() => undefined);
   };
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { if (open) load(); }, [open, current]);
   useEffect(() => {
-    if (!open) return;
+    if (!open || docked) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     addEventListener("keydown", k);
     return () => removeEventListener("keydown", k);
@@ -46,11 +46,11 @@ export function SideChats({ me, open, current, onClose, onPick }: { me: Me; open
 
   return (
     <>
-      <div className={`drawer-scrim ${open ? "open" : ""}`} onClick={onClose} />
-      <aside className={`drawer ${open ? "open" : ""}`} aria-hidden={!open} aria-label="Chats">
+      {!docked && <div className={`drawer-scrim ${open ? "open" : ""}`} onClick={onClose} />}
+      <aside className={docked ? "chatsdock" : `drawer ${open ? "open" : ""}`} aria-hidden={!open} aria-label="Chats">
         <div className="spread" style={{ alignItems: "center" }}>
           <b style={{ fontFamily: "var(--serif)", fontSize: 22 }}>Chats</b>
-          <button className="x" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+          <button className="x" aria-label={docked ? "Close side chats" : "Close"} onClick={onClose}><Icon name="close" /></button>
         </div>
         <button className="btn primary small" onClick={newChat}><Icon name="newchat" size={18} /> New side chat</button>
         <span className="small">Split off to talk about something else without losing your place. Tip: tap any message and choose “Side chat from here”.</span>

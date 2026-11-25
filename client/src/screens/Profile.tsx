@@ -227,3 +227,40 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
     </div>
   );
 }
+
+
+/** On a computer: the companion's profile, in a panel beside the chat (opened by tapping its picture). */
+export function ProfilePanel({ me, state, mood, go, onClose }: { me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; onClose: () => void }) {
+  const name = me.profile.name;
+  const links: [string, IconName, string, string][] = [
+    ["/pip", "desk", "Desk", `What ${name} is making, and its browser`],
+    ["/pip/scheduled", "calendar", "Scheduled", "Reminders and things you asked for"],
+    ["/pip/who", "heart", `Who ${name} is`, "Soul, personality and memory"],
+  ];
+  return (
+    <aside className="profilepanel" aria-label={`${name}’s profile`}>
+      <div className="spread"><span className="hand">{name}’s profile</span><button className="x" aria-label="Close profile" onClick={onClose}><Icon name="close" /></button></div>
+      <div className="pp-head">
+        <span className="pp-dp"><Avatar look={me.profile.look} mood={mood} size={124} variant="ring" laptop={!!state?.desk.working} /></span>
+        <h2>{name}</h2>
+        <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>
+        <span className="pp-sub">AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
+        <span className="small" style={{ textAlign: "center" }}>Lives on your family’s home server · {me.parentLabel} is in the loop</span>
+      </div>
+      <div className="row" style={{ justifyContent: "center" }}>
+        <button className="btn primary small" onClick={() => go("/talk")}><IL i="call">Call</IL></button>
+        <button className="btn ghost small" onClick={() => go("/me")}><IL i="pencil">Edit</IL></button>
+      </div>
+      {state && <EnergyCard energy={state.energy} compact />}
+      <div className="stack" style={{ gap: 8 }}>
+        {links.map(([to, ic, t, d]) => (
+          <button key={to} className="card pp-link" onClick={() => go(to)}>
+            <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={22} /></span>
+            <span style={{ flex: 1, textAlign: "left" }}><b>{t}</b><br /><span className="small">{d}</span></span>
+            <Icon name="arrow" size={16} />
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}

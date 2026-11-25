@@ -8,8 +8,7 @@ import { Chat, type ChatContext } from "./screens/Chat";
 import { SideChats, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
-import { DeskAside } from "./screens/Desk";
-import { Profile as PipProfile, Settings } from "./screens/Profile";
+import { Profile as PipProfile, ProfilePanel, Settings } from "./screens/Profile";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
@@ -86,6 +85,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const [help, setHelp] = useState(false);
   const [path, go] = useRoute();
   const [drawer, setDrawer] = useState(false);
+  // On a computer: side chats sit open beside the sidebar (closeable), and the companion's profile
+  // opens in a panel on the right when its picture is tapped.
+  const [dock, setDockRaw] = useState<boolean>(() => { try { return localStorage.getItem("kith-dock") !== "0"; } catch { return true; } });
+  const setDock = (v: boolean) => { setDockRaw(v); try { localStorage.setItem("kith-dock", v ? "1" : "0"); } catch { /* fine */ } };
+  const [profileOpen, setProfileOpen] = useState(false);
   const [thread, setThread] = useState<number>(() => {
     try { return Number(sessionStorage.getItem("kith-thread")) || 1; } catch { return 1; }
   });
@@ -127,7 +131,6 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const doing = doingText(state, baseMood);
   const onProfile = path === "/desk" || path.startsWith("/pip");
   const openHelp = () => setHelp(true);
-  const showAside = path === "/" || path === "/talk";
 
   let screen: React.ReactNode;
   if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
@@ -155,10 +158,6 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <button className="chip" style={{ minHeight: 32 }} onClick={() => pickThread(1)}>Back to main chat</button>
         </div>
       )}
-      <div className="threadbar desktop-only" style={thread !== 1 ? { display: "none" } : {}}>
-        <b style={{ flex: 1 }}>Chat with {name}</b>
-        <button className="chip" style={{ minHeight: 32 }} onClick={() => setDrawer(true)}><Icon name="sidechats" size={18} /> Side chats</button>
-      </div>
       <Chat key={thread} me={me} thread={thread} context={chatContext} onClearContext={() => go("/")} onSplit={pickThread}
         onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
     </>
@@ -185,7 +184,20 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}><Icon name="call" size={18} /> Call {name}</button>
         </div>
       </nav>
-      <div className={`main ${!onProfile && path !== "/talk" ? "hang" : ""}`}>
+      {dock && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
+      <div className={`main ${!onProfile && path !== "/talk" ? "hang-m" : ""} ${path === "/" && !profileOpen ? "hang-d" : ""}`}>
+        {path === "/" && (
+          <header className="topbar deskbar desktop-only">
+            <span className="tb-left">{!dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>
+            {!profileOpen && (
+              <button className="tb-who" onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
+                <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
+                <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+              </button>
+            )}
+            <span className="tb-right" />
+          </header>
+        )}
         {path !== "/talk" && (
           <header className={`topbar mobile-only ${onProfile ? "slim" : ""}`}>
             <button className="tb-logo" onClick={() => go("/")} aria-label="Kith home"><img src="/icon-192.png" alt="" width={38} height={38} /></button>
@@ -210,7 +222,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Grown-up?</span></button>
         </nav>
       </div>
-      {showAside && <DeskAside me={me} go={go} />}
+      {path === "/" && profileOpen && <ProfilePanel me={me} state={state} mood={baseMood} go={go} onClose={() => setProfileOpen(false)} />}
       <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>

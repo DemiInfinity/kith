@@ -532,18 +532,36 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .topbar.slim { padding-bottom: 0; min-height: calc(var(--safe-top) + 58px); }
 /* Phone header: the bar is short; Pip's picture, name and status hang below it, over the content,
    and messages scroll up underneath them to the bar. */
-.main.hang { --hang: 92px; }
+@media (max-width: 1099px) { .main.hang-m { --hang: 92px; } }
+@media (min-width: 1100px) { .main.hang-d { --hang: 100px; } }
 .topbar { z-index: 5; min-height: calc(var(--safe-top) + 58px); padding-bottom: 0; }
-.main.hang .topbar .tb-who { position: absolute; left: 50%; top: calc(var(--safe-top) + 26px); transform: translateX(-50%); margin-top: 0; }
+.topbar .tb-who { position: absolute; left: 50%; top: calc(var(--safe-top) + 26px); transform: translateX(-50%); margin-top: 0; }
 .topbar .tb-label { display: flex; flex-direction: column; align-items: center; margin-top: 2px; padding: 3px 12px 4px; border-radius: 14px; background: rgba(36, 24, 32, 0.82); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line-soft); max-width: 100%; }
 .topbar .tb-label b { margin-top: 0; }
-.main.hang .messages { padding-top: calc(18px + var(--hang)); }
-.main.hang > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang)); }
-.main.hang > .threadbar:not(.desktop-only) { margin-top: var(--hang); }
-.main.hang:has(> .threadbar:not(.desktop-only)) .messages { padding-top: 18px; }
-@media (min-width: 1100px) { .main.hang { --hang: 0px; } }
+.main .messages { padding-top: calc(18px + var(--hang, 0px)); }
+.main > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang, 0px)); }
+.main > .threadbar:not(.desktop-only) { margin-top: var(--hang, 0px); }
+.main:has(> .threadbar:not(.desktop-only)) .messages { padding-top: 18px; }
 .topbar .tb-logo { grid-column: 1; }
 .topbar .tb-right { grid-column: 3; }
 .topbar .tb-dp { padding: 2px; background: var(--hearth); border: 2.5px solid var(--lilac); box-shadow: 0 0 0 3px var(--hearth), 0 8px 18px rgba(0,0,0,0.4); }
 .topbar .tb-label { border: 1.5px solid var(--lilac); }
 .topbar .tb-label b, .topbar .tb-label span { color: #fff; }
+/* On a computer: the chat's own header bar, with the picture hanging over it (when the profile panel is closed). */
+.topbar.deskbar { min-height: 58px; padding-top: 8px; }
+.topbar.deskbar::before { height: 58px; }
+.topbar.deskbar .tb-left { grid-column: 1; justify-self: start; display: flex; }
+.topbar.deskbar .tb-who { top: 22px; }
+/* Side chats docked next to the sidebar. */
+.chatsdock { width: 290px; flex: none; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; background: var(--aside); border-right: 1px solid var(--line-soft); overflow-y: auto; }
+@media (max-width: 1099px) { .chatsdock { display: none; } }
+/* The profile panel on the right. */
+.profilepanel { width: 380px; flex: none; padding: 18px; display: flex; flex-direction: column; gap: 14px; background: var(--aside); border-left: 1px solid var(--line-soft); overflow-y: auto; animation: ppin 0.22s ease; }
+@keyframes ppin { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+.profilepanel .pp-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.profilepanel .pp-head h2 { margin: 6px 0 0; font-size: 30px; }
+.profilepanel .pp-dp { border-radius: 50%; padding: 3px; border: 2.5px solid var(--lilac); display: grid; }
+.profilepanel .pp-sub { font-size: 13.5px; font-weight: 800; color: var(--lilac-soft); }
+.profilepanel .pp-link { flex-direction: row; align-items: center; gap: 12px; }
+@media (max-width: 1099px) { .profilepanel { display: none; } }
+@media (prefers-reduced-motion: reduce) { .profilepanel { animation: none; } }
