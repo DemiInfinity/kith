@@ -101,7 +101,7 @@ export interface Me {
   /** When the 3D Pip's chat picture last changed; null when there isn't one. */
   pipPicture?: number | null;
 }
-export interface Energy { mode: "full" | "low" | "resting"; percent: number; fullBackAt: number | null; weekResetsAt: number; limitedBy: string | null }
+export interface Energy { mode: "full" | "low" | "resting"; percent: number; fullBackAt: number | null; weekResetsAt: number; limitedBy: string | null; windowPercent?: number; weekPercent?: number; windowHours?: number; windowFreesAt?: number | null }
 export interface Job { id: number; ts: number; kind: string; title: string; status: "queued" | "working" | "done" | "failed"; progress: number; file_id: string | null; error: string | null }
 export interface AppState { energy: Energy; desk: { percent: number; working: Job | null; browsing?: { title: string; by: string | null } | null }; profile: Profile; pipPicture?: number | null }
 export interface Message { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }

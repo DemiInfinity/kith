@@ -1,5 +1,5 @@
-// Pieces about Pip's desk that live outside the desk itself: today's desk budget (in Settings, beside
-// the chat energy), the desk rules (in Settings), and what Pip did today (the profile's Today tab).
+// Pieces about Pip's desk that live outside the desk itself: the desk rules (in Settings) and what
+// Pip did today (the profile's Today tab). The desk's limit is one of the bars in Settings › Usage.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -15,23 +15,6 @@ export function useDeskToday(): DeskToday | null {
   const [today, setToday] = useState<DeskToday | null>(null);
   useEffect(() => { api<DeskToday>("/api/desk/today").then(setToday).catch(() => undefined); }, []);
   return today;
-}
-
-/** Today's desk energy: how much of today's slice went on Full and on Low power. */
-export function DeskBudgetCard({ today, name }: { today: DeskToday | null; name: string }) {
-  const slice = today?.budget.slice || 1;
-  const full = today?.budget.full ?? 0, low = today?.budget.low ?? 0;
-  return (
-    <div className="card">
-      <div className="spread"><b>{name}’s desk today</b><span className="small">{today ? `${today.budget.percent}% left` : ""}</span></div>
-      <span className="bar" style={{ display: "flex", height: 10 }}>
-        <span style={{ width: `${Math.min(100, (full / slice) * 100)}%`, background: "var(--lilac)", borderRadius: 0 }} />
-        <span style={{ width: `${Math.min(100, (low / slice) * 100)}%`, background: "var(--ember)", borderRadius: 0 }} />
-      </span>
-      <span className="small"><span style={{ color: "var(--lilac)" }}>●</span> Full power {Math.round((full / slice) * 100)}% <span style={{ color: "var(--ember)" }}>●</span> Low power {Math.round((low / slice) * 100)}%{full + low > slice ? " (using days saved up this week)" : ""}</span>
-      <span className="small">The desk has its own energy, so making things never uses up your chats. Flashcards, summaries and planning always run on Low power; stories and games you ask for get Full power.</span>
-    </div>
-  );
 }
 
 export function DeskRules({ name }: { name: string }) {

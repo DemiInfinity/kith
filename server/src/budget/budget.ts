@@ -21,6 +21,12 @@ export interface Energy {
   fullBackAt: number | null;
   limitedBy: "week" | "window" | "month" | null;
   weekResetsAt: number;
+  /** The two chat limits on their own, 0–100: the rolling window (windowHours long) and the week. */
+  windowPercent: number;
+  weekPercent: number;
+  windowHours: number;
+  /** When the oldest spending in the window stops counting (null: nothing spent in it). */
+  windowFreesAt: number | null;
   // Money, for the parent view.
   usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number };
 }
@@ -95,18 +101,22 @@ export function computeEnergy(
   const frac = clamp(Math.min(weekFrac, windowFrac), 0, 1);
   const percent = Math.round(frac * 100);
   const usd = { week, window, month, deskWeek, windowAllowance, chatWeekBudget: chatWeek };
+  const parts = {
+    windowPercent: Math.round(clamp(windowFrac, 0, 1) * 100), weekPercent: Math.round(clamp(weekFrac, 0, 1) * 100), windowHours: b.windowHours,
+    windowFreesAt: windowRows.length ? Math.min(...windowRows.map((r) => r.ts)) + b.windowHours * HOUR : null,
+  };
 
   if (b.hardStopUsd > 0 && month + margin.lowTurnUsd >= b.hardStopUsd) {
-    return { mode: "resting", percent: 0, fullBackAt: null, limitedBy: "month", weekResetsAt, usd };
+    return { mode: "resting", percent: 0, fullBackAt: null, limitedBy: "month", weekResetsAt, usd, ...parts };
   }
   const threshold = b.lowPowerAtPercent / 100;
   if (b.hardStopUsd > 0 && month + margin.fullTurnUsd >= b.hardStopUsd) {
     // Close to the hard stop: Low power until the month starts again.
     const p = localParts(now, tz);
     const nextMonth = p.month === 12 ? zonedTime(p.year + 1, 1, 1, 0, 0, tz) : zonedTime(p.year, p.month + 1, 1, 0, 0, tz);
-    return { mode: "low", percent: Math.min(percent, Math.round(threshold * 100)), fullBackAt: nextMonth, limitedBy: "month", weekResetsAt, usd };
+    return { mode: "low", percent: Math.min(percent, Math.round(threshold * 100)), fullBackAt: nextMonth, limitedBy: "month", weekResetsAt, usd, ...parts };
   }
-  if (frac > threshold) return { mode: "full", percent, fullBackAt: null, limitedBy: null, weekResetsAt, usd };
+  if (frac > threshold) return { mode: "full", percent, fullBackAt: null, limitedBy: null, weekResetsAt, usd, ...parts };
 
   const limitedBy: "week" | "window" = weekFrac <= threshold ? "week" : "window";
   let fullBackAt = weekResetsAt;
@@ -121,7 +131,7 @@ export function computeEnergy(
       fullBackAt = r.ts + b.windowHours * HOUR;
     }
   }
-  return { mode: "low", percent, fullBackAt, limitedBy, weekResetsAt, usd };
+  return { mode: "low", percent, fullBackAt, limitedBy, weekResetsAt, usd, ...parts };
 }
 
 /** The desk's daily slice of the week. Unused days roll forward within the same week. */

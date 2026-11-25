@@ -79,6 +79,37 @@ export function EnergyCard({ energy, compact }: { energy: Energy; compact?: bool
   );
 }
 
+/** One usage limit as a bar: its name, how much is left, and when it frees up. */
+function LimitBar({ icon, title, percent, sub, tone }: { icon: IconName; title: string; percent: number; sub: string; tone: string }) {
+  return (
+    <div className={`energy ${tone}`}>
+      <span className="big" aria-hidden><Icon name={icon} size={26} /></span>
+      <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+        <span className="spread"><b style={{ fontSize: "1rem" }}>{title}</b><span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--lilac-soft)" }}>{percent}% left</span></span>
+        <span className="bar" style={{ height: 10 }}><span className={`fill ${tone}`} style={{ width: `${Math.max(percent, percent > 0 ? 3 : 0)}%` }} /></span>
+        <span style={{ fontSize: "0.7812rem", lineHeight: 1.45, color: "var(--text-3)" }}>{sub}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Usage, split into its three limits: the rolling few-hour limit and the week (both for chat), and the desk's day. */
+export function UsageLimits({ energy, deskPercent, name }: { energy: Energy; deskPercent: number | null; name: string }) {
+  const hours = energy.windowHours ?? 5;
+  const win = energy.windowPercent ?? energy.percent, week = energy.weekPercent ?? energy.percent;
+  const tone = (p: number) => (energy.mode === "resting" ? "resting" : p <= 15 ? "low" : "full");
+  const time = (t: number) => new Date(t).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="stack" style={{ gap: 8 }} role="status">
+      {energy.mode !== "full" && <span className="small">{energyWords(energy).title}: {energyWords(energy).sub}</span>}
+      <LimitBar icon="timer" title={`${hours}-hour limit`} percent={win} tone={tone(win)}
+        sub={energy.windowFreesAt ? `Chat energy for the last ${hours} hours · starts freeing up at ${time(energy.windowFreesAt)}` : `Chat energy for any ${hours} hours · all free right now`} />
+      <LimitBar icon="calendar" title="Weekly limit" percent={week} tone={tone(week)} sub={`Chat energy for the week · tops up ${DAYS[new Date(energy.weekResetsAt).getDay()]}`} />
+      {deskPercent !== null && <LimitBar icon="desk" title="Desk limit" percent={deskPercent} tone={deskPercent <= 15 ? "low" : "full"} sub={`${name}’s desk, today · making things never uses up your chats`} />}
+    </div>
+  );
+}
+
 export function PowerChip({ energy }: { energy: Energy }) {
   const t = energy.mode === "full" ? "Full power" : energy.mode === "low" ? "Low power" : "Resting";
   return <span className={`powerchip ${energy.mode}`}><Icon name={energy.mode === "full" ? "fire" : energy.mode === "low" ? "battery" : "moon"} size={14} /> {t}</span>;

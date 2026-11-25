@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { CompanionPic } from "../components/CompanionPic";
-import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
+import { Markdown, UsageLimits, clock, doingText } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
-import { DeskBudgetCard, DeskRules, TodayList, useDeskToday } from "../components/DeskBits";
+import { DeskRules, TodayList, useDeskToday } from "../components/DeskBits";
 import { action } from "../lib/action";
 
 // The desk is big (a whole little computer), so it loads the first time it's opened.
@@ -213,14 +213,15 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
       <span className="hand">yours</span>
       <h2 className="screen-title">Settings</h2>
       <b>Usage</b>
-      {state && <EnergyCard energy={state.energy} />}
-      <DeskBudgetCard today={deskToday} name={name} />
+      {state && <UsageLimits energy={state.energy} deskPercent={deskToday?.budget.percent ?? state.desk.percent} name={name} />}
       <b style={{ marginTop: 6 }}>{name}’s desk</b>
       <DeskRules name={name} />
       <b style={{ marginTop: 6 }}>You and {name}</b>
       {rows.map(([to, ic, t, d]) => (
-        <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
-          <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={26} /></span><span><b>{t}</b><br /><span className="small">{d}</span></span>
+        <button key={to} className="card setrow" onClick={() => go(to)}>
+          <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={26} /></span>
+          <span className="setrow-t"><b>{t}</b><span className="small">{d}</span></span>
+          <Icon name="arrow" size={18} />
         </button>
       ))}
       <button className="btn ghost small" onClick={logout}>Sign out</button>
