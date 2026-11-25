@@ -60,6 +60,36 @@ How it fits together:
 
 These need the server to be on the version with `server/src/native.ts`. An older server just ignores them.
 
+## Kith Parent
+
+The same app works for the grown-up. It checks who's signed in every 30 seconds by asking the server's `/api/me` with
+the window's own sign-in cookie, which stays in memory and is never logged (`mac/src-tauri/src/who.rs`). For the parent:
+
+- **Names:** the window title, the menu-bar item ("Open Kith Parent", "Quit Kith Parent") and its tooltip say "Kith
+  Parent".
+- **Child-only items are off:** Share Calendar & Reminders and Call Pip.
+- **The parent's notifications show as Mac notifications,** including with the window closed:
+  - The app asks the server's `/api/native/parent-inbox` every 30 seconds and shows exactly what the server would
+    send the parent by web push.
+  - The server applies the parent's choices: which report levels, quiet hours (urgent ones still come through), and
+    generic lock-screen text unless summaries are on.
+  - Nothing from the child's chats is ever included.
+  - Urgent ones play a sound.
+  - Until the server has that route, the app gets "not found" and stays quiet.
+
+**A separate "Kith Parent" app.** The Dock name and the app menu's name come from the app bundle and can't change
+while it runs, so there's a second build from the same code: **Kith Parent.app**. It has its own bundle id
+(`app.kith.parent`), name, sign-in and settings, and the Buddy icon with an ember heart badge
+(`mac/icons-parent/`, made by `make.py` there). Keep both in the Dock: Kith signed in as the child, Kith Parent signed
+in as you. The parent build never registers ⌃⌥Space and has no Call Pip.
+
+```bash
+cd mac/src-tauri
+cargo tauri build --bundles app --config tauri.parent.conf.json
+```
+
+This makes `mac/src-tauri/target/release/bundle/macos/Kith Parent.app`.
+
 ## Where links open
 
 | Link | Opens |
@@ -181,6 +211,10 @@ needs.
   but not a particular screen.
 - **Photos.** Left out on purpose until image-safety detection is added (see the minors policy).
 - **Parent view of the shared calendar.** The parent sees when sharing is switched on or off, not the events.
+- **"Time Sensitive" notifications.** macOS only allows these for signed apps with Apple's entitlement, so urgent
+  parent notifications use a sound instead. With signing, they could break through Focus.
+- **The app menu's name** ("Kith" next to the Apple menu) follows the app bundle, so in Kith.app it stays "Kith" even
+  for the parent. Use Kith Parent.app for "Kith Parent" everywhere.
 - **Signing and notarising** (see above).
 - **Universal build.** `cargo tauri build` builds for the Mac you're on. For Intel and Apple silicon in one app, add
   the other target (`rustup target add x86_64-apple-darwin`) and build with `--target universal-apple-darwin`.

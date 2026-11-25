@@ -23,6 +23,7 @@ mod eventkit;
 mod files;
 mod native;
 mod signin;
+mod who;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -71,6 +72,38 @@ pub struct Shell {
 }
 
 pub type State = Arc<Mutex<Shell>>;
+
+/// Menu items that change with who's signed in (see who.rs).
+struct Ui {
+    call: MenuItem<tauri::Wry>,
+    tray_call: MenuItem<tauri::Wry>,
+    tray_open: MenuItem<tauri::Wry>,
+    tray_quit: MenuItem<tauri::Wry>,
+    share: CheckMenuItem<tauri::Wry>,
+}
+
+/// "Kith Parent" for the parent: window title, menu-bar item and its menu. The child-only items
+/// (Calendar & Reminders, Call Pip) are off for the parent and in the parent build.
+pub fn apply_role(app: &AppHandle, role: who::Role) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let name = who::name_for(&a, role);
+        let child_things = role != who::Role::Parent && !who::parent_edition(&a);
+        if let Some(w) = a.get_webview_window(MAIN) {
+            let _ = w.set_title(name);
+        }
+        if let Some(t) = a.tray_by_id("kith") {
+            let _ = t.set_tooltip(Some(name));
+        }
+        if let Some(ui) = a.try_state::<Ui>() {
+            let _ = ui.tray_open.set_text(format!("Open {name}"));
+            let _ = ui.tray_quit.set_text(format!("Quit {name}"));
+            let _ = ui.call.set_enabled(child_things);
+            let _ = ui.tray_call.set_enabled(child_things);
+            let _ = ui.share.set_enabled(child_things);
+        }
+    });
+}
 
 pub fn mark_handoff(app: &AppHandle) {
     if let Some(st) = app.try_state::<State>() {
@@ -350,13 +383,16 @@ fn main() {
             let server_item = MenuItem::with_id(app, "server", "Change Server…", true, None::<&str>)?;
             let share_on = state.lock().unwrap().config.share_calendar;
             let share_item = CheckMenuItem::with_id(app, "share-calendar", "Share Calendar & Reminders with Pip", true, share_on, None::<&str>)?;
-            let about = AboutMetadata { name: Some("Kith".into()), ..Default::default() };
+            // The parent build (tauri.parent.conf.json) is "Kith Parent" throughout.
+            let parent_build = who::parent_edition(&handle);
+            let app_name = who::name_for(&handle, who::Role::SignedOut);
+            let about = AboutMetadata { name: Some(app_name.into()), ..Default::default() };
             let menu = Menu::with_items(
                 app,
                 &[
                     &Submenu::with_items(
                         app,
-                        "Kith",
+                        app_name,
                         true,
                         &[
                             &PredefinedMenuItem::about(app, None, Some(about))?,
@@ -416,25 +452,24 @@ fn main() {
             });
 
             // Menu bar: Kith stays here when its window is closed, so notifications still arrive.
-            let tray_menu = Menu::with_items(
-                app,
-                &[
-                    &MenuItem::with_id(app, "tray-open", "Open Kith", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "tray-call", "Call Pip", true, Some("Ctrl+Alt+Space"))?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "tray-quit", "Quit Kith", true, None::<&str>)?,
-                ],
-            )?;
+            let tray_open = MenuItem::with_id(app, "tray-open", format!("Open {app_name}"), true, None::<&str>)?;
+            let tray_call = MenuItem::with_id(app, "tray-call", "Call Pip", !parent_build, Some("Ctrl+Alt+Space"))?;
+            let tray_quit = MenuItem::with_id(app, "tray-quit", format!("Quit {app_name}"), true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&tray_open, &tray_call, &PredefinedMenuItem::separator(app)?, &tray_quit])?;
             TrayIconBuilder::with_id("kith")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../../../design/icon/icons/menubar/menubarTemplate@2x.png"))?)
                 .icon_as_template(true)
-                .tooltip("Kith")
+                .tooltip(app_name)
                 .menu(&tray_menu)
                 .build(app)?;
+            app.manage(Ui { call: call_item.clone(), tray_call, tray_open, tray_quit, share: share_item.clone() });
 
-            // ⌃⌥Space from anywhere. If another app already uses it, Kith carries on without it.
-            if let Err(e) = app.global_shortcut().register(native::CALL_SHORTCUT) {
-                eprintln!("[kith] {} is taken: {e}", native::CALL_SHORTCUT_LABEL);
+            // ⌃⌥Space from anywhere (not in the parent build). If another app already uses it,
+            // Kith carries on without it.
+            if !parent_build {
+                if let Err(e) = app.global_shortcut().register(native::CALL_SHORTCUT) {
+                    eprintln!("[kith] {} is taken: {e}", native::CALL_SHORTCUT_LABEL);
+                }
             }
 
             let nav_state = state.clone();
@@ -442,7 +477,7 @@ fn main() {
             let win_state = state.clone();
             let win_app = handle.clone();
             let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
-                .title("Kith")
+                .title(app_name)
                 .inner_size(1500.0, 920.0)
                 // The web app's desktop layout (sidebar, chat, Pip's desk) starts at 1100px.
                 .min_inner_size(1100.0, 640.0)
@@ -472,6 +507,8 @@ fn main() {
                 .build()?;
 
             let _ = window.show();
+            apply_role(&handle, who::Role::SignedOut);
+            who::start(handle.clone(), state.clone());
             let drop_app = handle.clone();
             window.on_window_event(move |ev| match ev {
                 // Closing the window keeps Kith running in the menu bar (Quit from the menu to stop).

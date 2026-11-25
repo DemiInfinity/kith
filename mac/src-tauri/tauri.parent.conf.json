@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kith Parent",
+  "mainBinaryName": "kith-parent",
+  "identifier": "app.kith.parent",
+  "bundle": {
+    "shortDescription": "Kith Parent, for the grown-up",
+    "icon": [
+      "../icons-parent/icon-32.png",
+      "../icons-parent/icon-128.png",
+      "../icons-parent/icon-256.png",
+      "../icons-parent/icon.icns"
+    ]
+  }
+}
