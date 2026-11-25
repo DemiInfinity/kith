@@ -10,3 +10,14 @@ data-dev/
 
 # Personal design board files: kept locally, never committed
 design/private/
+
+# Local-only settings and secrets (the .env.example template stays tracked)
+.env.*
+!.env.example
+*.local
+.vercel/
+# Google's downloaded OAuth client file, and any key files
+client_secret*.json
+*credentials*.json
+*.pem
+*.key
