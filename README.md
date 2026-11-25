@@ -1,68 +1,96 @@
-# Kith
+<p align="center">
+  <img src="client/public/icon-512.png" alt="Kith" width="120" height="120">
+</p>
 
-**A companion that grows up with you: it talks, remembers, checks in and makes things, kept at home with your grown-up in the loop.**
+<h1 align="center">Kith</h1>
+
+<p align="center"><b>A companion that grows up with you: it talks, remembers, checks in and makes things, kept at home with your grown-up in the loop.</b></p>
 
 Kith is a self-hosted AI companion for a teenager. It runs on your own home server, behind your own sign-in, on your own
-Anthropic API key. The child names it, picks its look and personality, chats and calls it, and it makes little things on
-its own offline "desk". A grown-up is in the loop honestly: the child always knows what's shared, and nothing is secret.
+Anthropic API key. The child names it, picks its personality and voice, chats and calls it, and it makes little things
+on its own locked-down "desk". A grown-up is in the loop honestly: the child always knows what's shared, and everyday
+chats stay private.
 
 It's a phone web app (installable PWA) and the same app laid out for a laptop or Mac.
 
+<p align="center">
+  <img src="docs/screenshots/chat-desktop.jpg" alt="Chat on a computer: side chats, and the companion's picture hanging over the chat" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/chat-phone.jpg" alt="Chat on a phone"></td>
+    <td width="33%"><img src="docs/screenshots/wizard-personality-phone.jpg" alt="First-use wizard: picking a personality"></td>
+    <td width="33%"><img src="docs/screenshots/help-phone.jpg" alt="The child's help centre"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Chat on a phone</sub></td>
+    <td align="center"><sub>Setting up their pal</sub></td>
+    <td align="center"><sub>A kid-friendly help centre</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/profile-desktop.jpg" alt="The companion's profile, with its desk"></td>
+    <td width="50%"><img src="docs/screenshots/commands-desktop.jpg" alt="The / command menu"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Its profile and desk (16:9, full screen on a tap)</sub></td>
+    <td align="center"><sub>Type <code>/</code> for commands and skills</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/parent-overview.jpg" alt="The parent view: overview"></td>
+    <td width="50%"><img src="docs/screenshots/parent-skills.jpg" alt="The parent view: skills"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The parent view: money, set-up, reports</sub></td>
+    <td align="center"><sub>Skills the parent writes, with /commands</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots use made-up sample data.</sub>
+
 ## What it does
 
-- **Chat and voice calls**:
-  - Typed chat, or a voice call with live captions.
-  - Speech-to-text and text-to-speech run locally (faster-whisper and Piper, over the Wyoming protocol). Recordings
-    aren't kept.
-  - The child calls the companion; it never calls them.
-- **Full power 🔥 / Low power 🔋**:
-  - Full power uses Claude Sonnet 5.5; Low power uses Claude Haiku 5.5.
-  - The money is spread evenly through the month: a weekly budget, rolling 5-hour windows with rollover, and a desk slice.
-  - When Full power runs out it switches smoothly to Low power. It only stops at a hard monthly ceiling ($48 by
-    default).
-  - The child sees an energy bar; the grown-up sees money and a monthly projection.
-- **Theirs to shape**:
-  - Name, look (fox, cat, dragon, robot, star, frog, owl, panda), traits, how chatty, silly and detailed it is, and a
-    voice.
-  - An animated SVG face that breathes, blinks, shows moods (happy, thinking, sleepy on Low power) and moves its mouth
-    with its voice.
-- **GCSE study**:
-  - Subjects with exam boards and dates, and a revision planner that counts back to the exams.
-  - Spaced-repetition flashcards, exam-style practice with mark-scheme feedback, and focus sessions.
-  - A wellbeing guard: no nagging late at night.
-  - Coursework is tutor-only, with a help log they can show their teacher.
-- **Art companion**: challenges, technique tips, a sketchbook log, a mood board, and kind, specific feedback on work
-  they describe. Photo uploads stay off until image moderation exists.
-- **Stories with a friend**: every passage credited, suggestions only when accepted, a story bible, and export to Google
-  Docs. The companion never contacts the friend.
-- **The companion's profile**: tap its face to see its desk, what's scheduled, and its `soul.md`, `personality.md` and
-  `memory.md`.
-- **Memory they control**: the companion remembers what matters (a test on Wednesday, loves dragons). The child sees
-  and can delete every memory.
-- **Gentle check-ins**:
-  - Web push, at most twice a day, never in quiet hours, never guilt-tripping, and only the kinds the child switched on.
-- **Its desk and the Studio**:
-  - An offline container where the companion makes things: stories, choose-your-own adventures, quizzes that mark
-    themselves, flashcards, revision timers, mini games, comics, slides, posters, cards, sketches, palettes, maps and
-    timelines.
-  - Interactive things run in a locked sandbox (no network, no storage, no access to the app).
-  - The child can ask for changes ("make it harder"). The desk has its own daily slice of the budget.
-  - **Pip's browser** reads the web through a block list (adult, gambling, dating, social and stranger chat, harm, proxies, plus the family's own list and a public list), read-only, behind an egress proxy, and stops at robot checks. Every page is logged and can be
-    watched live.
-- **OC workshop**:
-  - Original characters: sheets, relationships, a world, and a gallery on the desk.
-  - Friendships, rivalries and adventures yes; romance no.
-- **Parent-approved connections**:
-  - Look-only or can-act, all off by default: the child's room devices in Home Assistant, Kin (calendar and chores),
-    Jellyfin, a calculator, a dictionary, and allow-listed websites.
-  - Never anything that spends money, messages people or posts online. Every use is logged.
-- **Google Drive (optional)**:
-  - The child connects their own account, and things the companion makes are also saved to a Kith folder: Docs,
-    Sheets, Slides and HTML.
-  - Only the `drive.file` scope. It never deletes, overwrites or shares, except the folder, view-only, with the parent if
-    you choose.
-- **Parent view**: money, reports, the weekly summary (which the child sees too), the desk, tool use, and settings. No
-  everyday chats.
+**For the young person**
+
+- **Their own pal**: a short first-use wizard to name it and pick its personality, voice and what it helps with. An
+  animated face that blinks, looks around, shows moods and moves its mouth when it talks.
+- **Chat and calls**: typed chat with **side chats** for other topics, or a voice call. Speech-to-text and
+  text-to-speech run locally (faster-whisper and Piper over the Wyoming protocol); recordings aren't kept.
+- **`/` commands**: `/usage`, `/connectors`, `/skills`, `/reload-skills`, `/memory`, `/schedule`, `/desk`, `/new`,
+  `/call`, `/grownup`, `/help`, plus any the parent adds through skills. Info commands pop up without using energy.
+- **Its profile**: tap its picture for its desk, what's scheduled, and who it is (a soul and personality the child
+  writes, and memories they can see and delete).
+- **Its desk**: a locked-down 16:9 computer where it makes things (quizzes that mark themselves, stories, games,
+  flashcards, slides, comics…), with a real browser (tabs, a homepage, the whole web through a block list, stops at
+  robot checks, no sign-ins). Watch it live, take over, or go full screen. The screen sleeps when nobody's looking.
+- **Study, art, OCs and stories**: a GCSE revision planner, flashcards and practice; an art companion; an original
+  character workshop; and stories written with a friend, every bit credited.
+- **Help that's written for them**: a friendly help centre, and **Grown-up?** on every screen.
+
+**Running quietly in the background**
+
+- **Full power / Low power**: Claude Sonnet 5.5 while there's energy, Claude Haiku 5.5 when it runs low, resting only
+  at a hard monthly ceiling. Weekly budget, rolling windows with rollover, and a separate daily slice for the desk.
+- **The heartbeat**: every 30 minutes, always, it looks at what's coming up (reminders, exams, things it made) and
+  decides whether anything needs doing. Usually nothing; sometimes one gentle check-in or a journal line. Never in
+  quiet hours, never guilt-tripping.
+- **Reminders and check-ins** by web push, at most twice a day, only the kinds the child switched on.
+
+**For the grown-up** (the parent view)
+
+- **Overview**: spending this month with a projection, set-up checklist, chat/desk/Low-power figures, reports, the
+  weekly summary you both see, and every tool it used. Never everyday chats.
+- **Claude**: paste the Anthropic API key; it's checked, stored encrypted and never shown again.
+- **Safeguards**: an editable safeguards document that always comes first, plus family rules.
+- **Connectors**: Home Assistant (only the entities you list), Kin, Jellyfin, any MCP server (only the tools you
+  allow), Google Drive and more. Look only or can act; anything that spends money, messages people or posts is never
+  offered. The child sees what's on.
+- **Skills**: how-tos you write, loaded only when relevant, with optional `/commands`.
+- **Settings and help**: budgets, quiet hours, helplines, the desk browser's block list, the heartbeat checklist, and a
+  detailed help centre.
 
 ## Safety, in short
 
@@ -108,8 +136,9 @@ docker compose --profile voice up -d --build
 ```
 
 Open http://localhost:8787. To try it without a sign-in provider, set `KITH_DEV_LOGIN=true` in `.env`. That's for local
-testing only. Without an API key everything works except the companion's thinking: it says it isn't switched on yet,
-and safety, reports, the desk, voice and the parent view all still run.
+testing only. Then add your Anthropic API key in the parent view (Settings › Claude; it needs `KITH_SECRET_KEY` in
+`.env`). Without a key everything works except the companion's thinking: it says it isn't switched on yet, and safety,
+reports, the desk, voice and the parent view all still run.
 
 Without Docker: `npm install && scripts/dev-local.sh` (runs the desk and server with dev sign-in), or `npm run dev` for
 hot reload (Vite on :5173, server on :8787).
