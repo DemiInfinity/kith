@@ -379,8 +379,8 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .avatar .face.glance { animation: glance 11s ease-in-out infinite; }
 .avatar .face.at-screen { animation: peek 9s ease-in-out infinite; }
 .avatar .screen-light { opacity: 0.14; animation: screenlight 2.4s ease-in-out infinite; mix-blend-mode: screen; }
-.avatar .paw-l { animation: type 0.42s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.avatar .paw-r { animation: type 0.42s ease-in-out 0.21s infinite; transform-box: fill-box; transform-origin: center; }
+.avatar .arm-l { animation: type 0.36s ease-in-out infinite; }
+.avatar .arm-r { animation: type 0.36s ease-in-out 0.18s infinite; }
 .avatar .lid-glow { animation: lidglow 3s ease-in-out infinite; }
 .avatar .code-1 { animation: codeline 2.6s steps(6) infinite; transform-box: fill-box; transform-origin: left center; }
 .avatar .code-2 { animation: codeline 2.6s steps(8) 0.8s infinite; transform-box: fill-box; transform-origin: left center; }
@@ -420,6 +420,6 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   76%, 86% { transform: translate(0, 0) rotate(0deg); }
   92% { transform: translate(9px, 4px) rotate(5deg); }
 }
-@keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(0.7px); } }
+@keyframes type { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0.5px, 2.5px); } }
 @keyframes screenlight { 0%, 100% { opacity: 0.1; } 40% { opacity: 0.2; } 60% { opacity: 0.13; } }
 @keyframes lidglow { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }

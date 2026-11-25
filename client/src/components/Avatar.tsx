@@ -211,11 +211,11 @@ const PAW: Record<Look, string> = {
 };
 
 /**
- * Its own little laptop, drawn in the Fluent Emoji style and colours. We're in front of the
- * companion, so we see the BACK of the lid (with the Kith face on it); the laptop is turned so its
- * keyboard shows on the left, with the companion's paws on the keys.
- * Geometry: the hinge runs from H1 (124,170) to H2 (170,156); the deck goes back towards the
- * companion along V = (-62,-8); the lid rises from the hinge along L = (6,-58).
+ * Its own little laptop, drawn in the Fluent Emoji style and colours. The companion sits to the left,
+ * so the laptop is turned to face it: we see the BACK of the lid (with the Kith face), the screen
+ * leans away from the companion, and the keyboard sits between them with its paws typing.
+ * Geometry: hinge H1 (124,170) → H2 (160,144); the deck runs back towards the companion along
+ * V = (-62,-8); the lid rises from the hinge along L = (14,-56), leaning away from the companion.
  */
 function Laptop({ look }: { look: Look }) {
   const paw = PAW[look];
@@ -226,31 +226,31 @@ function Laptop({ look }: { look: Look }) {
     }
   }
   return (
-    <g className="laptop" transform="translate(8 0)">
-      <ellipse cx="114" cy="178" rx="68" ry="7" fill="#000" opacity="0.18" />
-      {/* the base: its left side edge, then the deck with keys and trackpad */}
+    <g className="laptop" transform="translate(12 0)">
+      <ellipse cx="112" cy="176" rx="62" ry="7" fill="#000" opacity="0.18" />
+      {/* the base: its near side edge, then the deck with keys and trackpad */}
       <polygon points="62,162 124,170 124,176 62,168" fill="#A9A9A9" />
-      <polygon points="124,170 170,156 108,148 62,162" fill="#D3D3D3" stroke="#BDBDBD" strokeWidth="1" strokeLinejoin="round" />
-      <g transform="matrix(46 -14 -62 -8 124 170)">
+      <polygon points="124,170 160,144 98,136 62,162" fill="#D3D3D3" stroke="#BDBDBD" strokeWidth="1" strokeLinejoin="round" />
+      <g transform="matrix(36 -26 -62 -8 124 170)">
         {keys}
         <rect x={0.34} y={0.68} width={0.32} height={0.22} rx={0.05} fill="#BDBDBD" />
       </g>
-      {/* arms, and paws on the keys (the right paw goes behind the lid) */}
-      <g stroke={paw} strokeWidth="10" strokeLinecap="round" fill="none">
-        <path d="M56 166 Q80 170 104 161" />
-        <path d="M84 164 Q112 166 129 156" />
+      {/* arms come out of its body to paws on the keys, taking turns like typing */}
+      <g className="arm-l">
+        <path d="M74 150 Q86 162 100 158" stroke={paw} strokeWidth="12" strokeLinecap="round" fill="none" />
+        <ellipse cx="101" cy="157.5" rx="7.5" ry="5.2" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
       </g>
-      <g fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1">
-        <ellipse className="paw-l" cx="106" cy="160" rx="8" ry="5.5" />
-        <ellipse className="paw-r" cx="130" cy="155" rx="7.5" ry="5" />
+      <g className="arm-r">
+        <path d="M90 140 Q106 144 120 148" stroke={paw} strokeWidth="11" strokeLinecap="round" fill="none" />
+        <ellipse cx="121" cy="148" rx="7" ry="4.8" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
       </g>
       {/* the lid: its near edge (thickness), then the back of the lid with the Kith face */}
-      <polygon points="124,170 130,112 126,113 120,171" fill="#5B528A" />
-      <polygon points="124,170 170,156 176,98 130,112" fill="#7167A4" stroke="#857BB8" strokeWidth="1.5" strokeLinejoin="round" />
-      <g transform="matrix(1 -0.304 0 1 0 0)">
-        <ellipse className="lid-glow" cx="152" cy="180" rx="8" ry="7.5" fill="#E7B4EE" />
-        <ellipse cx="149.2" cy="179.4" rx="1.2" ry="1.8" fill="#2A1C27" />
-        <ellipse cx="154.8" cy="179.4" rx="1.2" ry="1.8" fill="#2A1C27" />
+      <polygon points="124,170 138,114 134,115 120,171" fill="#5B528A" />
+      <polygon points="124,170 160,144 174,88 138,114" fill="#7167A4" stroke="#857BB8" strokeWidth="1.5" strokeLinejoin="round" />
+      <g transform="matrix(1 -0.722 0 1 0 0)">
+        <ellipse className="lid-glow" cx="149" cy="236.6" rx="7.5" ry="7" fill="#E7B4EE" />
+        <ellipse cx="146.4" cy="236" rx="1.2" ry="1.8" fill="#2A1C27" />
+        <ellipse cx="151.6" cy="236" rx="1.2" ry="1.8" fill="#2A1C27" />
       </g>
     </g>
   );
