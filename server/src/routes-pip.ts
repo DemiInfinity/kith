@@ -95,7 +95,7 @@ export function registerPip(app: FastifyInstance, d: AppDeps) {
   // ── "Help me write it": a backstory draft for an OC, from her notes ───────────────────────
   app.post("/api/oc/backstory", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
     const b = BackstoryBody.parse(req.body);
-    const typed = [b.name, b.species, b.pronouns, b.age, b.likes, b.dislikes, b.catchphrase, b.notes].filter((s) => s.trim()).join("\n");
+    const typed = [b.name, b.looks, b.species, b.pronouns, b.age, b.likes, b.dislikes, b.catchphrase, b.notes].filter((s) => s.trim()).join("\n");
     if (!(await okText(reply, typed, "a character's backstory"))) return;
     const e = energyNow(db);
     if (e.mode === "resting") return reply.code(409).send({ error: `${loadProfile(db).name} is resting until the energy tops up. Try again later.` });
