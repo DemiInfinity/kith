@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type Me, type Mood, type Sheet, type Turn, type WorldEntry } from "../api";
-import { Chat } from "./Chat";
 import { ItemViewer, MakeSheet, useDesk } from "./Desk";
 
 const EMPTY: Sheet = { name: "", icon: "⭐", look: "", personality: "", powers: "", backstory: "", likes: "", dislikes: "", palette: [], themeSong: "", relationships: [] };
@@ -94,22 +93,12 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
   const tabs = (
     <div className="chips" role="tablist" style={{ padding: "10px 18px 0" }}>
       {(["characters", "workshop", "world"] as const).map((t) => (
-        <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>
+        <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => (t === "workshop" ? go(`/?mode=oc&label=${encodeURIComponent("⭐ OC workshop")}`) : setTab(t))}>
           {t === "characters" ? "⭐ Characters" : t === "workshop" ? `💬 Build with ${name}` : "🗺️ World"}
         </button>
       ))}
     </div>
   );
-
-  if (tab === "workshop") {
-    return (
-      <>
-        <div style={{ padding: "calc(10px + var(--safe-top)) 18px 0" }}><span className="hand">your characters, your world</span><h2 className="screen-title" style={{ marginTop: 0 }}>OC workshop</h2></div>
-        {tabs}
-        <Chat me={me} mode="oc" onTurn={(t) => { onTurn(t); if (t.effects.characters.length) void load(); }} onMood={onMood} openHelp={openHelp} go={go} />
-      </>
-    );
-  }
 
   return (
     <div className="screen narrow" style={{ paddingTop: 0 }}>
@@ -121,7 +110,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
           {editing ? (
             <SheetEditor initial={editing === "new" ? null : editing} onSave={() => { setEditing(null); void load(); }} onCancel={() => setEditing(null)} />
           ) : (
-            <div className="row"><button className="btn primary small" onClick={() => setEditing("new")}>+ New character</button><button className="btn ghost small" onClick={() => setTab("workshop")}>Build one with {name}</button></div>
+            <div className="row"><button className="btn primary small" onClick={() => setEditing("new")}>+ New character</button><button className="btn ghost small" onClick={() => go(`/?mode=oc&label=${encodeURIComponent("⭐ OC workshop")}`)}>Build one with {name}</button></div>
           )}
           {chars.length === 0 && !editing && <span className="small">No characters yet. Start one yourself, or let {name} ask you good questions.</span>}
           {chars.map((c) => (

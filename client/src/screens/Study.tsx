@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Me, type Mood, type Turn } from "../api";
 import { Toggle } from "../components/bits";
-import { Chat } from "./Chat";
 
 interface Subject { name: string; board: string; coursework: boolean; courseworkNote: string; confidence: number; dates: { kind: "mock" | "exam" | "deadline"; label: string; date: string }[] }
 interface SubjectRow { id: number; subject: Subject }
@@ -217,29 +216,18 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
   const due = v?.cards.reduce((t, c) => t + c.due, 0) ?? 0;
 
   const tabs = (
-    <div className="chips" role="tablist" style={{ padding: tab === "ask" ? "10px 18px 0" : 0 }}>
+    <div className="chips" role="tablist">
       {([["plan", "🗓️ Plan"], ["subjects", "📚 Subjects"], ["cards", `🗂️ Cards${due ? ` (${due})` : ""}`], ["practice", "✍️ Practice"], ["ask", `💬 Ask ${name}`], ["log", "📋 Help log"]] as const).map(([k, l]) => (
         <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>
       ))}
     </div>
   );
-  const head = <div style={tab === "ask" ? { padding: "calc(10px + var(--safe-top)) 18px 0" } : {}}><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>;
+  const head = <div><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>;
 
-  if (tab === "ask") {
-    return (
-      <>
-        {head}{tabs}
-        <div className="row" style={{ padding: "8px 18px 0", flexWrap: "wrap" }}>
-          <select className="select" style={{ width: "auto" }} value={askSubject ?? ""} onChange={(e) => setAskSubject(Number(e.target.value) || undefined)}><option value="">Any subject</option>{v?.subjects.map((s) => <option key={s.id} value={s.id}>{s.subject.name}</option>)}</select>
-          <Toggle label="This is coursework" checked={isCoursework} onChange={setCoursework} />
-        </div>
-        {isCoursework && <div className="notice" style={{ margin: "8px 18px 0" }}>Coursework mode: I’ll explain, ask questions and give feedback, but I won’t write or make any of it. Your work has to be your own, and you should tell your teacher about any AI help. This chat is noted in your help log.</div>}
-        <Chat me={me} mode="study" ctx={{ subjectId: askSubject, coursework: isCoursework }} onTurn={onTurn} onMood={onMood} openHelp={openHelp} go={go}
-          placeholder={isCoursework ? "Ask about your coursework…" : "Ask about anything you’re revising…"}
-          quick={[["🧠", "Quiz me on what I revised today"], ["❓", "Explain this simply"], ["📝", "How do I answer an 'evaluate' question?"], ["😮‍💨", "I'm stressed about exams"]]} />
-      </>
-    );
-  }
+  const askInChat = () => {
+    const label = `📚 Studying${subj ? ` ${subj.subject.name}` : ""}${isCoursework ? " · coursework" : ""}`;
+    go(`/?mode=study${askSubject ? `&subject=${askSubject}` : ""}${isCoursework ? "&coursework=1" : ""}&label=${encodeURIComponent(label)}`);
+  };
 
   return (
     <div className="screen narrow">
@@ -286,6 +274,16 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
             </div>
           ))}
         </>
+      )}
+      {tab === "ask" && (
+        <div className="card" style={{ gap: 10 }}>
+          <b>Ask {name} in chat</b>
+          <span className="small">It opens your chat with {name}, set up for studying: revision help runs on Low power to save energy.</span>
+          <select className="select" value={askSubject ?? ""} onChange={(e) => setAskSubject(Number(e.target.value) || undefined)}><option value="">Any subject</option>{v?.subjects.map((s) => <option key={s.id} value={s.id}>{s.subject.name}</option>)}</select>
+          <Toggle label="This is coursework" checked={isCoursework} onChange={setCoursework} />
+          {isCoursework && <span className="small" style={{ color: "var(--ember)" }}>Coursework: {name} explains, asks questions and gives feedback, but won’t write or make any of it. It goes in your help log.</span>}
+          <button className="btn primary" onClick={askInChat}>Ask {name} →</button>
+        </div>
       )}
       {v && tab === "cards" && <Cards v={v} reload={load} />}
       {v && tab === "practice" && <PracticeQ v={v} />}

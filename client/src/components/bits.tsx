@@ -171,6 +171,9 @@ export function Markdown({ text }: { text: string }) {
           const Tag = (`h${h[1].length}` as "h1" | "h2" | "h3");
           return <Tag key={k}>{inline(h[2], k)}</Tag>;
         }
+        if (/^>\s?/.test(b)) {
+          return <blockquote key={k} style={{ margin: "0 0 0.8em", padding: "6px 12px", borderLeft: "3px solid var(--lilac)", color: "var(--text-3)" }}>{inline(b.replace(/^>\s?/gm, ""), k)}</blockquote>;
+        }
         if (/^\s*([-*]|\d+\.)\s+/.test(b)) {
           const items = b.split("\n").filter(Boolean).map((l) => l.replace(/^\s*([-*]|\d+\.)\s+/, ""));
           return <ul key={k}>{items.map((it, j) => <li key={j}>{inline(it, `${k}-${j}`)}</li>)}</ul>;

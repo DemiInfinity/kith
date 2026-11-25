@@ -3,6 +3,7 @@ import { api, type Energy, type Me, type Mood, type Turn } from "../api";
 import { Avatar } from "../components/Avatar";
 import { PowerChip } from "../components/bits";
 import { MicCapture, playWithMouth } from "../lib/audio";
+import { Icon } from "../components/Icons";
 
 type Phase = "idle" | "listening" | "hearing" | "thinking" | "speaking";
 
@@ -117,15 +118,15 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
         {err && <span className="pip" style={{ borderColor: "var(--ember)" }}>{err}</span>}
       </div>
       <div className="controls">
-        <button className="side" aria-label="Type instead" onClick={() => go("/")}>⌨️</button>
+        <button className="side" aria-label="Type instead" onClick={() => go("/")}><Icon name="keyboard" size={24} /></button>
         <button
           className={`mic ${phase === "listening" ? "live" : ""}`} onClick={micTap}
           aria-label={phase === "listening" ? "Stop and send" : "Talk"} disabled={phase === "hearing" || phase === "thinking"}
           style={{ ["--lvl" as string]: `${Math.min(30, level * 200)}px` }}
         >
-          {phase === "listening" ? "⏹" : "🎙️"}
+          {phase === "listening" ? <Icon name="stop" size={30} /> : <Icon name="mic" size={32} />}
         </button>
-        <button className="end" aria-label="End call" onClick={() => { stopPlay.current?.abort(); go("/"); }}>✕</button>
+        <button className="end" aria-label="End call" onClick={() => { stopPlay.current?.abort(); go("/"); }}><Icon name="endcall" size={26} /></button>
       </div>
       <span className="small" style={{ textAlign: "center", paddingBottom: 10 }}>Voices run at home. Recordings aren’t kept.</span>
     </div>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Me, type Mood, type Turn } from "../api";
 import { Toggle } from "../components/bits";
-import { Chat } from "./Chat";
 
 interface Sketch { id: number; ts: number; title: string; medium: string; minutes: number; notes: string; forCoursework: boolean; tags: string[] }
 interface MoodItem { id: number; kind: "colour" | "word" | "reference" | "note"; value: string; note: string }
@@ -19,30 +18,28 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
   const name = me.profile.name;
 
   const tabs = (
-    <div className="chips" role="tablist" style={{ padding: tab === "talk" ? "10px 18px 0" : 0 }}>
+    <div className="chips" role="tablist">
       {([["today", "✨ Today"], ["sketchbook", "📓 Sketchbook"], ["mood", "🎨 Mood board"], ["talk", `💬 Talk art with ${name}`]] as const).map(([k, l]) => (
         <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>
       ))}
     </div>
   );
-  const head = <div style={tab === "talk" ? { padding: "calc(10px + var(--safe-top)) 18px 0" } : {}}><span className="hand">make something today</span><h2 className="screen-title" style={{ marginTop: 0 }}>Art</h2></div>;
+  const head = <div><span className="hand">make something today</span><h2 className="screen-title" style={{ marginTop: 0 }}>Art</h2></div>;
 
-  if (tab === "talk") {
-    return (
-      <>
-        {head}{tabs}
-        <div style={{ padding: "8px 18px 0" }}><Toggle label="This is for my art coursework (portfolio or set task)" checked={coursework} onChange={setCoursework} /></div>
-        {coursework && <div className="notice" style={{ margin: "8px 18px 0" }}>Coursework: I’ll give feedback and ask questions, but I won’t design or draw anything for it. Every idea in it has to be yours. This chat is noted in your help log.</div>}
-        <Chat me={me} mode="art" ctx={{ coursework }} onTurn={onTurn} onMood={onMood} openHelp={openHelp} go={go}
-          placeholder="Describe what you’re working on…"
-          quick={[["💡", "Give me a drawing prompt"], ["🖌️", "How do I shade skin tones?"], ["🏛️", "Who should I look at for bold colour?"], ["🗣️", "Here's what I drew today…"]]} />
-      </>
-    );
-  }
+  const askInChat = () => go(`/?mode=art${coursework ? "&coursework=1" : ""}&label=${encodeURIComponent(`🎨 Art${coursework ? " · coursework" : ""}`)}`);
 
   return (
     <div className="screen narrow">
       {head}{tabs}
+      {tab === "talk" && (
+        <div className="card" style={{ gap: 10 }}>
+          <b>Talk art with {name}</b>
+          <span className="small">Opens your chat with {name}, set up for art: prompts, techniques, artists, and feedback on what you describe.</span>
+          <Toggle label="This is for my art coursework (portfolio or set task)" checked={coursework} onChange={setCoursework} />
+          {coursework && <span className="small" style={{ color: "var(--ember)" }}>Coursework: {name} gives feedback and asks questions, but won’t design or draw anything for it.</span>}
+          <button className="btn primary" onClick={askInChat}>Talk to {name} →</button>
+        </div>
+      )}
       {v && tab === "today" && (
         <>
           <div className="card glow"><span className="eyebrow">Today’s challenge</span><span style={{ fontSize: 17, lineHeight: 1.45 }}>{v.challenge}</span></div>
@@ -50,7 +47,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
             <b>Show {name} your work</b>
             <button className="btn ghost small" disabled title={v.uploads.reason}>📷 Add a photo (coming later)</button>
             <span className="small">{v.uploads.reason}</span>
-            <button className="btn primary small" onClick={() => setTab("talk")}>Describe it to {name}</button>
+            <button className="btn primary small" onClick={() => go(`/?mode=art&label=${encodeURIComponent("🎨 Art")}`)}>Describe it to {name}</button>
           </div>
           <button className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go("/oc")}>
             <span style={{ fontSize: 24 }}>⭐</span><span><b>OC workshop</b><br /><span className="small">Your characters, their world and the gallery</span></span>

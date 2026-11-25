@@ -3,7 +3,8 @@
 
 import type { ReactNode } from "react";
 
-export type IconName = "chat" | "study" | "create" | "settings" | "grownup" | "call" | "stories" | "art" | "oc" | "desk";
+export type IconName = "chat" | "study" | "create" | "settings" | "grownup" | "call" | "stories" | "art" | "oc" | "desk"
+  | "mic" | "send" | "keyboard" | "endcall" | "stop" | "sidechats" | "newchat" | "split" | "close" | "archive";
 
 const P: Record<IconName, (on: boolean) => ReactNode> = {
   // a speech bubble with three dots
@@ -64,6 +65,60 @@ const P: Record<IconName, (on: boolean) => ReactNode> = {
     <>
       <path d="M12 3.8l2.4 5 5.4.6-4 3.7 1.1 5.4L12 15.8l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6L12 3.8Z" fill={on ? "currentColor" : "none"} fillOpacity={on ? 0.2 : 0} />
       <path d="M10.4 12.2c.9.8 2.3.8 3.2 0" />
+    </>
+  ),
+  // a microphone
+  mic: (on) => (
+    <>
+      <rect x="9" y="3.5" width="6" height="11" rx="3" fill={on ? "currentColor" : "none"} fillOpacity={on ? 0.25 : 0} />
+      <path d="M6 11.5a6 6 0 0 0 12 0" /><path d="M12 17.5v3" /><path d="M9 20.5h6" />
+    </>
+  ),
+  // a paper plane heading up
+  send: () => (
+    <>
+      <path d="M12 19V6" /><path d="M6.5 11.5L12 6l5.5 5.5" />
+    </>
+  ),
+  // a keyboard
+  keyboard: () => (
+    <>
+      <rect x="3.5" y="6.5" width="17" height="11" rx="2.5" />
+      <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13h.01M17 13h.01" strokeWidth="2.2" />
+      <path d="M9.5 14h5" />
+    </>
+  ),
+  // hang up: a handset turned down
+  endcall: () => (
+    <path d="M3.6 13.6c4.6-4 12.2-4 16.8 0 .6.5.7 1.4.2 2l-1.3 1.6c-.5.6-1.3.7-1.9.3l-2.5-1.6c-.5-.3-.7-.9-.6-1.5l.3-1.3c-1.7-.5-3.5-.5-5.2 0l.3 1.3c.1.6-.1 1.2-.6 1.5l-2.5 1.6c-.6.4-1.4.3-1.9-.3l-1.3-1.6c-.5-.6-.4-1.5.2-2Z" fill="currentColor" fillOpacity={0.25} />
+  ),
+  // stop (end listening)
+  stop: () => <rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor" />,
+  // two overlapping speech bubbles: side chats
+  sidechats: (on) => (
+    <>
+      <path d="M3.5 6.5c0-1.4 1.1-2.5 2.5-2.5h7c1.4 0 2.5 1.1 2.5 2.5v4.5c0 1.4-1.1 2.5-2.5 2.5H8.5l-3 2.5v-2.6c-1.2-.2-2-1.2-2-2.4V6.5Z" fill={on ? "currentColor" : "none"} fillOpacity={on ? 0.2 : 0} />
+      <path d="M17.5 9h.5c1.4 0 2.5 1.1 2.5 2.5V16c0 1.2-.8 2.2-2 2.4V21l-3-2.5H12c-1.1 0-2.1-.7-2.4-1.7" />
+    </>
+  ),
+  // a bubble with a plus
+  newchat: () => (
+    <>
+      <path d="M5 6.5C5 5.1 6.1 4 7.5 4h9C17.9 4 19 5.1 19 6.5v7c0 1.4-1.1 2.5-2.5 2.5H11l-4 3.5V16h.5H7.5C6.1 16 5 14.9 5 13.5v-7Z" />
+      <path d="M12 7.5v5M9.5 10h5" />
+    </>
+  ),
+  // a branch: split off into a side chat
+  split: () => (
+    <>
+      <circle cx="7" cy="5.5" r="2" /><circle cx="7" cy="18.5" r="2" /><circle cx="17" cy="9" r="2" />
+      <path d="M7 7.5v9" /><path d="M17 11c0 3-3 4-7.5 5.5" />
+    </>
+  ),
+  close: () => <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
+  archive: () => (
+    <>
+      <rect x="4" y="5" width="16" height="4" rx="1.2" /><path d="M5.5 9v8.5c0 .8.7 1.5 1.5 1.5h10c.8 0 1.5-.7 1.5-1.5V9" /><path d="M10 13h4" />
     </>
   ),
   // a little computer

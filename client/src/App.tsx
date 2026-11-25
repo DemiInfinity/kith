@@ -4,7 +4,8 @@ import { Avatar, LogoMark } from "./components/Avatar";
 import { HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
-import { Chat } from "./screens/Chat";
+import { Chat, type ChatContext } from "./screens/Chat";
+import { SideChats, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
 import { DeskAside } from "./screens/Desk";
@@ -83,6 +84,34 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const [mood, setMood] = useState<Mood>("happy");
   const [help, setHelp] = useState(false);
   const [path, go] = useRoute();
+  const [drawer, setDrawer] = useState(false);
+  const [thread, setThread] = useState<number>(() => {
+    try { return Number(sessionStorage.getItem("kith-thread")) || 1; } catch { return 1; }
+  });
+  const [threadTitle, setThreadTitle] = useState("");
+  const pickThread = (id: number) => {
+    setThread(id);
+    try { sessionStorage.setItem("kith-thread", String(id)); } catch { /* fine */ }
+    setDrawer(false);
+    if (location.pathname !== "/") go("/");
+  };
+  useEffect(() => {
+    if (thread === 1) { setThreadTitle(""); return; }
+    api<{ threads: ThreadRow[] }>("/api/threads").then((r) => {
+      const t = r.threads.find((x) => x.id === thread);
+      if (!t) pickThread(1); else setThreadTitle(t.title);
+    }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread]);
+  // "Ask Pip" from Study, Art or the OC workshop opens the main chat with a context chip.
+  const q = new URLSearchParams(location.search);
+  const chatContext: ChatContext | null = q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
+    ? {
+        mode: q.get("mode") as ChatContext["mode"],
+        ctx: { subjectId: Number(q.get("subject")) || undefined, coursework: q.get("coursework") === "1" || undefined },
+        label: q.get("label") || (q.get("mode") === "study" ? "📚 Studying" : q.get("mode") === "art" ? "🎨 Art" : "⭐ OC workshop"),
+      }
+    : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
   useEffect(() => { void load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
 
@@ -115,7 +144,22 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else if (path === "/lab") screen = <AvatarLab />;
-  else screen = <Chat me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
+  else screen = (
+    <>
+      {thread !== 1 && (
+        <div className="threadbar">
+          <Icon name="sidechats" size={18} /><b style={{ flex: 1 }}>{threadTitle || "Side chat"}</b>
+          <button className="chip" style={{ minHeight: 32 }} onClick={() => pickThread(1)}>Back to main chat</button>
+        </div>
+      )}
+      <div className="threadbar desktop-only" style={thread !== 1 ? { display: "none" } : {}}>
+        <b style={{ flex: 1 }}>Chat with {name}</b>
+        <button className="chip" style={{ minHeight: 32 }} onClick={() => setDrawer(true)}><Icon name="sidechats" size={18} /> Side chats</button>
+      </div>
+      <Chat key={thread} me={me} thread={thread} context={chatContext} onClearContext={() => go("/")} onSplit={pickThread}
+        onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
+    </>
+  );
 
   return (
     <div className="app">
@@ -143,6 +187,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <header className="topbar mobile-only">
             <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" laptop={!!working} /></button>
             <span className="who" onClick={() => go("/pip")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
+            <button className="iconbtn" onClick={() => setDrawer(true)} aria-label="Side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>
             <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={17} /> Call</button>
           </header>
         )}
@@ -156,6 +201,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </nav>
       </div>
       {showAside && <DeskAside me={me} go={go} />}
+      <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>
   );
