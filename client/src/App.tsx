@@ -339,7 +339,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
               aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
               <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
-              <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+              <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
             </button>
             <span className="tb-right">
               <button className="iconbtn call" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={21} /></button>
@@ -352,7 +352,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {!onProfile && (
               <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
                 <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
-                <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+                <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
               </button>
             )}
             <span className="tb-right">

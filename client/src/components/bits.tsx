@@ -1,5 +1,5 @@
 import { Icon, type IconName } from "./Icons";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Energy, type Helpline } from "../api";
 
 // ── Routing (tiny, no dependency) ───────────────────────────────────────────────────────────
@@ -91,31 +91,47 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
 }) {
   const [stage, setStage] = useState<"pick" | "write" | "sent" | "failed">("pick");
   const [text, setText] = useState("");
-  useEffect(() => { if (open) { setStage("pick"); setText(""); } }, [open]);
+  const [sending, setSending] = useState(false);
+  const ref = useRef<HTMLDialogElement>(null);
+  const before = useRef<Element | null>(null);
+  useEffect(() => { if (open) { setStage("pick"); setText(""); setSending(false); } }, [open]);
+  // A real modal <dialog>: focus moves into it, Tab stays inside it, Esc closes it, and focus goes
+  // back to whatever opened it.
   useEffect(() => {
-    if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", k);
-    return () => removeEventListener("keydown", k);
-  }, [open, onClose]);
-  if (!open) return null;
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) {
+      before.current = document.activeElement;
+      try { d.showModal(); } catch { d.setAttribute("open", ""); }
+      d.querySelector<HTMLElement>("h3")?.focus();
+    } else if (!open && d.open) {
+      d.close();
+      (before.current as HTMLElement | null)?.focus?.();
+    }
+  }, [open]);
+  useEffect(() => () => { (before.current as HTMLElement | null)?.focus?.(); }, []);
 
   const send = async () => {
+    if (sending) return;
+    setSending(true);
     try {
       const r = await api<{ ok: boolean }>("/api/help/message-parent", { body: { text } });
       setStage(r.ok ? "sent" : "failed");
     } catch {
       setStage("failed");
+    } finally {
+      setSending(false);
     }
   };
   const tel = (n: string) => `tel:${n.replace(/\s+/g, "")}`;
 
   return (
-    <>
-      <div className="scrim" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
-        <span className="grab" />
-        <h3 id="help-title">You don’t have to sort this alone</h3>
+    <dialog ref={ref} className="sheet helpdialog" aria-labelledby="help-title"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onClick={(e) => { if (e.target === ref.current) onClose(); /* a tap on the backdrop */ }}>
+      {open && <>
+        <span className="grab" aria-hidden />
+        <h3 id="help-title" tabIndex={-1}>You don’t have to sort this alone</h3>
         <span style={{ fontSize: "0.9375rem", lineHeight: 1.5, color: "#5a4a63" }}>Whatever it is, a real person can help. You won’t be in trouble.</span>
         {stage === "pick" && canMessage && (
           <button className="helper parent" onClick={() => setStage("write")}>
@@ -124,12 +140,14 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
         )}
         {stage === "write" && (
           <div className="stack">
-            <textarea className="textarea" style={{ background: "#fff", color: "#2a1d3a", borderColor: "#d9c2df" }} placeholder="Anything you want to say? (optional)" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} autoFocus />
-            <button className="btn ember block" onClick={send}>Send to {parentLabel}</button>
+            <textarea className="textarea" style={{ background: "#fff", color: "#2a1d3a", borderColor: "#8a6a88" }} aria-label={`Message to ${parentLabel}`} placeholder="Anything you want to say? (optional)" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} autoFocus />
+            <button className="btn ember block" onClick={send} disabled={sending} aria-busy={sending}>{sending ? "Sending…" : `Send to ${parentLabel}`}</button>
           </div>
         )}
-        {stage === "sent" && <div className="helper parent"><span className="hic"><Icon name="check" size={26} /></span><span><b>Sent</b><span className="sub">{parentLabel} knows you’d like them.</span></span></div>}
-        {stage === "failed" && <div className="helper line"><span className="hic"><Icon name="warn" size={26} /></span><span><b>That didn’t send</b><span className="sub">Please go and find {parentLabel}, or call someone below.</span></span></div>}
+        <div role="status">
+          {stage === "sent" && <div className="helper parent"><span className="hic"><Icon name="check" size={26} /></span><span><b>Sent</b><span className="sub">{parentLabel} knows you’d like them.</span></span></div>}
+          {stage === "failed" && <div className="helper line"><span className="hic"><Icon name="warn" size={26} /></span><span><b>That didn’t send</b><span className="sub">Please go and find {parentLabel}, or call someone below.</span></span></div>}
+        </div>
         {helplines.map((h) => (
           <a key={h.name + h.number} className={`helper ${h.kind === "emergency" ? "sos" : "line"}`} href={tel(h.number)}>
             <span className="hic"><Icon name={h.kind === "emergency" ? "siren" : "phone"} size={26} /></span>
@@ -137,8 +155,8 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
           </a>
         ))}
         <button className="btn ghost small" style={{ background: "transparent", color: "#5a4a63", borderColor: "#d9c2df" }} onClick={onClose}>Close</button>
-      </div>
-    </>
+      </>}
+    </dialog>
   );
 }
 

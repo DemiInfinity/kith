@@ -50,7 +50,7 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
   return (
     <>
       {!docked && <div className={`drawer-scrim ${open ? "open" : ""}`} onClick={onClose} />}
-      <aside className={docked ? "chatsdock" : `drawer ${open ? "open" : ""}`} aria-hidden={!open} aria-label="Chats">
+      <aside className={docked ? "chatsdock" : `drawer ${open ? "open" : ""}`} aria-hidden={!open} inert={!open} aria-label="Chats">
         <div className="spread" style={{ alignItems: "center" }}>
           <b style={{ fontFamily: "var(--serif)", fontSize: "1.375rem" }}>Chats</b>
           <button className="x" aria-label={docked ? "Close side chats" : "Close"} onClick={onClose}><Icon name="close" /></button>

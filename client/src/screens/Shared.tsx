@@ -15,6 +15,8 @@ export function Shared({ me }: { me: Me }) {
     [true, "A weekly summary", `A few lines about what you and ${name} got up to. You see the same one.`],
     [true, "Worrying things", `If someone’s hurting you, asks you to keep secrets from ${parent}, or you’re really not okay. ${name} tells you first.`],
     [true, `What’s on ${name}’s desk`, `The things ${name} makes for you, and ${name}’s journal.`],
+    [true, `${name}’s browser`, `${parent} can watch ${name}’s browser live, as it happens, and see the list of pages it opened.`],
+    [true, "Your language progress", `Which languages you’re learning, your level, how many words you know, days practised and the topics. Not the practice chats themselves.`],
     [true, "Tools used", `When ${name} uses something ${parent} switched on (like your room lights), it’s listed below.`],
     [false, "Your everyday chats", `Homework, stories, things you’re thinking about: those stay between you and ${name}.`],
     [false, "Anything behind your back", "There are no secret reports. Ever."],

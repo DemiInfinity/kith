@@ -6,6 +6,9 @@ import "@fontsource/caveat/500.css";
 import "@fontsource/caveat/700.css";
 import "./theme.css";
 import { App } from "./App";
+import { followKeyboard } from "./lib/viewport";
+
+followKeyboard();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

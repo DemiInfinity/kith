@@ -36,7 +36,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+html, body { height: 100%; }
+/* --app-height follows the visible area, so the iPhone keyboard pushes the composer up instead of covering it. */
+#root { height: var(--app-height, 100%); }
 /* Text follows the browser's text size; on an iPhone or iPad it follows Settings › Display › Text Size. */
 html { font-size: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 @supports (-webkit-touch-callout: none) { html { font: -apple-system-body; } }
@@ -837,3 +839,13 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select { font-size: max(16px, 1rem); }
 /* Every tap target is at least 24px each way (WCAG 2.2). */
 button, [role="button"], .chip, .x { min-width: 24px; min-height: 24px; }
+/* The "…" beside each message: Side chat from here, by keyboard or tap. */
+.msg { align-items: center; gap: 4px; }
+.msgmore { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 0; background: none; color: var(--faint); font-weight: 900; letter-spacing: 1px; opacity: 0.6; }
+.msg.me .msgmore { order: -1; }
+.msg:hover .msgmore, .msgmore:focus-visible, .msgmore.on { opacity: 1; color: var(--lilac-soft); }
+/* Grown-up? is a real <dialog>: the browser's own backdrop, no default box. */
+dialog.sheet { margin: 0; border: 0; inset: auto auto 0 50%; max-width: none; }
+dialog.sheet:not([open]) { display: none; }
+dialog.sheet::backdrop { background: rgba(10,6,9,0.6); animation: fade 0.2s; }
+dialog.sheet h3:focus { outline: none; }
