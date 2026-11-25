@@ -12,5 +12,7 @@
   <string>Pip can see your to-dos, and add reminders you ask for (you say yes each time).</string>
   <key>NSRemindersUsageDescription</key>
   <string>Pip can see your to-dos, and add reminders you ask for (you say yes each time).</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Kith can see whether Apple Music is playing, so Pip can listen along.</string>
 </dict>
 </plist>

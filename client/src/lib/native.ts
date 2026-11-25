@@ -10,6 +10,7 @@
 
 import { pollWhileVisible } from "./poll";
 import { api } from "../api";
+import { startMusic } from "./music";
 
 export type Tauri = {
   core: { invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> };
@@ -105,6 +106,9 @@ export function startNative(go: (to: string) => void) {
 
   pollWhileVisible(syncCalendar, 10 * 60_000);
   pollWhileVisible(checkNativeActions, 30_000, false);
+
+  // Apple Music or Spotify playing: Pip listens along (Kith.app only; music.ts).
+  startMusic();
 
   void t.event.listen("kith:calendar", () => void syncCalendar());
   void t.event.listen("kith:call", () => go("/talk"));

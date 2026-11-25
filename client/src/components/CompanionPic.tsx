@@ -9,6 +9,7 @@ import { api, type Look, type Mood } from "../api";
 import { Avatar } from "./Avatar";
 import type { PipStage } from "../pip3d/engine";
 import { normaliseLook, type Look as Look3D, type Mood3D } from "../pip3d/look";
+import { useMusic } from "../lib/music";
 
 // When the saved picture last changed (null: there isn't one). Set from /api/me and /api/state,
 // and straight away when My Pip saves.
@@ -65,6 +66,10 @@ function LivePic({ mood, version: v, fps }: { mood: Mood3D; version: number; fps
   const stage = useRef<PipStage | null>(null);
   const [ready, setReady] = useState(false);
   const first = useRef(mood);
+  // Music playing on her Mac: headphones on, for now (never saved).
+  const music = useMusic().playing;
+  const firstMusic = useRef(music);
+  firstMusic.current = music;
   useEffect(() => {
     let gone = false;
     let io: IntersectionObserver | null = null;
@@ -73,7 +78,7 @@ function LivePic({ mood, version: v, fps }: { mood: Mood3D; version: number; fps
       if (gone || !l || !ref.current) return;
       const { createPipStage, webglAvailable } = await import("../pip3d/engine");
       if (gone || !ref.current || !webglAvailable()) return;
-      try { stage.current = createPipStage(ref.current, l, { framing: "portrait", mood: first.current, maxFps: fps, active: false }); setReady(true); } catch { /* the still stays */ return; }
+      try { stage.current = createPipStage(ref.current, l, { framing: "portrait", mood: first.current, maxFps: fps, active: false, music: firstMusic.current }); setReady(true); } catch { /* the still stays */ return; }
       // Only moves while it can be seen (the phone and computer headers are both on the page; one is hidden).
       io = new IntersectionObserver(([e]) => stage.current?.setActive(!!e?.isIntersecting));
       io.observe(ref.current);
@@ -81,5 +86,6 @@ function LivePic({ mood, version: v, fps }: { mood: Mood3D; version: number; fps
     return () => { gone = true; io?.disconnect(); stage.current?.dispose(); stage.current = null; };
   }, [v]);
   useEffect(() => { stage.current?.setMood(mood); }, [mood]);
+  useEffect(() => { stage.current?.setMusic(music); }, [music]);
   return <canvas ref={ref} className={`pic-live ${ready ? "on" : ""}`} aria-hidden="true" />;
 }

@@ -6,6 +6,8 @@ import { Icon } from "../components/Icons";
 import { Pip3D } from "../pip3d/Stage";
 import { callMood, callStatus } from "../lib/call";
 import { Failed, useCall, useCallLevels, useCallLook, useCallSession } from "../components/CallBits";
+import { useMusic } from "../lib/music";
+import { isChildMacApp, useMacVoice, voiceProgressText } from "../lib/macVoice";
 
 /**
  * A voice call. The child calls the companion; it never calls them. Captions show both sides.
@@ -26,6 +28,9 @@ export function Talk({ me, energy, go, leave }: {
   const call = useCall();
   const name = me.profile.name;
   const { view, look, still, fail } = useCallLook();
+  const music = useMusic().playing;
+  const voice = useMacVoice();
+  const voiceComing = voiceProgressText(voice, name);
 
   // Opening the call screen starts a call (or shows the one that's on). If it's ended from
   // elsewhere (the Mac app's mini window), leave.
@@ -95,7 +100,12 @@ export function Talk({ me, energy, go, leave }: {
       <button className="grownup" onClick={() => session.askHelp()}>Grown-up?</button>
     </div>
   );
-  const footnote = <span className="small" style={{ textAlign: "center", paddingBottom: 10 }}>Voices run at home. Recordings aren’t kept.</span>;
+  const footnote = (
+    <span className="small" style={{ textAlign: "center", paddingBottom: 10 }}>
+      {voiceComing ? `${voiceComing} ` : ""}
+      {voice.phase === "ready" && isChildMacApp() ? `${name}’s voice is made on this Mac. ` : "Voices run at home. "}Recordings aren’t kept.
+    </span>
+  );
   const statusLine = <span aria-live="polite">{status}</span>;
 
   if (view === "2d") {
@@ -123,7 +133,7 @@ export function Talk({ me, energy, go, leave }: {
       <div className="callview">
         <div className="callpip">
           {view === "3d" && look && (
-            <Pip3D look={{ ...look, activity: "none" }} still={still} active={!call.elsewhere} mood={callMood(phase, call.mood)} framing="full"
+            <Pip3D look={{ ...look, activity: "none" }} still={still} active={!call.elsewhere} mood={callMood(phase, call.mood)} framing="full" music={music}
               onStage={(s) => { if (s) stageOff.current = session.addStage(s, still); else { stageOff.current?.(); stageOff.current = null; } }}
               label={`${name}, on the call`} fallback={<Failed onFail={fail} />} />
           )}

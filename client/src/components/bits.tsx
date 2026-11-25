@@ -1,6 +1,7 @@
 import { Icon, type IconName } from "./Icons";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Energy, type Helpline } from "../api";
+import { musicWords, type MusicNow } from "../lib/music";
 
 // ── Routing (tiny, no dependency) ───────────────────────────────────────────────────────────
 
@@ -244,7 +245,11 @@ export function Toggle({ label, checked, onChange }: { label: React.ReactNode; c
 }
 
 /** What the companion is doing right now, in a few words (shown under its name). */
-export function doingText(state: { energy: Energy; desk: { working: { kind: string; title: string; status?: string } | null; browsing?: { title: string; by: string | null } | null } } | null, mood: string): string {
+/**
+ * Pip's status line ("free to chat", "thinking…"). Busier things come first; music playing on her
+ * Mac (the Mac app only) comes just above "free to chat".
+ */
+export function doingText(state: { energy: Energy; desk: { working: { kind: string; title: string; status?: string } | null; browsing?: { title: string; by: string | null } | null } } | null, mood: string, music?: MusicNow | null): string {
   const w = state?.desk.working;
   const b = state?.desk.browsing;
   if (state?.energy.mode === "resting") return "resting until the energy tops up";
@@ -252,6 +257,7 @@ export function doingText(state: { energy: Energy; desk: { working: { kind: stri
   if (b?.by) return `${b.by} is using its browser`;
   if (b) return b.title ? `reading “${b.title}”` : "looking something up";
   if (mood === "thinking") return "thinking…";
+  if (music?.playing) return musicWords(music);
   if (state?.energy.mode === "low") return "on low power, still here to chat";
   return "free to chat";
 }

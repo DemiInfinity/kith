@@ -13,7 +13,7 @@
 
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { DEFAULT_LOOK, HAIR, IRIS, OUTFIT, PALETTES, SKIN, normaliseLook } from "./look";
+import { DEFAULT_LOOK, HAIR, IRIS, OUTFIT, PALETTES, SKIN, musicWear, normaliseLook } from "./look";
 
 const toState = (look) => { const l = normaliseLook(look); return { ...l, wear: new Set(l.wear) }; };
 
@@ -24,6 +24,10 @@ export function webglAvailable() {
 
 export function createPipStage(canvas, look = DEFAULT_LOOK, opts = {}) {
 let state = toState(look);
+// Music playing on her Mac: headphones (with the notes and the head-bob) on top of the look's own
+// things. Shown only: never in a picture (snapshot, moodPictures) and never part of the look.
+let ownWear = new Set(state.wear), music = !!opts.music, lending = false;
+if (music) state.wear = musicWear(ownWear, true);
 if (opts.mood) state.mood = opts.mood;
 if (opts.activity) state.activity = opts.activity;
 let still = !!opts.still, active = opts.active !== false, disposed = false;
@@ -1043,7 +1047,14 @@ function aimAt(box, framing, margin) {
   camera.position.set(c.x, c.y, c.z + half / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) + sz.z / 2); camera.lookAt(c);
   camera.updateProjectionMatrix();
 }
-function snapshot(framing = "portrait", px = 1024, clear = false) {
+/** Runs `fn` with the look's own things only (no music headphones), for pictures. */
+function plain(fn) {
+  if (!music || lending || ownWear.has("headphones")) return fn();
+  lending = true; state.wear = new Set(ownWear); apply();
+  try { return fn(); } finally { lending = false; state.wear = musicWear(ownWear, music); apply(); }
+}
+function snapshot(framing, px, clear) { return plain(() => snapshotNow(framing, px, clear)); }
+function snapshotNow(framing = "portrait", px = 1024, clear = false) {
   const w = px, h = framing === "full" ? Math.round(px * 1.25) : px;
   const pr = renderer.getPixelRatio(), pos = camera.position.clone(), quat = camera.quaternion.clone();
   if (state.kind === "chibi" && !CH) buildChibi();
@@ -1082,7 +1093,8 @@ function dispose() {
 
 resize(); apply();
 return {
-  setLook(l) { state = toState(l); apply(); },
+  setLook(l) { state = toState(l); ownWear = new Set(state.wear); state.wear = musicWear(ownWear, music); apply(); },
+  setMusic(on) { on = !!on; if (on === music) return; music = on; state.wear = musicWear(ownWear, music); apply(); },
   setMood(m) { state.mood = m; invalidate(); },
   setActivity(a) { if (state.activity === a) return; state.activity = a; apply(); },
   setStill(s) { still = !!s; invalidate(); },
@@ -1091,11 +1103,13 @@ return {
   snapshot,
   /** A still head-and-shoulders picture (PNG data URL) for each mood, posed with no movement. */
   moodPictures(moods, px = 256) {
-    const wasStill = still, wasMood = state.mood, out = {};
-    still = true;
-    try { for (const m of moods) { state.mood = m; out[m] = snapshot("portrait", px, false).toDataURL("image/png"); } }
-    finally { still = wasStill; state.mood = wasMood; invalidate(); }
-    return out;
+    return plain(() => {
+      const wasStill = still, wasMood = state.mood, out = {};
+      still = true;
+      try { for (const m of moods) { state.mood = m; out[m] = snapshot("portrait", px, false).toDataURL("image/png"); } }
+      finally { still = wasStill; state.mood = wasMood; invalidate(); }
+      return out;
+    });
   },
   dispose,
 };

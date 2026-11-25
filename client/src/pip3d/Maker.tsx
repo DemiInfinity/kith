@@ -61,12 +61,14 @@ export function useSay(): [string, (t: string) => void] {
 }
 
 /** The stage: the character in 3D (or its picture when WebGL isn't there), name plate and picture menu. */
-export function MakerStage({ look, still, onStage, title, say, fallback, menu }: {
+export function MakerStage({ look, still, onStage, title, say, fallback, menu, music = false }: {
   look: Look; still: boolean; onStage: (s: PipStage | null) => void; title: string; say: string; fallback: React.ReactNode; menu: React.ReactNode;
+  /** My Pip, while music plays on her Mac: headphones on the stage only (not in the look or its pictures). */
+  music?: boolean;
 }) {
   return (
     <section className="mk-stage" aria-label={`${title} in 3D`}>
-      <Pip3D look={look} still={still} onStage={onStage} label={`${title} in 3D. Drag to turn round.`} fallback={<div className="mk-fallback">{fallback}</div>} />
+      <Pip3D look={look} still={still} onStage={onStage} music={music} label={`${title} in 3D. Drag to turn round.`} fallback={<div className="mk-fallback">{fallback}</div>} />
       {say && <div className="mk-say" role="status">{say}</div>}
       <div className="mk-name"><b>{title}</b><span>{describeLook(look)}</span></div>
       <span className="mk-hint">drag to turn · looks around by itself</span>

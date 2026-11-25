@@ -9,6 +9,7 @@ import type { PipStage } from "../pip3d/engine";
 import { DEFAULT_LOOK, normaliseLook, type Look } from "../pip3d/look";
 import { ago, DescribePanel, fileName, LookPanel, MakerStage, MakerTabs, MoodPanel, savePng, SnapMenu, useSay, useStill } from "../pip3d/Maker";
 import { action } from "../lib/action";
+import { useMusic } from "../lib/music";
 
 type Tab = "describe" | "look" | "mood" | "chat";
 
@@ -25,6 +26,7 @@ export function MyPip({ me, onSaved }: { me: Me; onSaved?: (p: Profile) => void 
   const [preview, setPreview] = useState("");
   const [needsMoods, setNeedsMoods] = useState(false);
   const pic = usePipPicture();
+  const music = useMusic().playing;
 
   useEffect(() => {
     api<{ look: Look | null; updated: number | null; picture: boolean; moods?: boolean }>("/api/pip/look")
@@ -83,7 +85,7 @@ export function MyPip({ me, onSaved }: { me: Me; onSaved?: (p: Profile) => void 
     <div className="screen maker-screen">
       <div className="mk-head"><h2 className="screen-title">My {companion}</h2><span className="hand">there’s only one {companion}: the friend you chat with. Make it look however you like.</span></div>
       <div className="maker">
-        <MakerStage look={look} still={still} onStage={setStage} title={look.name || companion} say={say} fallback={fallback}
+        <MakerStage look={look} still={still} onStage={setStage} music={music} title={look.name || companion} say={say} fallback={fallback}
           menu={<SnapMenu stage={stage} name={look.name || companion} fallbackName="pip" />} />
         <section className="mk-panel" aria-label={`Make your ${companion}`}>
           <MakerTabs label="Maker sections" tab={tab} setTab={setTab} tabs={[["describe", "Describe"], ["look", "Look"], ["mood", "Mood"], ["chat", "Chat picture"]]} />

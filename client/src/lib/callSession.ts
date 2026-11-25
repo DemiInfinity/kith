@@ -11,6 +11,8 @@ import type { PipStage } from "../pip3d/engine";
 import { audioContextFromTap, joinPcm, MicStream, playWithMouth } from "./audio";
 import { savedCallMode, saveCallMode, type CallMode, type CallPhase, type Ear } from "./call";
 import { playHangUp } from "./sounds";
+import { prepareMacVoice, speakOnMac } from "./macVoice";
+import { musicForTurn } from "./music";
 import { HANDS_FREE, TAP_TO_TALK, Vad, type VadEvent } from "./vad";
 
 export interface CallSnap {
@@ -110,6 +112,8 @@ export class CallSession {
     this.vad = new Vad(HANDS_FREE);
     this.set({ active: true, phase: "idle", mood: this.moodNow(), heard: "", said: "", err: "", secs: 0, noVoice: false, muted: false, ear: "off" });
     this.startClock();
+    // The Mac app: Pip's voice made on the Mac (fetched the first time; the home voice until then).
+    prepareMacVoice();
     if (this.snap.mode === "handsfree") void this.autoStart();
   }
 
@@ -321,7 +325,7 @@ export class CallSession {
       if (sig.aborted) return;
       if (!text) { this.set({ phase: "idle", mood: this.moodNow(), err: `I didn’t catch that.${tapHint}` }); return; }
       this.set({ heard: text, said: "", phase: "thinking" });
-      const turn = await api<Turn>("/api/chat", { body: { text, mode: "talk", call: { helpOpened: this.helpOpened } }, signal: sig });
+      const turn = await api<Turn>("/api/chat", { body: { text, mode: "talk", call: { helpOpened: this.helpOpened }, music: musicForTurn() }, signal: sig });
       // The reply is saved on the server either way; it's shown in the chat if the call has ended.
       this.deps.onTurn(turn);
       if (sig.aborted) return;
@@ -331,9 +335,15 @@ export class CallSession {
       this.stopPlay = play;
       this.set({ phase: "speaking" });
       try {
-        const wav = await api<Blob>("/api/voice/tts", { body: { messageId: turn.reply.id }, signal: sig });
+        // On the Mac: Pip's own reply, spoken on the Mac a sentence at a time. Otherwise (or until
+        // it's ready) the home voice, as before.
+        const where = await speakOnMac(turn.reply.text, (v) => this.mouth(v), play.signal, this.audio ?? undefined);
         if (sig.aborted) return;
-        await playWithMouth(wav, (v) => this.mouth(v), play.signal, this.audio ?? undefined);
+        if (where === "home") {
+          const wav = await api<Blob>("/api/voice/tts", { body: { messageId: turn.reply.id }, signal: sig });
+          if (sig.aborted) return;
+          await playWithMouth(wav, (v) => this.mouth(v), play.signal, this.audio ?? undefined);
+        }
       } catch {
         if (sig.aborted) return;
         // No voice: show the reply and "talk" it for a moment so it still feels like a call.

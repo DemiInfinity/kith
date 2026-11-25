@@ -8,6 +8,9 @@
   <!-- Calendar and Reminders, only used while sharing is switched on in the Kith menu. -->
   <key>com.apple.security.personal-information.calendars</key>
   <true/>
+  <!-- Asking Apple Music or Spotify whether they're playing (music.rs); macOS asks her first. -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
   <key>com.apple.security.network.client</key>
   <true/>
 </dict>

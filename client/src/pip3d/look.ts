@@ -50,6 +50,16 @@ export interface Look {
   beanie: (typeof BEANIES)[number];
 }
 
+/**
+ * What's worn while music plays on her Mac: headphones on top of the look's own things. A new set,
+ * for showing only: the look itself (and what's saved) never changes.
+ */
+export function musicWear(wear: Iterable<Look["wear"][number]>, playing: boolean): Set<Look["wear"][number]> {
+  const out = new Set(wear);
+  if (playing) out.add("headphones");
+  return out;
+}
+
 export const DEFAULT_LOOK: Look = {
   name: "Pip", kind: "blob", style: "glossy", palette: "pip", pattern: "plain", ears: "none", wear: [], hair: "dark", hairStyle: "long",
   ahoge: false, eyesC: "amber", skin: "light", outfit: "lilac", outfitStyle: "hoodie", mood: "listening", activity: "none", beanie: "#E3A91C",

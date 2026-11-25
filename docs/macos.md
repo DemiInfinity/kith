@@ -47,6 +47,8 @@ Privacy & Security.
 | **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip** and macOS lets Kith in (the tick stays off if she says no). **Kith › Choose What Pip Sees** lists her calendars and reminder lists to tick or untick (all of them until she changes it; calendars added later aren't shared once she has chosen). The line under it says exactly what Pip sees, e.g. "Pip sees: Home, School (next 7 days) · Homework (due in the next 7 days)". The next 7 days of events and the reminders due in the next 7 days (none without a due date) go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Works from macOS 12: Kith asks with macOS 14's new calendar prompts where they exist and the older one otherwise. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
 | **Documents** | The 📄 button in the chat composer (Mac app only), or drop a file on the window. PDF, Word, RTF, ODT, HTML, text and Markdown. | Text only, up to 12,000 characters. It goes through the same safety check and redaction as her messages. **No photos or videos**: Kith's minors policy rules out image uploads until image-safety detection is in place (docs/minors-policy.md). Pip sees the text for that turn; the chat keeps "📄 name". |
 | **Call Pip** | **⌃⌥Space** from any app (or Call Pip in the menu bar or View menu) brings Kith forward and opens a call. | If another app already uses ⌃⌥Space, Kith carries on without it. |
+| **Pip's voice on the Mac** | Kith.app on Apple silicon speaks Pip's replies itself with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), in calls and in the voice picker (Edit Pip › Voice: Emma, Isabella, Lily, Alice, Fable or George, all British; Emma to start with). A sentence at a time, so the first words come quickly; Pip's mouth follows the sound as before. The model isn't in the app: the first time it's wanted, the app fetches it (about 326 MB) into `~/Library/Application Support/app.kith.mac/kokoro-v1.0/`, showing "Getting Pip's new voice ready… 40%", and the home voice carries on until it's ready (`voice.rs`, `kokoro.rs`). | Only Pip's reply text goes to the model, and it never leaves the Mac. The download asks only `huggingface.co` (and its own `*.hf.co` download servers), at a fixed revision, and every file is checked against a SHA-256 written in `voice.rs`; anything else, and it stays on the home voice. If the Mac can't keep up (it takes longer to make a sentence than to say it, measured once at start and then as it goes), it switches back to the home voice by itself. Intel Macs always use the home voice. Not in Kith Parent. The browser and iPhone keep the home voices. |
+| **Listening along** | When Apple Music or Spotify is playing, Pip pops on headphones (with floating notes and a head-bob) in the header, My Pip, the call and the mini call, its status says "listening to music with you", and it knows for that chat turn. Kith asks only while its window is open, every 5 seconds (15 once nothing's played for a while), and only an app that's already running, so it never opens Music. macOS asks her once per app: "Kith can see whether Apple Music is playing, so Pip can listen along." (`music.rs`). | Only "playing or not" by default. **Settings › Music › Let Pip know what song is playing** (off to start with, kept on this Mac) adds the title and artist. The server puts it in that turn's prompt only, marked as outside text: never stored, remembered or shown in the parent view. The headphones are a look on top, never saved. If she says no, Kith stops asking that app and Pip just doesn't react. Not in Kith Parent. |
 | **Mini call** | During a call, switching to another app (or minimising Kith) shows a small always-on-top window with Pip, its name, Mute and End, on whichever space she's on. Click Pip to come back; it closes when Kith's window has focus again (`mini.rs`, route `/call-mini`). | Kith.app only, never Kith Parent. It loads only the Kith server's `/call-mini` and gets only events, dragging itself and its three buttons. The voice and the microphone stay in the main window; the mini window just shows the call. |
 
 How it fits together:
@@ -232,6 +234,10 @@ To build just one app without the `.dmg`, run this from `mac/src-tauri`:
 - Kith: `cargo tauri build --bundles app`
 - Kith Parent: `cargo tauri build --bundles app --config tauri.parent.conf.json`
 
+Building for Apple silicon fetches ONNX Runtime's prebuilt library once (the `ort` crate's `download-binaries`, from
+its maintainers' CDN), for Pip's Mac voice; it's linked into the app. The Kokoro model itself is never in the app (see
+"Pip and the Mac").
+
 For a quick run while working on the shell, use `cargo tauri dev` from the same folder. To see where each page goes
 (window or browser), start the app with `KITH_DEBUG=1`. It logs origins only, never paths or query strings, since
 sign-in URLs carry one-time codes and handoff ids:
@@ -371,6 +377,10 @@ notarise each update too (above).
 - **Developer ID signing and notarising** (see above): needs an Apple Developer account. Until then the apps are only
   signed ad hoc, so a downloaded copy needs Open Anyway once (see Install). Developer ID plus notarisation is the proper fix.
 - **Updates** are wired but off (see above): no update address or signing key yet.
+- **Pip's Mac voice on Intel Macs.** ONNX Runtime no longer ships a prebuilt library for Intel Macs, and the Intel Mac
+  mini at home managed only 0.76× real time, so Intel Macs use the home voice. Kokoro speaks only English here.
+- **Read aloud in the chat.** Pip's replies aren't read aloud outside calls yet; the Mac voice is used in calls and the
+  voice picker.
 
 ## The other way: bundle the client
 

@@ -11,7 +11,9 @@
 //   Pip adds is confirmed in a native prompt first;
 // - documents she picks or drops on the window (files.rs: text only, no photos);
 // - ⌃⌥Space from anywhere to call Pip;
-// - during a call, a small always-on-top window with Pip when she switches to another app (mini.rs).
+// - during a call, a small always-on-top window with Pip when she switches to another app (mini.rs);
+// - Pip's voice made on this Mac with Kokoro, fetched the first time it's wanted (voice.rs);
+// - whether Apple Music or Spotify is playing, so Pip can listen along (music.rs).
 //
 // The server: a build with a server baked in (mac/kith.config.json) is locked to it. Kith (the
 // child's) has no Change Server at all; Kith Parent can change it after a confirmation. Changing
@@ -27,12 +29,16 @@
 
 mod eventkit;
 mod files;
+#[cfg(target_arch = "aarch64")]
+mod kokoro;
 mod mini;
+mod music;
 mod native;
 mod net;
 mod notify;
 mod signin;
 mod updater;
+mod voice;
 mod who;
 
 use serde::{Deserialize, Serialize};
@@ -307,7 +313,19 @@ fn grant_native(app: &AppHandle, state: &State, origin: &str) {
     }
     // The mini call window (Kith.app only): the same server's /call-mini, with events (the call's
     // state from the main window), dragging itself, and its three buttons. Nothing else.
+    // And for the main window in Kith.app only: Pip's voice made here, and listening along.
     if !who::parent_edition(app) {
+        let child = CapabilityBuilder::new(format!("kith-child-{}", s.granted.len()))
+            .remote(format!("{origin}/*"))
+            .local(false)
+            .window(MAIN)
+            .permission("allow-voice-status")
+            .permission("allow-voice-prepare")
+            .permission("allow-voice-speak")
+            .permission("allow-music-watch");
+        if let Err(e) = app.add_capability(child) {
+            eprintln!("[kith] couldn't grant Pip's voice and music: {e}");
+        }
         let mini = CapabilityBuilder::new(format!("kith-mini-{}", s.granted.len()))
             .remote(format!("{origin}/*"))
             .local(false)
@@ -733,11 +751,17 @@ fn main() {
             mini::mini_mute,
             mini::mini_end,
             mini::mini_focus_main,
+            voice::voice_status,
+            voice::voice_prepare,
+            voice::voice_speak,
+            music::music_watch,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             let state: State = Arc::new(Mutex::new(Shell { config: load_config(&handle), ..Default::default() }));
             app.manage(state.clone());
+            app.manage(voice::Voice::new(&handle));
+            app.manage(music::Music::default());
             // Bind first: a lock held in the `if let` would still be held inside grant_native.
             let server = state.guard().config.server.clone();
             if let Some(server) = server {

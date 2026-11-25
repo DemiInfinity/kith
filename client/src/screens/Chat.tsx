@@ -6,6 +6,7 @@ import { dayLabel, EnergyCard } from "../components/bits";
 import type { AppState, Memory, PipChange, Profile } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
+import { musicForTurn } from "../lib/music";
 import { hasKana, parseLesson, say, voiceFor } from "../lib/kana";
 import { CharacterCard } from "../components/CharacterCard";
 import { refreshCharacters } from "../lib/characters";
@@ -231,7 +232,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     const temp: Message = { id: -Date.now(), ts: Date.now(), role: "child", text: shared ? `${body}\n\n📄 ${shared.name}` : body, mode, meta: null };
     setMessages((m) => [...(m ?? []), temp]);
     try {
-      const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined } });
+      const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined, music: musicForTurn() } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
       if (turn.effects.changes?.length) loadChanges();
       if (turn.effects.jobs.length || turn.effects.confirms?.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
