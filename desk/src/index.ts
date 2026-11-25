@@ -6,7 +6,7 @@ import type { BrowseRules } from "./rules.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
-import { act, browse, clearStorage, liveView, release, takeOver, takenOver } from "./browser.js";
+import { act, browse, clearStorage, sleep, liveView, release, takeOver, takenOver } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
@@ -80,6 +80,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (parts[1] === "action") return send(res, 200, await act(b as never));
         if (parts[1] === "release") { await release(); return send(res, 200, { ok: true }); }
+        if (parts[1] === "sleep") return send(res, 200, { slept: await sleep() });
         if (parts[1] === "clear") { await clearStorage(); return send(res, 200, { ok: true }); }
       } catch (err) {
         return send(res, 422, { error: (err as Error).message });

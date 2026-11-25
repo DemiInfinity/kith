@@ -62,6 +62,11 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const [item, setItem] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const [watch, setWatch] = useState(true);
+  // The screen sleeps (goes black) when nobody's looking; a click wakes it, and after two quiet
+  // minutes it sleeps again, unless someone is driving the browser.
+  const [awake, setAwake] = useState(false);
+  const lastPoke = useRef(Date.now());
+  const poke = () => { lastPoke.current = Date.now(); if (!awake) setAwake(true); };
   const [driving, setDriving] = useState(false);
   const me2 = useRef<string | null>(null);
   const lastSent = useRef(0);
@@ -144,7 +149,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   // Watching live (on by default): everyone looking at the desk sees the same screen and pointer,
   // refreshed every second, whether Pip, the child or the parent is driving.
   useEffect(() => {
-    if (!watch && !driving) return;
+    if ((!watch || !awake) && !driving) return;
     const t = setInterval(() => api<BrowserView>("/api/desk/browser").then((b) => {
       setBr((old) => {
         // Keep our own pointer while we drive; take everything else from the desk.
@@ -154,7 +159,19 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
       if (driving && b.live && b.live.takenOverBy !== me2.current) setDriving(false); // handed back, timed out, or someone else took over
     }).catch(() => undefined), 1000);
     return () => clearInterval(t);
-  }, [watch, driving]);
+  }, [watch, driving, awake]);
+  useEffect(() => {
+    if (!awake || driving) return;
+    const t = setInterval(() => {
+      if (Date.now() - lastPoke.current > 2 * 60_000) {
+        setAwake(false);
+        // The desk's browser can sleep too (it starts again when someone wakes the screen and uses it).
+        void api("/api/desk/browser/sleep", { body: {} }).catch(() => undefined);
+      }
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [awake, driving]);
+  useEffect(() => { if (driving) setAwake(true); }, [driving]);
 
   const items = desk?.items ?? [];
   const links = desk?.links ?? [];
@@ -322,7 +339,14 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             {power && <span className="pchip" style={{ background: power.mode === "full" ? "rgba(245,150,70,0.2)" : "rgba(156,194,232,0.2)", color: power.mode === "full" ? "#F7B57A" : "#B8D4F0" }}><Icon name={power.mode === "full" ? "fire" : power.mode === "low" ? "battery" : "moon"} size={14} /> {power.mode === "full" ? "Full power" : power.mode === "low" ? `Low power${power.fullBackAt ? ` until ${clock(power.fullBackAt)}` : ""}` : "Resting"}</span>}
             <b>{new Date(now).toLocaleDateString("en-GB", { weekday: "short" })} {clock(now)}</b>
           </div>
-          <div className={`pscreen ${win === "max" ? "hasmax" : ""}`}>
+          <div className={`pscreen ${win === "max" ? "hasmax" : ""}`} onPointerDown={poke} onKeyDown={poke} onWheel={poke}>
+            {!awake && (
+              <button className="psleep" onClick={(e) => { e.stopPropagation(); poke(); }} aria-label={`Wake ${name}’s computer`}>
+                <span className="zz" aria-hidden>z<small>z</small><small>z</small></span>
+                <b>{name}’s computer is asleep</b>
+                <span>{working ? `${name} is busy making ${working.title}. ` : br?.live?.takenOverBy ? `${br.live.takenOverBy} is using the browser. ` : br?.live?.busy ? `${name} is reading a page. ` : ""}Click to wake it.</span>
+              </button>
+            )}
             <div className="pfolders">
               {folders.map(([k, ic, label]) => (
                 <button key={k} className={`picon ${open === k ? "on" : ""}`} onClick={() => setOpen(k)} aria-pressed={open === k}><span><Icon name={ic} size={30} /></span><span>{label}</span></button>
@@ -376,7 +400,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             ) : (
               <>
                 <button className={`tbtn ${watch ? "on" : ""}`} aria-pressed={watch} onClick={() => setWatch(!watch)} title={watch ? "Watching live" : "Watch live"}><Icon name="eye" size={16} /><span className="tlabel">{watch ? "Live" : "Watch"}</span></button>
-                <button className="tbtn take" onClick={takeOver}><Icon name="joystick" size={16} />{br.live?.takenOverBy ? "Take over from " + br.live.takenOverBy : "Take over"}</button>
+                <button className="tbtn take" onClick={() => { poke(); void takeOver(); }}><Icon name="joystick" size={16} />{br.live?.takenOverBy ? "Take over from " + br.live.takenOverBy : "Take over"}</button>
               </>
             ))}
           </div>

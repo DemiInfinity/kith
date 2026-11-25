@@ -55,6 +55,7 @@ export class DeskClient {
   act(a: DeskAction) {
     return this.req<LiveView & { navigated: boolean }>("POST", "/browser/action", a, 30_000);
   }
+  sleepBrowser() { return this.req<{ slept: boolean }>("POST", "/browser/sleep", {}); }
   clearBrowser() { return this.req<{ ok: boolean }>("POST", "/browser/clear", {}, 30_000); }
   release() { return this.req<{ ok: boolean }>("POST", "/browser/release", {}); }
   live() { return this.req<LiveView>("GET", "/browser/live"); }

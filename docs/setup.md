@@ -204,6 +204,11 @@ The desk's browser reads web pages only for tasks the child asked for:
 
 To switch browsing off, untick it in the parent view.
 
+**Sleeping:** on the desk page the screen goes black after two quiet minutes and wakes with a click. The desk's
+browser shuts down too, and starts again when someone (or Pip) uses it, so an idle desk uses about 20 MB of memory
+instead of about 200 MB. The desk container itself stays up, because Kith reads the desk's files from it, and starting
+and stopping containers would mean giving Kith control of Docker (effectively root on the server).
+
 **If the desk can't save (an `EACCES` error in the desk's browser):** the `desk-data` volume was created by an older
 image as a different user. Give it to the desk's user once:
 

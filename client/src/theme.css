@@ -513,3 +513,12 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .dwin.maxwin .dshot { flex: 1; min-height: 0; aspect-ratio: auto; background: #1d1428; }
 .dwin.maxwin .screen169 { height: 100%; width: auto; max-width: 100%; }
 .dwin.maxwin .dwin-body { flex: 1; min-height: 0; }
+/* The sleeping screen: black over the desktop (the taskbar stays), click to wake. */
+.psleep { position: absolute; inset: 0; z-index: 8; border: 0; border-radius: inherit; background: #07050a; color: rgba(255,255,255,0.55); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font: inherit; font-size: 13px; cursor: pointer; text-align: center; padding: 20px; animation: sleepfade 0.6s ease; }
+.psleep b { color: rgba(255,255,255,0.8); font-size: 15px; }
+.psleep:hover b { color: #fff; }
+.psleep .zz { font-family: var(--hand, cursive); font-size: 34px; color: #D9A3E0; opacity: 0.8; animation: zz 2.4s ease-in-out infinite; }
+.psleep .zz small { font-size: 0.7em; margin-left: 2px; }
+@keyframes zz { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(-6px); opacity: 0.95; } }
+@keyframes sleepfade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .psleep, .psleep .zz { animation: none; } }

@@ -212,6 +212,10 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
   });
+  // The desk screen went to sleep in the app: let the desk close its browser if nobody's using it.
+  app.post("/api/desk/browser/sleep", { preHandler: either }, async () => {
+    try { return await studio.desk.sleepBrowser(); } catch { return { slept: false }; }
+  });
   // Forget what sites stored in the desk's browser (cookies, site data, history). Parent only.
   app.post("/api/parent/browser/clear", { preHandler: parent }, async (_req, reply) => {
     try { await studio.desk.clearBrowser(); } catch (err) { return reply.code(422).send({ error: (err as Error).message }); }

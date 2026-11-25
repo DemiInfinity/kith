@@ -117,8 +117,9 @@ async function newTab(): Promise<Page> {
 
 function keepAlive() {
   if (closeTimer) clearTimeout(closeTimer);
-  // Shut the browser after 10 quiet minutes (storage stays on disk); hand control back after 3.
-  closeTimer = setTimeout(() => void shutdown(), 10 * 60_000);
+  // Shut the browser after 3 quiet minutes (storage stays on disk, so nothing is lost); hand
+  // control back after 3 too. It starts again the next time anyone uses it.
+  closeTimer = setTimeout(() => void shutdown(), 3 * 60_000);
   if (driver) idleRelease();
 }
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -273,6 +274,13 @@ export async function release() {
   driver = null;
   if (releaseTimer) clearTimeout(releaseTimer);
   live = { ...live, why: "", busy: false };
+}
+
+/** The screen went to sleep: close the browser now if nobody's using it (it starts again on demand). */
+export async function sleep(): Promise<boolean> {
+  if (driver || live.busy || busyActing || !ctx) return false;
+  await shutdown();
+  return true;
 }
 
 /** Forget everything sites stored (cookies, site data, history) and close every tab. */
