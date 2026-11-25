@@ -42,6 +42,10 @@ Google. The helper never sees it. It only ever lets Kith ask for `drive.file`, `
      **Google Picker API** only.
 2. **Make a Vercel project** from this repo, with **Root Directory** set to `connect`. There's no framework and no
    build command; `vercel.json` sets everything else.
+   - Under **Settings › Git**, set the **Production Branch** to `connect`.
+   - Vercel only builds the `connect` branch, and only when something in `connect/` changed (`ignoreCommand` in
+     `vercel.json`). Pushes to `main` never deploy the helper.
+   - To ship a change, bring it onto the `connect` branch: `git checkout connect && git merge main && git push`.
 3. **Add the environment variables** (Project › Settings › Environment Variables). Put the secret ones in yourself;
    never commit them.
 
