@@ -1,5 +1,5 @@
-import { withApp, wrongAppWords } from "./lib/appHint";
-import { isInstalledApp, newHandoffId, prepareSignIn, preparedFresh, waitForHandoff, type PreparedSignIn } from "./lib/signin";
+import { appHint, withApp, wrongAppWords } from "./lib/appHint";
+import { handoffWords, isInstalledApp, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
@@ -114,16 +114,25 @@ function SignIn() {
     setHandoffErr("");
     const p = preparedFresh(prepared.current) ? prepared.current : null;
     prepared.current = null;
-    const id = p?.id ?? newHandoffId();
     const ctrl = new AbortController();
     setWaiting(ctrl);
-    if (p) window.open(p.url, "_blank");
-    else window.open(withApp(`/auth/login?handoff=${id}`), "kith-signin", "popup,width=520,height=760"); // an older server
+    let h: Handoff;
+    if (p) { h = p; window.open(p.url, "_blank"); }
+    else {
+      // Nothing ready (it failed earlier, or went stale): open the window now, inside the tap so
+      // Safari allows it, then start a handoff and send the window to it.
+      const w = window.open("", "kith-signin", "popup,width=520,height=760");
+      const started = await startHandoff(appHint());
+      if (!started) { w?.close(); setWaiting(null); setHandoffErr("Can’t reach home right now. Try again in a moment."); return; }
+      h = started;
+      const url = withApp(`/auth/login?handoff=${h.id}`);
+      if (w) w.location.href = url; else window.open(url, "kith-signin", "popup,width=520,height=760");
+    }
     void prepareSignIn().then((x) => { prepared.current = x; }); // ready for another try
-    const r = await waitForHandoff(id, ctrl.signal);
+    const r = await waitForHandoff(h, ctrl.signal);
     setWaiting(null);
     if (r.ok) { location.href = r.redirect; return; }
-    if (r.error !== "cancelled") setHandoffErr(wrongAppWords(r.error) ?? (r.error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : "Sign-in didn’t finish. Try again?"));
+    if (r.error !== "cancelled") setHandoffErr(handoffWords(r.error, wrongAppWords));
   };
   useEffect(() => { api<{ oidc: boolean; label: string; dev: boolean }>("/api/public/signin").then(setInfo).catch(() => undefined); }, []);
   return (
