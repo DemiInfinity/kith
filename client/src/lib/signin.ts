@@ -42,3 +42,27 @@ export async function waitForHandoff(id: string, signal: AbortSignal, fetchImpl:
   }
   return { ok: false, error: signal.aborted ? "cancelled" : "expired" };
 }
+
+/** A handoff got ready before the click: its id and the provider's sign-in address. */
+export type PreparedSignIn = { id: string; url: string; at: number };
+
+/**
+ * Asks the server for the provider's address ahead of time, so the click can open it at once:
+ * Safari blocks windows opened after a wait, and only a page outside the app (the provider's)
+ * opens in the browser rather than in a popup inside the installed app. `null` if the server
+ * can't (an older one redirects instead, and this fetch fails).
+ */
+export async function prepareSignIn(fetchImpl: typeof fetch = fetch): Promise<PreparedSignIn | null> {
+  const id = newHandoffId();
+  try {
+    const r = await fetchImpl(`/auth/login?handoff=${id}&json=1`, { credentials: "same-origin", cache: "no-store" });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { url?: unknown };
+    return typeof j.url === "string" && /^https?:\/\//.test(j.url) ? { id, url: j.url, at: Date.now() } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The server keeps a sign-in's state for 15 minutes; use a prepared one for 10. */
+export const preparedFresh = (p: PreparedSignIn | null, now = Date.now()): p is PreparedSignIn => p !== null && now - p.at < 10 * 60_000;

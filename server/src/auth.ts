@@ -141,6 +141,10 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       state,
       nonce,
     });
+    // An installed web app asks for the address ahead of time (json=1) so the click can open it
+    // straight away in the browser: Safari blocks windows opened after a wait, and only a page
+    // outside the app (the provider's) opens in the browser rather than inside the app.
+    if (handoffId && (req.query as { json?: string }).json === "1") return { url: url.href };
     return reply.redirect(url.href);
   });
 

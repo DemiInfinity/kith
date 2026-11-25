@@ -171,6 +171,25 @@ describe("signing in with Pocket ID", () => {
       expect((await first.app.inject({ method: "GET", url: "/auth/handoff/short" })).statusCode).toBe(400);
       expect((await first.app.inject({ method: "GET", url: "/auth/login?handoff=bad!" })).statusCode).toBe(400);
     });
+    it("gives the provider's address as JSON for the app to open in the browser, and that sign-in still hands over", async () => {
+      const id = newId();
+      const db = openDb(":memory:");
+      const app = Fastify();
+      await app.register(cookie);
+      registerAuth(app, db);
+      const r = await app.inject({ method: "GET", url: `/auth/login?handoff=${id}&json=1` });
+      expect(r.statusCode).toBe(200);
+      const auth = new URL(r.json().url);
+      expect(auth.origin + auth.pathname).toBe(`${issuer}/authorize`);
+      user = { sub: "u-123", groups: ["kith-child"] };
+      const code = crypto.randomBytes(8).toString("hex");
+      codes.set(code, { challenge: auth.searchParams.get("code_challenge")!, nonce: auth.searchParams.get("nonce")! });
+      const back = await app.inject({ method: "GET", url: `/auth/callback?code=${code}&state=${auth.searchParams.get("state")}&iss=${encodeURIComponent(issuer)}` });
+      expect(back.headers.location).toBe("/?signin=done");
+      expect((await app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ ok: true, redirect: "/" });
+      // Without a handoff, json=1 changes nothing.
+      expect((await app.inject({ method: "GET", url: "/auth/login?json=1" })).statusCode).toBe(302);
+    });
     it("never stores the id itself, or puts a session id in a URL", async () => {
       const id = newId();
       const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, id);

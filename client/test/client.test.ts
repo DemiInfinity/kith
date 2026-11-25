@@ -83,4 +83,19 @@ describe("signing in from an installed app", () => {
     expect(await p).toEqual({ ok: false, error: "not-allowed" });
     vi.useRealTimers();
   });
+  it("gets the provider's address ready before the click, and copes with an older server", async () => {
+    const { prepareSignIn, preparedFresh } = await import("../src/lib/signin");
+    const seen: string[] = [];
+    const ok = (async (url: string) => { seen.push(url); return { ok: true, status: 200, json: async () => ({ url: "https://auth.example.com/authorize?state=s" }) } as Response; }) as unknown as typeof fetch;
+    const p = await prepareSignIn(ok);
+    expect(p?.url).toBe("https://auth.example.com/authorize?state=s");
+    expect(seen[0]).toBe(`/auth/login?handoff=${p!.id}&json=1`);
+    expect(preparedFresh(p)).toBe(true);
+    expect(preparedFresh(p, p!.at + 11 * 60_000)).toBe(false);
+    // An older server redirects to the provider, which the fetch can't follow.
+    const old = (async () => { throw new TypeError("Load failed"); }) as unknown as typeof fetch;
+    expect(await prepareSignIn(old)).toBeNull();
+    const odd = (async () => ({ ok: true, status: 200, json: async () => ({ url: "javascript:alert(1)" }) }) as Response) as unknown as typeof fetch;
+    expect(await prepareSignIn(odd)).toBeNull();
+  });
 });

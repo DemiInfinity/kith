@@ -1,4 +1,4 @@
-import { isInstalledApp, newHandoffId, waitForHandoff } from "./lib/signin";
+import { isInstalledApp, newHandoffId, prepareSignIn, preparedFresh, waitForHandoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
@@ -44,15 +44,29 @@ function SignIn() {
   const [waiting, setWaiting] = useState<AbortController | null>(null);
   const [handoffErr, setHandoffErr] = useState("");
   const reason = new URLSearchParams(location.search).get("signin");
-  // In an installed app, sign-in happens in a separate window and the session is handed over here.
+  // In an installed app, sign-in happens in the browser (passkeys work there) and the session is
+  // handed over here. The provider's address is got ready before the click, so the click opens it
+  // straight away in a normal browser tab.
+  const prepared = useRef<PreparedSignIn | null>(null);
+  useEffect(() => {
+    if (!isInstalledApp() || !info?.oidc) return;
+    const get = () => void prepareSignIn().then((p) => { prepared.current = p; });
+    get();
+    const t = setInterval(get, 9 * 60_000);
+    return () => clearInterval(t);
+  }, [info?.oidc]);
   const signInFromApp = async (e: React.MouseEvent) => {
     if (!isInstalledApp()) return; // a normal browser tab: just follow the link
     e.preventDefault();
     setHandoffErr("");
-    const id = newHandoffId();
+    const p = preparedFresh(prepared.current) ? prepared.current : null;
+    prepared.current = null;
+    const id = p?.id ?? newHandoffId();
     const ctrl = new AbortController();
     setWaiting(ctrl);
-    window.open(`/auth/login?handoff=${id}`, "kith-signin", "popup,width=520,height=760");
+    if (p) window.open(p.url, "_blank");
+    else window.open(`/auth/login?handoff=${id}`, "kith-signin", "popup,width=520,height=760"); // an older server
+    void prepareSignIn().then((x) => { prepared.current = x; }); // ready for another try
     const r = await waitForHandoff(id, ctrl.signal);
     setWaiting(null);
     if (r.ok) { location.href = r.redirect; return; }
@@ -72,7 +86,7 @@ function SignIn() {
         {waiting && (
           <div className="stack" style={{ alignItems: "center" }}>
             <span className="typing" aria-hidden><i /><i /><i /></span>
-            <span>Finish signing in in the window that opened, then come back here.</span>
+            <span>Finish signing in in your browser, then come back here.</span>
             <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
           </div>
         )}

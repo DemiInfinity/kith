@@ -273,10 +273,17 @@ Help in the parent view.
 ## Signing in from an installed app
 
 When Kith is added to the Dock (Safari › File › Add to Dock) or to an iPhone Home Screen, the sign-in page (Pocket
-ID) is outside the app, so the system opens it in a separate window, and that window may not share cookies with the
-app. Kith handles this itself: the app opens sign-in in a window with a random one-time id, and waits. When sign-in
-finishes, that window says "You're signed in" and closes (or asks you to close it), and the app collects the session
-once (within 2 minutes) and carries on. In a normal browser tab, sign-in works as before. Nothing to set up.
+ID) is outside the app, and its passkeys need a real browser. Kith handles this itself:
+
+1. When the sign-in page shows, the app gets Pocket ID's address ready with a random one-time id
+   (`/auth/login?handoff=<id>&json=1`).
+2. "Sign in with Pocket ID" opens that address in a normal browser tab, not a popup. Safari blocks windows that open
+   after a wait, which is why the address is fetched in advance.
+3. When sign-in finishes, the tab says "You're signed in", and the app collects the session once (within 2 minutes)
+   and carries on.
+
+An older server falls back to a sign-in popup. In a normal browser tab, sign-in works as before. The Mac app (`mac/`)
+does the same from its own window (docs/macos.md). Nothing to set up.
 
 ## Light and full
 
