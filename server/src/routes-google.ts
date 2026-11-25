@@ -36,6 +36,23 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
     };
   });
 
+  // The parent's setup guide: the exact addresses and scopes this Kith needs, and what's set so far.
+  // Every family makes their own Google client (no shared secrets); this makes that a checklist.
+  app.get("/api/parent/google/setup", { preHandler: requireRole("parent") }, async () => {
+    const f = loadParentSettings(db).connections.find((c) => c.kind === "google-drive")?.features;
+    const origin = config.publicUrl;
+    return {
+      origin, redirectUri: `${origin}/auth/google/callback`, https: origin.startsWith("https://"),
+      apis: ["Google Drive API", "Google Docs API", "Google Sheets API", "Google Slides API", "Google Picker API", ...(f?.calendar ? ["Google Calendar API"] : []), ...(f?.tasks ? ["Google Tasks API"] : [])],
+      scopes: scopesFor(f).map((s) => (s === "email" ? "https://www.googleapis.com/auth/userinfo.email" : s)),
+      sensitive: [...(f?.calendar ? [CALENDAR_SCOPE] : []), ...(f?.tasks ? [TASKS_SCOPE] : [])],
+      status: {
+        client: googleConfigured(), secretKey: !!process.env.KITH_SECRET_KEY, picker: !!config.google.pickerApiKey && !!config.google.appId,
+        account: config.google.expectedEmail, connected: !!loadGoogle(db),
+      },
+    };
+  });
+
   // The child connects their own Google account (once). PKCE + state; the code comes back to the server.
   app.post("/api/google/connect", { preHandler: child }, async (_req, reply) => {
     if (!googleConfigured()) return reply.code(503).send({ error: "Google isn't set up on this Kith yet (see docs/google.md)." });

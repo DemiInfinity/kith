@@ -135,6 +135,62 @@ function ParentLanguages({ child, companion }: { child: string; companion: strin
   );
 }
 
+interface GoogleSetup {
+  origin: string; redirectUri: string; https: boolean; apis: string[]; scopes: string[]; sensitive: string[];
+  status: { client: boolean; secretKey: boolean; picker: boolean; account: string; connected: boolean };
+}
+
+/** Every family makes their own Google client (no shared secrets). This walks you through it with
+ *  this Kith's exact addresses and scopes, and ticks off what's already set. */
+function GoogleSetupGuide() {
+  const [g, setG] = useState<GoogleSetup | null>(null);
+  const [copied, setCopied] = useState("");
+  useEffect(() => { api<GoogleSetup>("/api/parent/google/setup").then(setG).catch(() => undefined); }, []);
+  if (!g) return null;
+  const copy = async (text: string) => { try { await navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(""), 1500); } catch { /* select it by hand */ } };
+  const Val = ({ v }: { v: string }) => (
+    <span className="row" style={{ gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <code className="gcode">{v}</code>
+      <button type="button" className="chip" style={{ minHeight: 28 }} onClick={() => void copy(v)}>{copied === v ? "Copied" : "Copy"}</button>
+    </span>
+  );
+  const Tick = ({ ok, children }: { ok: boolean; children: React.ReactNode }) => (
+    <span className="row" style={{ gap: 6, alignItems: "center" }}><Icon name={ok ? "check" : "warn"} size={16} /><span className="small">{children}</span></span>
+  );
+  return (
+    <details className="gsetup">
+      <summary><b>Set up Google, step by step</b> <span className="small">· about 15 minutes, once</span></summary>
+      <div className="stack" style={{ gap: 6, marginTop: 8 }}>
+        <Tick ok={g.status.client}>Google client {g.status.client ? "is set" : "not set yet"}</Tick>
+        <Tick ok={g.status.secretKey}>Encryption key (KITH_SECRET_KEY) {g.status.secretKey ? "is set" : "not set: scripts/setup-secrets.sh makes it"}</Tick>
+        <Tick ok={g.status.picker}>Google Picker {g.status.picker ? "is set" : "not set (optional, for picking files)"}</Tick>
+        <Tick ok={g.status.connected}>{g.status.connected ? "Your child has connected" : "Your child hasn’t connected yet"}{g.status.account ? ` (only ${g.status.account} is allowed)` : ""}</Tick>
+        {!g.https && <div className="pwarn"><Icon name="warn" size={18} /><span>Google needs Kith on an https:// address. Set KITH_PUBLIC_URL to it first (it’s {g.origin} now).</span></div>}
+      </div>
+      <ol className="gsteps">
+        <li>In the <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noreferrer">Google Cloud console</a>, make a project called “Kith”.</li>
+        <li>In <a href="https://console.cloud.google.com/apis/library" target="_blank" rel="noreferrer">APIs &amp; Services › Library</a>, turn on: {g.apis.join(", ")}.</li>
+        <li>In <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noreferrer">Google Auth Platform</a>: Branding (app name “Kith”, your email), Audience <b>External</b> and leave it in <b>Testing</b>, then <b>Test users</b>: add your child’s Google account.</li>
+        <li>In <b>Data access › Add or remove scopes</b>, add exactly these (nothing should land under “restricted”):
+          <div className="stack" style={{ gap: 4, marginTop: 4 }}>{g.scopes.map((s) => <Val key={s} v={s} />)}</div>
+          {g.sensitive.length > 0 && <span className="small">Calendar and Tasks show as “sensitive”. That’s fine in Testing; publishing with them needs Google’s review.</span>}
+        </li>
+        <li>In <b>Clients › Create client</b>, choose <b>Web application</b>, then add:
+          <div className="stack" style={{ gap: 4, marginTop: 4 }}>
+            <span className="small">Authorised JavaScript origin</span><Val v={g.origin} />
+            <span className="small">Authorised redirect URI</span><Val v={g.redirectUri} />
+          </div>
+          Copy the client ID and secret straight into the next step; Google shows the secret only once.
+        </li>
+        <li>Optional, so your child can hand Kith a file: <b>Credentials › Create credentials › API key</b>, restricted to the Google Picker API and to websites <code className="gcode">{g.origin}/*</code>. Note the project number on the project’s dashboard.</li>
+        <li>On the server, run <code className="gcode">scripts/setup-secrets.sh</code>, answer y to “Set up Google now?”, paste them in, and restart Kith.</li>
+        <li>Switch Google on above. Your child opens Settings › Google › Connect my Google account.</li>
+      </ol>
+      <span className="small">While the app is in Testing, Google asks your child to connect again every 7 days. Full details: docs/google.md.</span>
+    </details>
+  );
+}
+
 /** A short private test chat: proves the companion really answers, through the same safety check. */
 function TestChat({ name, ready, onNeedKey }: { name: string; ready: boolean; onNeedKey: () => void }) {
   const [msgs, setMsgs] = useState<TestMsg[]>([]);
@@ -578,6 +634,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
                   <Toggle label={<>Their Google Calendar <span className="small">· read events; add ones they confirm; only change or remove Kith’s own; never guests or emails</span></>} checked={f.calendar} onChange={(v) => setF({ calendar: v })} />
                   <Toggle label={<>A Homework list in Google Tasks <span className="small">· read, add and tick off, with their yes</span></>} checked={f.tasks} onChange={(v) => setF({ tasks: v })} />
                   <span className="small">Calendar and Tasks need the child to connect Google again after you switch them on, so Google can ask them. Gmail, contacts, photos and Classroom are never used.</span>
+                  <GoogleSetupGuide />
                 </div>
               );
             })()}
