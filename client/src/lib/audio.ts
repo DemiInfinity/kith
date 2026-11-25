@@ -90,6 +90,8 @@ export async function playWithMouth(wav: Blob, onMouth: (open: number) => void, 
   const ctx = shared && shared.state !== "closed" ? shared : new AudioContext();
   try {
     if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+    // Never hang silently: if the browser won't let sound start, say so instead of waiting forever.
+    if (ctx.state !== "running") throw new Error("sound-blocked");
     const buf = await ctx.decodeAudioData(await wav.arrayBuffer());
     if (signal?.aborted) return;
     const src = ctx.createBufferSource();

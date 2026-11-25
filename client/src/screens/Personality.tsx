@@ -66,24 +66,33 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
   const onMac = isChildMacApp() && macVoiceOffered(macVoice);
   const [macPick, setMacPick] = useState(savedMacVoice);
   useEffect(() => { if (isChildMacApp()) prepareMacVoice(); }, []);
+  // Sound has to be switched on during the tap itself (the Mac's web view, like Safari, won't start
+  // audio a few seconds later, once the voice has finished making it), then played into.
+  const soundOn = () => { const ctx = new AudioContext(); void ctx.resume().catch(() => undefined); return ctx; };
   const previewMac = async (id: string) => {
     setMacPick(id);
     saveMacVoice(id);
     if (macVoice.phase !== "ready") { prepareMacVoice(); return; }
+    const ctx = soundOn();
     setPlaying(id);
-    try { await speakOnMac(sampleLine(p), setMouth, undefined, undefined, id); } catch { /* picking still works */ } finally { setPlaying(""); }
+    try {
+      const where = await speakOnMac(sampleLine(p), setMouth, undefined, ctx, id);
+      if (where === "home") await playWithMouth(await api<Blob>("/api/voice/tts", { body: { preview: p.voice } }), setMouth, undefined, ctx);
+    } catch { /* picking still works */ } finally { setPlaying(""); void ctx.close().catch(() => undefined); }
   };
 
   const preview = async (voice: string) => {
     set({ voice });
+    const ctx = soundOn();
     setPlaying(voice);
     try {
       const wav = await api<Blob>("/api/voice/tts", { body: { preview: voice } });
-      await playWithMouth(wav, setMouth);
+      await playWithMouth(wav, setMouth, undefined, ctx);
     } catch {
       /* voices not set up yet: picking still works */
     } finally {
       setPlaying("");
+      void ctx.close().catch(() => undefined);
     }
   };
 
