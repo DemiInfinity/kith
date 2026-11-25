@@ -206,7 +206,7 @@ async function generateReply(
   const now = localParts(Date.now(), config.timezone);
   const system: Anthropic.TextBlockParam[] = [
     // 1. Safeguards: always first, and they win over everything after them.
-    { type: "text", text: safeguards(ctx, settings.safeguards), cache_control: { type: "ephemeral" } },
+    { type: "text", text: safeguards(ctx, settings.safeguards, settings.safeguardsDoc), cache_control: { type: "ephemeral" } },
     // 2. Who the companion is, in the child's words (soul.md, identity.md) and what it remembers (memory.md).
     {
       type: "text",

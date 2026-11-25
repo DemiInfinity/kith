@@ -720,3 +720,44 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .composewrap .slashmenu { animation: popin 0.14s ease; }
 @keyframes popin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cmdpop, .composewrap .slashmenu { animation: none; } }
+/* ── First-use wizard ─────────────────────────────────────────────────────────────── */
+.wizard { flex: 1; min-height: 0; overflow-y: auto; width: 100%; max-width: 520px; margin: 0 auto; padding: calc(18px + var(--safe-top)) 22px calc(24px + var(--safe-bottom)); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.wiz-top { align-self: stretch; display: flex; align-items: center; justify-content: space-between; min-height: 36px; }
+.wiz-dots { display: flex; gap: 6px; }
+.wiz-dots span { width: 8px; height: 8px; border-radius: 999px; background: var(--card-hi); transition: width 0.3s ease, background 0.3s ease; }
+.wiz-dots span.done { background: var(--lilac-soft); }
+.wiz-dots span.on { width: 24px; background: var(--lilac); }
+.wiz-pal { margin-top: 4px; }
+.wiz-body { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; animation: wizin 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+.wiz-body h2 { font-size: 28px; line-height: 1.15; margin: 0; }
+.wiz-body p { margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--text-2); }
+.wiz-name { text-align: center; font-family: var(--serif); font-size: 28px; font-weight: 600; border-color: var(--lilac); border-width: 2px; min-height: 60px; max-width: 320px; }
+.wiz-say { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); font-size: 15px; font-style: italic; color: var(--text-2); }
+.wiz-voices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.wiz-voices .look { aspect-ratio: auto; min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-weight: 800; font-size: 14px; }
+.wiz-safe { display: flex; flex-direction: column; gap: 10px; text-align: left; width: 100%; }
+.wiz-safe > span { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: var(--card); font-size: 14.5px; line-height: 1.45; }
+.wiz-safe > span > .navicon { color: var(--lilac); flex: none; margin-top: 1px; }
+.wiz-next { margin-top: auto; min-height: 54px; font-size: 17px; max-width: 360px; }
+@keyframes wizin { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .wiz-body { animation: none; } }
+.hbcard { gap: 10px; border: 1px solid rgba(217,163,224,0.35); background: radial-gradient(ellipse at 0% 0%, rgba(217,163,224,0.12), transparent 60%), var(--card); }
+.hbpulse { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: rgba(217,163,224,0.16); color: var(--lilac); animation: hbbeat 1.6s ease-in-out infinite; }
+@keyframes hbbeat { 0%, 60%, 100% { transform: scale(1); } 15% { transform: scale(1.12); } 30% { transform: scale(0.98); } 45% { transform: scale(1.08); } }
+.hblock { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--card-2); color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .hbpulse { animation: none; } }
+/* ── Help centres ─────────────────────────────────────────────────────────────────── */
+.helpc { display: flex; flex-direction: column; gap: 16px; grid-column: 1 / -1; }
+.helpc-search { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--lilac); }
+.helpc-search .input { border: 0; background: transparent; padding-left: 0; }
+.helpc-topics { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.helpc.kid .helpc-topics { grid-template-columns: 1fr; }
+.helpc-topic { gap: 6px; }
+.helpc-item { border-top: 1px solid var(--line-soft); }
+.helpc-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 2px; border: 0; background: none; color: var(--text); font: inherit; font-size: 15px; font-weight: 800; text-align: left; cursor: pointer; }
+.helpc.kid .helpc-q { font-size: 16px; }
+.helpc-a { padding: 0 2px 12px; font-size: 14.5px; line-height: 1.6; color: var(--text-2); animation: popin 0.18s ease; }
+.helpc-a p { margin: 0 0 8px; }
+.helpc-a p:last-child { margin: 0; }
+.hc-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; padding: 1px 5px; border-radius: 5px; background: var(--card-2); color: var(--lilac-soft); }
+@media (max-width: 760px) { .helpc-topics { grid-template-columns: 1fr; } }

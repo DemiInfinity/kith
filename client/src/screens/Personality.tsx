@@ -5,7 +5,7 @@ import { Avatar, LookIcon } from "../components/Avatar";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
 
-const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"];
+export const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"];
 
 export function sampleLine(p: Profile): string {
   if (p.traits.includes("Funny")) return "Fractions again? Easy. We’ll have them sorted faster than you can say “lowest common denominator”. Probably. 😄";

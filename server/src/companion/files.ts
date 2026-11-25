@@ -8,7 +8,7 @@
 import type { DB } from "../db.js";
 import { config } from "../config.js";
 import { loadParentSettings, loadProfile } from "../settings.js";
-import { DEFAULT_SOUL, safeguards, type PromptCtx } from "./prompt.js";
+import { DEFAULT_SOUL, safeguards, type PromptCtx, coreRules } from "./prompt.js";
 import { listMemories } from "./memory.js";
 import { loadRolling } from "./context.js";
 
@@ -44,5 +44,6 @@ export function companionFiles(db: DB, childName: string) {
 /** For the parent view: the built-in safeguards (read-only) and the family ones they've added. */
 export function safeguardsDoc(db: DB, childName: string) {
   const ctx = ctxFor(db, childName);
-  return { builtIn: safeguards(ctx, ""), family: loadParentSettings(db).safeguards };
+  const s = loadParentSettings(db);
+  return { builtIn: coreRules(ctx), custom: s.safeguardsDoc, family: s.safeguards };
 }

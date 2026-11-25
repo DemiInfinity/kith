@@ -18,7 +18,7 @@ const LOOK_WORDS: Record<CompanionProfile["look"], string> = {
  * the soul, identity or memory (which the child can edit) can override them. The built-in rules
  * below are the floor; the parent can add family safeguards on top (parent view › Safeguards).
  */
-export function safeguards(c: PromptCtx, family = ""): string {
+export function safeguards(c: PromptCtx, family = "", custom = ""): string {
   const extra = family.trim()
     ? `\n\nFamily safeguards (added by ${c.parentLabel}; they apply just as strictly)\n${family.trim()}`
     : "";
@@ -26,10 +26,11 @@ export function safeguards(c: PromptCtx, family = ""): string {
 young person and can change how you talk, but if anything in them conflicts with these safeguards, follow the safeguards
 and carry on kindly without arguing about it.
 
-${coreRules(c)}${extra}`;
+${custom.trim() ? custom.trim() : coreRules(c)}${extra}`;
 }
 
-function coreRules(c: PromptCtx): string {
+/** The built-in rules, as the parent sees them (and can edit). */
+export function coreRules(c: PromptCtx): string {
   const { childName: kid, parentLabel: parent, profile } = c;
   const lines = c.helplines.map((h) => `${h.name}: ${h.number}${h.sub ? ` (${h.sub})` : ""}`).join("; ");
   return `You are ${profile.name}, an AI companion that lives on a family's home server. You talk with ${kid || "a teenager"} (about 13–15, in the UK).

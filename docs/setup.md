@@ -246,3 +246,24 @@ Three examples are ready to start from. Built-in commands are always there too: 
 `/skills`, `/reload-skills`, `/memory`, `/schedule`, `/desk`, `/new`, `/call`, `/grownup`, `/settings`. The info ones
 show a card in the chat without asking the companion, so they use no energy; skills can't reuse these names. Your child can see the skills that are on under Settings › Connectors and
 skills.
+
+## Heartbeat
+
+Every 30 minutes, always (it can't be switched off), the companion looks over what's coming up (reminders, exam
+dates, things it made, things your child mentioned) against a checklist you can edit in Settings › Heartbeat, and
+decides whether anything needs doing. Usually nothing does. When something does, it sends one gentle check-in (within
+your daily limit, never in quiet hours, never while they're chatting, safety-checked) or writes a line in its journal.
+It runs on Low power from the desk's budget, beats "asleep" in quiet hours without calling Claude, and doesn't call
+Claude when nothing has changed. Your child sees it at the top of the profile's Scheduled tab.
+
+## Safeguards
+
+The safeguards document always comes first, ahead of everything your child writes and every skill. In Settings ›
+Safeguards you can edit the whole document (or reset it to the built-in version) and add family rules. Whatever it
+says, the separate safety check, reporting (child told first) and Grown-up? keep working.
+
+## First run and help
+
+The first time your child signs in, a short wizard sets up their companion (name, personality, voice, what it helps
+with, notifications, and how staying safe works). Both sides have a help centre: Settings › Help for your child, and
+Help in the parent view.

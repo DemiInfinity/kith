@@ -5,6 +5,7 @@ import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
 import { ParentSkills } from "./ParentSkills";
+import { ParentHelp } from "./HelpCentre";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
@@ -14,7 +15,7 @@ const CATEGORIES: [Category, string][] = [
   ["adult", "Adult and explicit"], ["gambling", "Gambling"], ["dating", "Dating"], ["social", "Social media and stranger chat"],
   ["harm", "Weapons, drugs, gore and self-harm"], ["proxies", "Proxies, VPNs and ways around filters"],
 ];
-interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
+interface Settings { safeguardsDoc: string; heartbeat: { checklist: string }; budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
   desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
@@ -49,6 +50,17 @@ function money(n: number, cap: number) {
       <span className="spread"><b>{$(n)}</b><span className="small">of {$(cap)}</span></span>
       <span className="bar" style={{ height: 8 }}><span style={{ width: `${pct}%`, background: pct > 85 ? "var(--ember)" : "var(--lilac)" }} /></span>
     </span>
+  );
+}
+
+function HeartbeatLog() {
+  const [b, setB] = useState<{ last: { ts: number; outcome: string; note: string } | null; recent: { ts: number; outcome: string; note: string }[] } | null>(null);
+  useEffect(() => { api<typeof b>("/api/heartbeat").then(setB).catch(() => undefined); }, []);
+  if (!b?.recent.length) return <span className="small">No beats yet: the first one happens within half an hour.</span>;
+  return (
+    <details><summary className="small" style={{ cursor: "pointer", fontWeight: 800 }}>Recent beats</summary>
+      <table className="money"><tbody>{b.recent.map((x) => <tr key={x.ts}><td>{when(x.ts)}</td><td>{x.outcome}</td><td>{x.note}</td></tr>)}</tbody></table>
+    </details>
   );
 }
 
@@ -104,6 +116,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   const [msg, setMsg] = useState("");
   const [builtIn, setBuiltIn] = useState("");
   useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
+  const docText = s.safeguardsDoc || builtIn;
   const b = s.budgets;
   const setB = (k: keyof Budgets, v: number) => setS({ ...s, budgets: { ...b, [k]: v } });
   const setC = (i: number, patch: Partial<Connection>) => setS({ ...s, connections: s.connections.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
@@ -124,13 +137,20 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
       {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-budgets", "fire", "Budgets"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
+        {([["set-claude", "sparkle", "Claude"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
       </nav>}
       <div className="psec-list">
         {section === "settings" && <>
         <ApiKeyCard onChanged={onSaved} />
+        <section className="card psec" id="set-heartbeat">
+          <h3 className="psec-h"><span className="psec-ic"><Icon name="heart" size={18} /></span>Heartbeat</h3>
+          <span className="small">Every 30 minutes, always (it can’t be switched off), the companion quietly looks over what’s coming up (reminders, exam dates, things it made, what your child mentioned) against this checklist, and decides whether anything needs doing. Usually nothing does; when something does, it either sends one gentle check-in (within your daily limit, never in quiet hours, never while they’re chatting, safety-checked) or writes a line in its journal. It runs on Low power from the desk’s budget, beats “asleep” in quiet hours without calling Claude, and skips calling Claude when nothing has changed.</span>
+          <label className="field">What it keeps an eye on
+            <textarea className="textarea" style={{ minHeight: 140 }} maxLength={2000} value={s.heartbeat.checklist} onChange={(e) => setS({ ...s, heartbeat: { checklist: e.target.value } })} /></label>
+          <HeartbeatLog />
+        </section>
       <section className="card psec" id="set-budgets">
         <h3 className="psec-h"><span className="psec-ic"><Icon name="fire" size={18} /></span>Budgets</h3>
         <span className="small">The monthly cap that really protects you is set on the API organisation in the Anthropic Console (Settings › Limits). Kith stops everything at the hard stop below, a little under that cap. Until then, when Full power runs out it switches to Low power instead of stopping.</span>
@@ -181,9 +201,13 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
       <section className="card psec" id="set-safeguards">
         <h3 className="psec-h"><span className="psec-ic"><Icon name="shield" size={18} /></span>Safeguards</h3>
         <span className="small">These always come first, ahead of the soul, personality and memory your child writes, and nothing they write can override them. They aren’t shown on your child’s profile; it just says safety rules sit underneath. The safety check on every message runs separately as well.</span>
-        <details><summary className="small" style={{ cursor: "pointer" }}>Built-in safeguards (always on)</summary>
-          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: "var(--text-3)", fontFamily: "var(--sans)" }}>{builtIn}</pre>
-        </details>
+        <label className="field">
+          <span className="spread"><span>The safeguards document {s.safeguardsDoc ? <span className="pcmd">edited</span> : <span className="small">(the built-in version)</span>}</span>
+            {s.safeguardsDoc && <button type="button" className="btn ghost small" onClick={() => { if (confirm("Go back to the built-in safeguards?")) setS({ ...s, safeguardsDoc: "" }); }}>Reset to the built-in version</button>}</span>
+          <textarea className="textarea" style={{ minHeight: 260, fontSize: 13.5, lineHeight: 1.5 }} maxLength={12000} value={docText}
+            onChange={(e) => setS({ ...s, safeguardsDoc: e.target.value === builtIn ? "" : e.target.value })} />
+        </label>
+        <div className="pwarn"><Icon name="shield" size={18} /><span>Edit with care: this is what keeps the companion’s behaviour safe. Whatever it says, every message is still checked by the separate safety check, worries are still reported (and your child is told first), and Grown-up?, Childline and 999 always work.</span></div>
         <label className="field">Family safeguards you add (they apply just as strictly)
           <textarea className="textarea" style={{ minHeight: 120 }} maxLength={4000} value={s.safeguards} onChange={(e) => setS({ ...s, safeguards: e.target.value })}
             placeholder={"e.g.\n- Only your bedroom lights, never other rooms.\n- No horror stories after 8pm.\n- Encourage time outside at weekends."} />
@@ -274,8 +298,8 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   );
 }
 
-type PTab = "overview" | "reports" | "desk" | "connectors" | "skills" | "settings";
-const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["connectors", "sparkle", "Connectors"], ["skills", "bulb", "Skills"], ["settings", "settings", "Settings"]];
+type PTab = "overview" | "reports" | "desk" | "connectors" | "skills" | "settings" | "help";
+const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["connectors", "sparkle", "Connectors"], ["skills", "bulb", "Skills"], ["settings", "settings", "Settings"], ["help", "question", "Help"]];
 
 function Tile({ icon, label, value, cap, sub }: { icon: IconName; label: string; value: number; cap: number; sub: React.ReactNode }) {
   const pct = cap > 0 ? Math.min(100, (value / cap) * 100) : 0;
@@ -427,6 +451,7 @@ export function Parent({ me }: { me: Me }) {
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
           {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} />}
+          {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
           {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}
         </div>

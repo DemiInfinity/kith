@@ -80,6 +80,12 @@ export const BrowserSettings = z.object({
 });
 export type BrowserSettings = z.infer<typeof BrowserSettings>;
 
+export const DEFAULT_HEARTBEAT = `- A reminder or exam coming up soon that they might like a heads-up about.
+- Something they said was happening today (a test, a match, a show): maybe ask how it went, later.
+- Something you made on the desk that's ready and they haven't seen.
+- Revising late at night: suggest a break or bed.
+Most of the time, nothing needs doing. Never message just to chat.`;
+
 export const ParentSettings = z.object({
   budgets: Budgets.default(Budgets.parse({})),
   quietHours: z
@@ -95,6 +101,14 @@ export const ParentSettings = z.object({
   browser: BrowserSettings.default(BrowserSettings.parse({})),
   // Family safeguards the parent adds on top of the built-in ones. Not shown on the child's profile.
   safeguards: z.string().max(4000).default(""),
+  // The parent's own version of the built-in safeguards (empty = use the built-in ones). The code-level
+  // safety checks, reporting and Grown-up? run whatever this says.
+  safeguardsDoc: z.string().max(12000).default(""),
+  // The heartbeat always runs, every 30 minutes, and can't be switched off. The parent can edit what
+  // it keeps an eye on.
+  heartbeat: z.object({
+    checklist: z.string().max(2000).default(DEFAULT_HEARTBEAT),
+  }).default({ checklist: DEFAULT_HEARTBEAT }),
 });
 export type ParentSettings = z.infer<typeof ParentSettings>;
 

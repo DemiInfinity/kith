@@ -20,6 +20,7 @@ import { purgeHistory } from "./companion/history.js";
 import { logActivity } from "./desk/activity.js";
 import { dueSchedules, listSchedules, markRan } from "./companion/schedules.js";
 import type { Studio } from "./desk/studio.js";
+import { heartbeat } from "./companion/heartbeat.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -38,6 +39,10 @@ export async function runOnce(deps: SchedulerDeps, now = Date.now()) {
   await schedules(deps, now);
   await checkins(deps, now);
   await journal(deps, now);
+  await heartbeat({
+    db: deps.db, llm: deps.llm, safety: deps.safety,
+    deskCanWork: () => computeDeskEnergy(recentRows(deps.db, now), now, loadParentSettings(deps.db).budgets, config.timezone).canWork,
+  }, now);
   await weeklySummary(deps, now);
 }
 

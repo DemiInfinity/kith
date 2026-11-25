@@ -1,3 +1,4 @@
+import { heartbeatStatus } from "./companion/heartbeat.js";
 import { deleteSkill, enabledSkills, EXAMPLES, listSkills, saveSkill } from "./companion/skills.js";
 import { canStoreKeys, checkKey, currentKey, keyStatus, looksLikeKey, removeKey, saveKey } from "./apikey.js";
 import type { FastifyInstance } from "fastify";
@@ -219,6 +220,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
   });
+  // The heartbeat (always on): when it last beat and what it decided.
+  app.get("/api/heartbeat", { preHandler: either }, async () => heartbeatStatus(db));
   // Skills: the parent writes them; the child sees the ones that are on (and their /commands).
   app.get("/api/skills", { preHandler: either }, async () => ({
     skills: enabledSkills(db).map((k) => ({ id: k.id, name: k.name, description: k.description, command: k.command })),

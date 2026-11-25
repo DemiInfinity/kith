@@ -9,6 +9,26 @@ interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
   memories: { id: number; icon: string; text: string; date: string | null }[]; summary: string;
 }
+interface Heartbeat { everyMinutes: number; last: { ts: number; outcome: string; note: string } | null; next: number; recent: { ts: number; outcome: string; note: string }[] }
+
+const BEAT_WORDS: Record<string, string> = { quiet: "all quiet", "checked in": "sent you a check-in", journal: "wrote in its journal", asleep: "asleep (quiet hours)", resting: "resting", error: "couldn’t think just then" };
+
+/** The heartbeat: always on, every 30 minutes. It can't be paused or deleted. */
+export function HeartbeatCard({ beat, name }: { beat: Heartbeat | null; name: string }) {
+  return (
+    <div className="card hbcard">
+      <div className="row" style={{ gap: 12 }}>
+        <span className="hbpulse" aria-hidden><Icon name="heart" size={20} /></span>
+        <span style={{ flex: 1 }}><b>Heartbeat</b><br /><span className="small">Every {beat?.everyMinutes ?? 30} minutes · always on</span></span>
+        <span className="hblock" title="The heartbeat can’t be paused or deleted"><Icon name="lock" size={14} /></span>
+      </div>
+      <span className="small">Every half hour, {name} quietly looks at what’s coming up (reminders, exams, things it made you) and decides if anything needs doing. Usually nothing does. It never messages in quiet hours or just to chat.</span>
+      {beat?.last && <span className="small"><b>Last beat {clock(beat.last.ts)}:</b> {BEAT_WORDS[beat.last.outcome] ?? beat.last.outcome}{beat.last.note && beat.last.outcome !== "asleep" && beat.last.note !== "all quiet" ? ` · ${beat.last.note}` : ""} · next about {clock(beat.next)}</span>}
+      {!beat?.last && <span className="small">The first beat happens within half an hour.</span>}
+    </div>
+  );
+}
+
 interface Mine { id: number; title: string; kind: "reminder" | "make"; at: number; repeat: string; active: number }
 interface Schedule {
   jobs: Job[];
@@ -56,13 +76,14 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
   const [files, setFiles] = useState<Files | null>(null);
   const [sched, setSched] = useState<Schedule | null>(null);
   const [mine, setMine] = useState<Mine[]>([]);
+  const [beat, setBeat] = useState<Heartbeat | null>(null);
   const [form, setForm] = useState({ title: "", when: "", repeat: "none" });
   const [schedErr, setSchedErr] = useState("");
   const loadMine = () => api<{ schedules: Mine[] }>("/api/schedules").then((r) => setMine(r.schedules)).catch(() => undefined);
   const name = me.profile.name;
   useEffect(() => {
     if (tab === "who" && !files) api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
-    if (tab === "scheduled") { api<Schedule>("/api/pip/schedule").then(setSched).catch(() => undefined); void loadMine(); }
+    if (tab === "scheduled") { api<Schedule>("/api/pip/schedule").then(setSched).catch(() => undefined); void loadMine(); api<Heartbeat>("/api/heartbeat").then(setBeat).catch(() => undefined); }
   }, [tab, files]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
@@ -94,6 +115,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
 
       {tab === "scheduled" && (
         <div className="stack" style={{ maxWidth: 760, gap: 12 }}>
+          <HeartbeatCard beat={beat} name={name} />
           <div className="card">
             <b>You asked for</b>
             {mine.length === 0 && <span className="small">Nothing yet. Ask {name} in chat (“remind me at 7 to revise”, “every Sunday make me a quiz”) or add one here.</span>}
@@ -205,6 +227,7 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
     ["/shared", "eye", `What ${me.parentLabel} sees`, "Nothing secret here"],
     ["/connectors", "sparkle", "Connectors and skills", `What ${me.parentLabel} has connected ${name} to, and its /commands`],
     ["/google", "cloud", "Google Drive", "Save what you make to your own Drive"],
+    ["/help", "question", "Help", `Answers about ${name}, privacy, energy and more`],
   ];
   return (
     <div className="screen narrow dgrid">
