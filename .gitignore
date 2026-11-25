@@ -7,3 +7,6 @@ data/
 coverage/
 .DS_Store
 data-dev/
+
+# Personal design board files: kept locally, never committed
+design/private/
