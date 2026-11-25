@@ -164,7 +164,12 @@ fi
 # ── 4. Optional extras ───────────────────────────────────────────────────────────────
 echo
 echo "${bold}4. Optional extras${off} ${dim}(Enter skips each one)${off}"
-read -r -p "  Set up Google now? (docs/google.md has the steps) [y/N]: " r || true
+read -r -p "  Use a shared Kith Connect helper for Google (no Google setup needed)? [y/N]: " r || true
+case "$r" in y|Y)
+  ask KITH_GOOGLE_CONNECT_URL "Kith Connect address (https://…)"
+  ask KITH_GOOGLE_ACCOUNT "The only Google account allowed (optional)";;
+esac
+read -r -p "  Or set up your own Google client now? (docs/google.md has the steps) [y/N]: " r || true
 case "$r" in y|Y)
   ask KITH_GOOGLE_CLIENT_ID "Google OAuth client ID"
   secret KITH_GOOGLE_CLIENT_SECRET "Google OAuth client secret"

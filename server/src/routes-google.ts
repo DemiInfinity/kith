@@ -6,7 +6,7 @@ import { get, run } from "./db.js";
 import { config } from "./config.js";
 import { requireRole, sessionFor } from "./auth.js";
 import { loadParentSettings } from "./settings.js";
-import { authUrl, CALENDAR_SCOPE, exchangeCode, googleConfigured, loadGoogle, markdownToHtml, MIME, rememberFile, revoke, saveGoogle, scopesFor, seal, TASKS_SCOPE, unseal } from "./storage/google.js";
+import { authUrl, CALENDAR_SCOPE, connectConfig, viaConnect, exchangeCode, googleConfigured, loadGoogle, markdownToHtml, MIME, rememberFile, revoke, saveGoogle, scopesFor, seal, TASKS_SCOPE, unseal } from "./storage/google.js";
 import { apply, decline, gLog, googleFeatures, listFiles, pendingList, setCoursework } from "./storage/googleWork.js";
 import type { Storage } from "./storage/storage.js";
 import type { Studio } from "./desk/studio.js";
@@ -28,7 +28,7 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
       email: s?.email ?? "",
       enabled: !!conn?.enabled,
       sharedWith: s?.sharedWith ?? "",
-      picker: googleConfigured() && !!config.google.pickerApiKey && !!config.google.appId,
+      picker: viaConnect() || (googleConfigured() && !!config.google.pickerApiKey && !!config.google.appId),
       expected: config.google.expectedEmail,
       // What the parent switched on, and whether the sign-in already covers it (else: connect again).
       features: (({ edit, calendar, tasks }) => ({ edit, calendar, tasks }))(googleFeatures(db)),
@@ -46,6 +46,8 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
       apis: ["Google Drive API", "Google Docs API", "Google Sheets API", "Google Slides API", "Google Picker API", ...(f?.calendar ? ["Google Calendar API"] : []), ...(f?.tasks ? ["Google Tasks API"] : [])],
       scopes: scopesFor(f).map((s) => (s === "email" ? "https://www.googleapis.com/auth/userinfo.email" : s)),
       sensitive: [...(f?.calendar ? [CALENDAR_SCOPE] : []), ...(f?.tasks ? [TASKS_SCOPE] : [])],
+      // Using the shared Kith Connect helper: nothing for this family to set up in Google.
+      connect: viaConnect() ? config.google.connectUrl : "",
       status: {
         client: googleConfigured(), secretKey: !!process.env.KITH_SECRET_KEY, picker: !!config.google.pickerApiKey && !!config.google.appId,
         account: config.google.expectedEmail, connected: !!loadGoogle(db),
@@ -121,8 +123,11 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
 
   // A short-lived drive.file token for the Google Picker, so the child can hand Kith one document.
   app.get("/api/google/picker", { preHandler: child }, async (_req, reply) => {
-    if (!g?.ready() || !config.google.pickerApiKey || !config.google.appId) return reply.code(409).send({ error: "The Google Picker isn't set up." });
-    return { token: await g.drive.pickerToken(), apiKey: config.google.pickerApiKey, appId: config.google.appId };
+    if (!g?.ready()) return reply.code(409).send({ error: "Google isn't connected." });
+    const cfg = viaConnect() ? await connectConfig().then((c) => ({ apiKey: c.pickerApiKey, appId: c.appId })).catch(() => ({ apiKey: "", appId: "" }))
+      : { apiKey: config.google.pickerApiKey, appId: config.google.appId };
+    if (!cfg.apiKey || !cfg.appId) return reply.code(409).send({ error: "The Google Picker isn't set up." });
+    return { token: await g.drive.pickerToken(), ...cfg };
   });
 
   app.post("/api/google/read-picked", { preHandler: child }, async (req, reply) => {

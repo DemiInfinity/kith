@@ -139,6 +139,7 @@ To look around without a sign-in provider, set `KITH_DEV_LOGIN=true` in `.env`. 
 |---|---|
 | [Setup](docs/setup.md) | Everything from the API key to the reverse proxy, plus light and full modes |
 | [Safety and privacy](docs/safety.md) | How the checks, reports, retention and connections work |
+| [Kith Connect](connect/README.md) | The optional shared Google sign-in helper (one Google app for many families; stores nothing; runs on Vercel) |
 | [Google](docs/google.md) | Saving to your child's own Drive; with your switches, editing files they pick, their calendar and a Homework list, each change confirmed by them first |
 | [Mac app](docs/macos.md) | The desktop app (Tauri) |
 | [Architecture](docs/architecture.md) | How the pieces fit together |

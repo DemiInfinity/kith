@@ -81,7 +81,22 @@ export function saveGoogle(db: DB, s: GoogleState | null) {
   else run(db, "INSERT INTO settings(key, json) VALUES('google', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(s));
 }
 
-export const googleConfigured = () => Boolean(config.google.clientId && config.google.clientSecret);
+/** Your own Google client (set in .env), or the shared Kith Connect helper. */
+export const ownClient = () => Boolean(config.google.clientId && config.google.clientSecret);
+export const viaConnect = () => !ownClient() && /^https:\/\/|^http:\/\/localhost[:/]/.test(config.google.connectUrl);
+export const googleConfigured = () => ownClient() || viaConnect();
+
+/** What Kith Connect shares publicly (client id and the Picker key; never a secret). Cached for an hour. */
+let connectCfg: { at: number; v: { clientId: string; pickerApiKey: string; appId: string } } | null = null;
+export async function connectConfig(f: Fetch = fetch) {
+  if (connectCfg && Date.now() - connectCfg.at < 3_600_000) return connectCfg.v;
+  const r = await f(`${config.google.connectUrl}/api/config`);
+  if (!r.ok) throw new Error("Kith Connect didn't answer.");
+  const v = (await r.json()) as { clientId: string; pickerApiKey: string; appId: string };
+  connectCfg = { at: Date.now(), v };
+  return v;
+}
+export function resetConnectCacheForTests() { connectCfg = null; }
 
 // ── OAuth (child connects their own account once) ───────────────────────────────────────────
 
@@ -90,6 +105,12 @@ export function redirectUri() {
 }
 
 export function authUrl(state: string, challenge: string, scopes: string[] = SCOPES): string {
+  if (viaConnect()) {
+    // The shared helper sends her to Google and hands the code back to this Kith's own callback.
+    const c = new URLSearchParams({ return: redirectUri(), state, challenge, scope: scopes.join(" ") });
+    if (config.google.accountHint) c.set("login_hint", config.google.accountHint);
+    return `${config.google.connectUrl}/api/start?${c}`;
+  }
   const q = new URLSearchParams({
     client_id: config.google.clientId,
     redirect_uri: redirectUri(),
@@ -109,14 +130,17 @@ export function authUrl(state: string, challenge: string, scopes: string[] = SCO
 type Fetch = typeof fetch;
 
 export async function exchangeCode(code: string, verifier: string, f: Fetch = fetch, requested: string[] = SCOPES) {
-  const res = await f(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code, code_verifier: verifier, client_id: config.google.clientId, client_secret: config.google.clientSecret,
-      redirect_uri: redirectUri(), grant_type: "authorization_code",
-    }),
-  });
+  const res = viaConnect()
+    // Kith Connect adds the secret; only this Kith has the PKCE verifier, so the code is no use to anyone else.
+    ? await f(`${config.google.connectUrl}/api/token`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, verifier }) })
+    : await f(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code, code_verifier: verifier, client_id: config.google.clientId, client_secret: config.google.clientSecret,
+        redirect_uri: redirectUri(), grant_type: "authorization_code",
+      }),
+    });
   const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; id_token?: string; scope?: string; error?: string };
   if (!res.ok || !j.refresh_token) throw new Error(j.error ?? "Google didn't give Kith offline access.");
   const granted = (j.scope ?? "").split(" ");
@@ -150,11 +174,13 @@ export class GoogleDrive {
     if (this.access && this.access.expires > Date.now() + 60_000) return this.access.token;
     const s = this.state();
     if (!s) throw new Error("Google isn't connected.");
-    const res = await this.f(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ refresh_token: unseal(s.refresh), client_id: config.google.clientId, client_secret: config.google.clientSecret, grant_type: "refresh_token" }),
-    });
+    const res = viaConnect()
+      ? await this.f(`${config.google.connectUrl}/api/refresh`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: unseal(s.refresh) }) })
+      : await this.f(TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ refresh_token: unseal(s.refresh), client_id: config.google.clientId, client_secret: config.google.clientSecret, grant_type: "refresh_token" }),
+      });
     const j = (await res.json()) as { access_token?: string; expires_in?: number; error?: string };
     if (!res.ok || !j.access_token) {
       throw new Error(j.error === "invalid_grant" ? "Google needs connecting again (the sign-in expired or was removed)." : `Google said ${j.error ?? res.status}`);

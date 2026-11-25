@@ -1,0 +1,9 @@
+{
+  "name": "kith-connect",
+  "private": true,
+  "version": "0.1.0",
+  "description": "One shared Google sign-in for every family's Kith. No database; stores nothing.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

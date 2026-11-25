@@ -10,6 +10,18 @@ are off until you turn them on:
 - **Calendar**: read their own calendar, and add events such as revision, test dates and reminders.
 - **Tasks**: a **Homework** list in Google Tasks that the companion reads, adds to and ticks off with them.
 
+## Two ways to connect
+
+- **The shared Kith Connect helper (easiest for families).** Someone runs [Kith Connect](../connect/README.md) once,
+  for example on Vercel. It holds one Google client for everyone and stores nothing. Each family just sets
+  `KITH_GOOGLE_CONNECT_URL` to its address (`scripts/setup-secrets.sh` asks), and the child taps **Connect my Google
+  account**. No Google Cloud setup for the family at all.
+- **Your own Google client.** Make your own in Google Cloud, using the steps below (about 15 minutes, once). Nothing
+  goes through anyone else's helper. If both are set, your own client wins.
+
+Either way, the rules below are the same, and everything except the sign-in itself goes straight from your Kith to
+Google.
+
 ## What gets saved where
 
 | Made on the desk | Saved in Drive as | Folder |
@@ -70,6 +82,9 @@ are off until you turn them on:
 - The refresh token is stored encrypted (AES-256-GCM) with `KITH_SECRET_KEY`, on the home server only.
 
 ## Setting up your own Google OAuth client, step by step
+
+(Not needed if you use a Kith Connect helper. These same steps, with the helper's own address as the redirect URI,
+are how whoever runs Kith Connect makes its client.)
 
 Kith ships no shared Google credentials. You make your own once; it takes about fifteen minutes. All secrets go in
 through `scripts/setup-secrets.sh`, never by hand into the repo.

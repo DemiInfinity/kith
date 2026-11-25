@@ -118,6 +118,9 @@ export const config = {
     // For the Google Picker (choosing a doc to hand to Kith): a browser API key and the project number.
     pickerApiKey: env.KITH_GOOGLE_PICKER_API_KEY ?? "",
     appId: env.KITH_GOOGLE_PROJECT_NUMBER ?? "",
+    // Or, instead of your own Google client: a shared Kith Connect helper (connect/ in this repo),
+    // which holds one Google client for many families and stores nothing. Your own client wins if both are set.
+    connectUrl: (env.KITH_GOOGLE_CONNECT_URL ?? "").replace(/\/$/, ""),
   },
 
   // Optional: Brave Search API key for the desk browser's search (always SafeSearch strict).

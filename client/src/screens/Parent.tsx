@@ -136,7 +136,7 @@ function ParentLanguages({ child, companion }: { child: string; companion: strin
 }
 
 interface GoogleSetup {
-  origin: string; redirectUri: string; https: boolean; apis: string[]; scopes: string[]; sensitive: string[];
+  origin: string; redirectUri: string; https: boolean; apis: string[]; scopes: string[]; sensitive: string[]; connect: string;
   status: { client: boolean; secretKey: boolean; picker: boolean; account: string; connected: boolean };
 }
 
@@ -147,6 +147,12 @@ function GoogleSetupGuide() {
   const [copied, setCopied] = useState("");
   useEffect(() => { api<GoogleSetup>("/api/parent/google/setup").then(setG).catch(() => undefined); }, []);
   if (!g) return null;
+  if (g.connect) return (
+    <div className="stack" style={{ gap: 6 }}>
+      <span className="small">Google sign-in goes through the shared Kith Connect helper ({g.connect}), so there’s nothing to set up in Google. It stores nothing; everything else goes straight from this Kith to Google.</span>
+      {!g.https && <div className="pwarn"><Icon name="warn" size={18} /><span>Google needs Kith on an https:// address. Set KITH_PUBLIC_URL to it first (it’s {g.origin} now).</span></div>}
+    </div>
+  );
   const copy = async (text: string) => { try { await navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(""), 1500); } catch { /* select it by hand */ } };
   const Val = ({ v }: { v: string }) => (
     <span className="row" style={{ gap: 6, alignItems: "center", flexWrap: "wrap" }}>

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type DB } from "../src/db.js";
 import { config } from "../src/config.js";
-import { allowedCall, CALENDAR_SCOPE, exchangeCode, GoogleDrive, MIME, rememberFile, saveGoogle, scopesFor, seal, TASKS_SCOPE } from "../src/storage/google.js";
+import { allowedCall, authUrl, CALENDAR_SCOPE, exchangeCode, GoogleDrive, googleConfigured, MIME, rememberFile, saveGoogle, scopesFor, seal, TASKS_SCOPE, viaConnect } from "../src/storage/google.js";
 import { loadParentSettings, saveParentSettings } from "../src/settings.js";
 import { apply, decline, need, pendingList, proposeCalendar, proposeFileEdit, proposeTask, readFile, setCoursework } from "../src/storage/googleWork.js";
 import { googleTools } from "../src/companion/googleTools.js";
@@ -194,5 +194,49 @@ describe("homework", () => {
   });
   it("is refused while the switch is off", () => {
     expect(() => proposeTask(db, { op: "add", title: "x" })).toThrow(/hasn't switched on/);
+  });
+});
+
+describe("Kith Connect (the shared sign-in helper)", () => {
+  const own = { id: config.google.clientId, secret: config.google.clientSecret };
+  const useConnect = () => { config.google.clientId = ""; config.google.clientSecret = ""; config.google.connectUrl = "https://kith-connect.example"; };
+  const restore = () => { config.google.clientId = own.id; config.google.clientSecret = own.secret; config.google.connectUrl = ""; };
+  it("is used only when there's no own client, and your own client wins", () => {
+    expect(viaConnect()).toBe(false);
+    useConnect();
+    expect(viaConnect()).toBe(true);
+    expect(googleConfigured()).toBe(true);
+    config.google.clientId = "mine"; config.google.clientSecret = "s";
+    expect(viaConnect()).toBe(false);
+    restore();
+  });
+  it("starts sign-in at the helper, which returns to this Kith's own callback", () => {
+    useConnect();
+    const u = new URL(authUrl("state-abcdefghijklmnop", "c".repeat(43), scopesFor({ calendar: true })));
+    expect(u.origin + u.pathname).toBe("https://kith-connect.example/api/start");
+    expect(u.searchParams.get("return")).toBe(`${config.publicUrl}/auth/google/callback`);
+    expect(u.searchParams.get("scope")).toContain(CALENDAR_SCOPE);
+    expect(u.searchParams.get("client_secret")).toBeNull();
+    restore();
+  });
+  it("swaps the code and refreshes through the helper, never sending a secret", async () => {
+    useConnect();
+    const id = `x.${Buffer.from(JSON.stringify({ email: "kid@gmail.com", email_verified: true })).toString("base64url")}.y`;
+    const calls: { url: string; body: string }[] = [];
+    const f = (async (url: string, init: RequestInit = {}) => {
+      calls.push({ url, body: String(init.body ?? "") });
+      if (url.endsWith("/api/token")) return new Response(JSON.stringify({ refresh_token: "rt", access_token: "at", id_token: id, scope: scopesFor().join(" ") }), { status: 200 });
+      if (url.endsWith("/api/refresh")) return new Response(JSON.stringify({ access_token: "fresh", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const t = await exchangeCode("4/code", "v".repeat(43), f, scopesFor());
+    expect(t.email).toBe("kid@gmail.com");
+    expect(JSON.parse(calls[0].body)).toEqual({ code: "4/code", verifier: "v".repeat(43) });
+    const drive = new GoogleDrive(db, () => undefined, f);
+    await drive.call("https://www.googleapis.com/calendar/v3/calendars/primary/events?x=1");
+    expect(calls[1].url).toBe("https://kith-connect.example/api/refresh");
+    expect(JSON.parse(calls[1].body)).toEqual({ refresh_token: "rt" });
+    expect(calls.some((c) => c.body.includes("secret"))).toBe(false);
+    restore();
   });
 });

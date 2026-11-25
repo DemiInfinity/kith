@@ -26,7 +26,8 @@ import { registerStudy } from "./routes-study.js";
 import { registerNative } from "./native.js";
 
 // The Google Picker (choosing a doc to hand to Kith) loads from Google; only allowed when it's set up.
-const PICKER = config.google.pickerApiKey && config.google.appId;
+// (With the shared Kith Connect helper, the Picker key comes from the helper.)
+const PICKER = (config.google.pickerApiKey && config.google.appId) || (config.google.connectUrl && !(config.google.clientId && config.google.clientSecret));
 const APP_CSP = [
   "default-src 'self'",
   PICKER ? "script-src 'self' https://apis.google.com" : "script-src 'self'",

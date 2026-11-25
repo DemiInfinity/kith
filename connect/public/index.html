@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kith Connect</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fbf7fb; --text: #2a1d3a; --muted: #6b5a73; --accent: #8a4f96; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1219; --text: #f3e8f5; --muted: #c9a9d1; --accent: #d9a3e0; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 48px 16px; }
+  h1 { font-size: 30px; margin: 0 0 8px; } h2 { font-size: 19px; margin-top: 32px; }
+  p, li { color: var(--muted); } a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kith Connect</h1>
+  <p>This is the sign-in helper that lets a family's own <a href="https://github.com/DemiInfinity/kith">Kith</a> connect to their child's Google account, without each family setting up Google themselves.</p>
+  <h2>What it does</h2>
+  <ul>
+    <li>Passes the Google sign-in back to the family's own Kith, which runs on their own home server.</li>
+    <li>About once an hour, gets that Kith a fresh access pass from Google.</li>
+  </ul>
+  <h2>What it never does</h2>
+  <ul>
+    <li>It stores nothing: no accounts, no tokens, no logs of them. It has no database.</li>
+    <li>It never sees anyone's files, chats, calendar or homework. Each family's Kith talks to Google directly.</li>
+    <li>It can only ask Google for: the files Kith makes or the child picks (drive.file), and, if the family's grown-up switches them on, the child's own calendar events and task lists.</li>
+  </ul>
+  <p>Families who'd rather not use this helper can make their own Google client instead (see Kith's docs/google.md).</p>
+  <p><a href="/privacy.html">Privacy policy</a></p>
+</main>
+</body>
+</html>
