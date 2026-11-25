@@ -125,7 +125,7 @@ describe("a turn of conversation", () => {
   });
 
   it("uses Low power when energy is low", async () => {
-    run(db, "INSERT INTO spend(ts, usd, bucket, kind, model) VALUES (?,?,?,?,?)", Date.now() - 60_000, 2.8, "chat", "chat", "claude-sonnet-5-5");
+    run(db, "INSERT INTO spend(ts, usd, bucket, kind, model) VALUES (?,?,?,?,?)", Date.now() - 60_000, 9.6, "chat", "chat", "claude-sonnet-5-5");
     const llm = new ScriptedLLM({});
     const t = await takeTurn(deps(llm), { text: "hi", mode: "chat" });
     expect(chatCalls(llm)[0].params.model).toBe("claude-haiku-5-5");
@@ -134,7 +134,7 @@ describe("a turn of conversation", () => {
   });
 
   it("rests without calling the model when energy is gone", async () => {
-    run(db, "INSERT INTO spend(ts, usd, bucket, kind, model) VALUES (?,?,?,?,?)", Date.now() - 60_000, 20, "chat", "chat", "claude-sonnet-5-5");
+    run(db, "INSERT INTO spend(ts, usd, bucket, kind, model) VALUES (?,?,?,?,?)", Date.now() - 60_000, 48, "chat", "chat", "claude-sonnet-5-5");
     const llm = new ScriptedLLM({});
     const t = await takeTurn(deps(llm), { text: "hi", mode: "chat" });
     expect(chatCalls(llm)).toHaveLength(0);

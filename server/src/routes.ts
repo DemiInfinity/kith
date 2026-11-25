@@ -4,6 +4,8 @@ import type { DB } from "./db.js";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
+import { MODES } from "./companion/modes.js";
+import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
 import { deleteMemory, listMemories } from "./companion/memory.js";
@@ -13,7 +15,7 @@ import { DeskError } from "./desk/deskClient.js";
 import { addWorld, deleteCharacter, deleteWorld, listCharacters, listWorld, saveCharacter, Sheet } from "./desk/oc.js";
 import { createReport, deliverReport, listReports, type Reporter } from "./reporting/reporter.js";
 import { toolLog } from "./connections/connections.js";
-import { spendByKind } from "./budget/budget.js";
+import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budget.js";
 import { startOfMonth, startOfWeek } from "./budget/time.js";
 import { pushReady, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
@@ -67,10 +69,19 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
 
   app.get("/api/messages", { preHandler: child }, async () => ({ messages: recentMessages(db, 200) }));
 
-  const ChatBody = z.object({ text: z.string().trim().min(1).max(4000), mode: z.enum(["chat", "talk", "oc"]).default("chat") });
+  const ChatBody = z.object({
+    text: z.string().trim().min(1).max(4000),
+    mode: z.enum(MODES).default("chat"),
+    ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional() }).default({}),
+  });
   app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
     const body = ChatBody.parse(req.body);
     const turn = await takeTurn(turnDeps(), body);
+    // Coursework help is logged so they can show their teacher exactly what help they had.
+    const subject = getSubject(db, body.ctx.subjectId);
+    if ((body.mode === "study" || body.mode === "art") && (body.ctx.coursework || subject?.subject.coursework)) {
+      logHelp(db, subject?.subject.name ?? (body.mode === "art" ? "Art" : "Coursework"), turn.child.text, "Tutor help only: explanations, questions and feedback (no work produced).");
+    }
     return { ...turn, energy: childEnergy(turn.energy) };
   });
 
@@ -275,6 +286,12 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       energy: e,
       desk: studio.deskEnergy(),
       budgets: s.budgets,
+      split: splits(s.budgets),
+      projection: projectMonth(e.usd.month, now, config.timezone),
+      lowPower: {
+        week: lowPowerShare(db, startOfWeek(now, config.timezone, s.budgets.weekResetDay), config.anthropic.lowModel),
+        month: lowPowerShare(db, startOfMonth(now, config.timezone), config.anthropic.lowModel),
+      },
       spend: {
         week: spendByKind(db, startOfWeek(now, config.timezone, s.budgets.weekResetDay)),
         month: spendByKind(db, startOfMonth(now, config.timezone)),

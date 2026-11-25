@@ -36,6 +36,8 @@ export const KINDS = {
   notes: { format: "md", icon: "📝", what: "notes or cue cards in Markdown" },
 } as const;
 export type Kind = keyof typeof KINDS;
+/** Background and revision work always runs on the small model, to save the budget. */
+export const LOW_POWER_KINDS = new Set(["flashcards", "quiz", "notes", "timer", "timeline", "playlist", "palette"]);
 export const KIND_NAMES = Object.keys(KINDS) as Kind[];
 
 export interface Job {
@@ -98,7 +100,7 @@ export class Studio {
   enqueue(req: { kind: Kind | "edit"; title: string; brief: string; characterIds?: number[]; chapters?: number; fileId?: string }): { ok: true; job: Job } | { ok: false; error: string } {
     if (!this.llm.available) return { ok: false, error: "The desk can't make things until an API key is set." };
     const energy = this.deskEnergy();
-    if (!energy.canWork) return { ok: false, error: "The desk's energy for this month is used up. It tops up on the 1st." };
+    if (!energy.canWork) return { ok: false, error: "The desk's energy for today is used up. It tops up tomorrow." };
     if (req.kind !== "edit" && !KINDS[req.kind]) return { ok: false, error: `I can't make a "${req.kind}" yet.` };
     const busy = get<{ n: number }>(this.db, "SELECT COUNT(*) AS n FROM desk_jobs WHERE status IN ('queued','working')")?.n ?? 0;
     if (busy >= 5) return { ok: false, error: "My desk is full right now. Let me finish what I'm making first." };
@@ -156,12 +158,14 @@ export class Studio {
     }
   }
 
-  private model() {
+  /** Studio builds (games, stories, comics…) get Full power while the desk slice allows; revision always runs on Low power. */
+  private model(kind?: string) {
+    if (kind && LOW_POWER_KINDS.has(kind)) return config.anthropic.lowModel;
     return this.deskEnergy().mode === "full" ? config.anthropic.fullModel : config.anthropic.lowModel;
   }
 
   private ensureEnergy() {
-    if (!this.deskEnergy().canWork) throw new Error("The desk ran out of energy for this month part-way through.");
+    if (!this.deskEnergy().canWork) throw new Error("The desk ran out of energy for today part-way through.");
   }
 
   private context(characterIds: number[] = []) {
@@ -170,14 +174,14 @@ export class Studio {
     return `You are ${p.name}, an AI companion. Your personality: ${p.traits.join(", ")}.${chars ? `\n\nTheir original characters to use:\n${chars}` : ""}`;
   }
 
-  private async generate(system: string, prompt: string) {
+  private async generate(system: string, prompt: string, kind?: string) {
     this.ensureEnergy();
     return callJson(this.llm, {
       bucket: "desk",
       kind: "artifact",
       long: true,
       params: {
-        model: this.model(),
+        model: this.model(kind),
         max_tokens: 32000,
         output_config: { effort: "medium" },
         system,
@@ -189,11 +193,11 @@ export class Studio {
   }
 
   /** Same safety check as chat. One retry with the reason; then give up kindly. */
-  private async safeGenerate(system: string, prompt: string, brief: string) {
-    let out = await this.generate(system, prompt);
+  private async safeGenerate(system: string, prompt: string, brief: string, kind?: string) {
+    let out = await this.generate(system, prompt, kind);
     let verdict = await this.safety.checkOutput(stripHtml(out.content).slice(0, 8000), brief);
     if (!verdict.ok) {
-      out = await this.generate(system, `${prompt}\n\nA safety check stopped the last version (${verdict.reason}). Make it again, keeping it suitable.`);
+      out = await this.generate(system, `${prompt}\n\nA safety check stopped the last version (${verdict.reason}). Make it again, keeping it suitable.`, kind);
       verdict = await this.safety.checkOutput(stripHtml(out.content).slice(0, 8000), brief);
       if (!verdict.ok) throw new Error("I couldn't make that one in a way that's okay for the desk.");
     }
@@ -214,7 +218,7 @@ export class Studio {
       const prompt = chapters > 1
         ? `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}\nThis is chapter ${ch} of ${chapters}.${soFar ? `\nThe story so far (keep it, then add chapter ${ch} at the end):\n${soFar}` : ""}\nReturn the whole story so far as content, and "chapter ${ch} of ${chapters}" as the summary.`
         : `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}`;
-      const out = await this.safeGenerate(system, prompt, req.brief);
+      const out = await this.safeGenerate(system, prompt, req.brief, req.kind);
       soFar = out.content;
       meta = meta
         ? await this.desk.update(meta.id, { title: out.title, summary: out.summary, content: out.content })
@@ -237,6 +241,7 @@ export class Studio {
       system,
       `Here is "${current.meta.title}" (${current.meta.format}):\n<current>\n${current.content}\n</current>\n\nChange it like this: ${req.brief}\nReturn the whole updated ${current.meta.format} as content.`,
       req.brief,
+      current.meta.kind,
     );
     const meta = await this.desk.update(req.fileId, { title: out.title || current.meta.title, summary: out.summary, content: out.content });
     // A new version alongside the old one, never an overwrite.

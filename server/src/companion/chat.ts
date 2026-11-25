@@ -22,10 +22,13 @@ import { memoriesForPrompt } from "./memory.js";
 import { builtinTools, type TurnEffects } from "./tools.js";
 import { connectionTools, type ToolDef } from "../connections/connections.js";
 import type { Studio } from "../desk/studio.js";
-import { ocWorkshopNote } from "../desk/oc.js";
 import { localParts } from "../budget/time.js";
 
-export type Mode = "chat" | "talk" | "oc";
+import { modeNote, prefersLowPower, type Mode, type ModeCtx } from "./modes.js";
+import { conversationContext } from "./context.js";
+import { getSubject } from "../study/study.js";
+import { get as dbGet } from "../db.js";
+export type { Mode } from "./modes.js";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
 
 export interface StoredMessage { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }
@@ -74,12 +77,13 @@ function whenText(ts: number) {
   return `on ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][p.weekday]}`;
 }
 
-export function restingText(e: Energy, parent: string) {
-  const back = e.limitedBy === "month" ? `${parent} can top me up` : e.fullBackAt ? `I'm back ${whenText(e.fullBackAt)}` : "I'll be back soon";
-  return `I'm out of energy for now 😴 ${back}. “Need a grown-up?” always works, even while I'm resting.`;
+export function restingText(_e: Energy, parent: string) {
+  return `I've used up this month's energy, so I'm resting now 😴 ${parent} can see this too. “Need a grown-up?” always works, even while I'm resting.`;
 }
 
-export async function takeTurn(deps: Deps, input: { text: string; mode: Mode }): Promise<TurnResult> {
+export { whenText };
+
+export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ctx?: ModeCtx }): Promise<TurnResult> {
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
   const profile = loadProfile(db);
@@ -111,7 +115,11 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode }):
     mood = report ? "concerned" : "resting";
   } else {
     try {
-      replyText = await generateReply(deps, { clean, mode: input.mode, verdict, report, history, energy, effects, profileName: profile.name });
+      // A friendly heads-up the first time Low power kicks in.
+      const last = dbGet<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'last_power'");
+      const switchedToLow = energy.mode === "low" && (!last || JSON.parse(last.json) === "full");
+      run(db, "INSERT INTO settings(key, json) VALUES('last_power', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(energy.mode));
+      replyText = await generateReply(deps, { clean, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
       if (report) mood = "concerned";
     } catch (err) {
       if (err instanceof OfflineError) {
@@ -149,36 +157,47 @@ export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: 
 
 async function generateReply(
   deps: Deps,
-  a: { clean: string; mode: Mode; verdict: InputVerdict; report: TurnResult["report"]; history: { role: string; text: string }[]; energy: Energy; effects: TurnEffects; profileName: string },
+  a: { clean: string; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
 ): Promise<string> {
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
   const profile = loadProfile(db);
   const parent = config.people.parentLabel;
   const ctx: PromptCtx = { profile, childName: deps.childName, parentLabel: parent, helplines: settings.helplines };
-  const model = a.energy.mode === "full" ? config.anthropic.fullModel : config.anthropic.lowModel;
+  const model = a.energy.mode === "full" && !prefersLowPower(a.mode) ? config.anthropic.fullModel : config.anthropic.lowModel;
 
-  const tools: ToolDef[] = [...builtinTools(db, deps.studio, a.effects), ...(await connectionTools(db, settings.connections))];
+  // In coursework, the companion is a tutor only: no making things on the desk for them.
+  const coursework = !!a.ctx.coursework || ((a.mode === "study" || a.mode === "art") && !!getSubject(db, a.ctx.subjectId)?.subject.coursework);
+  const tools: ToolDef[] = [
+    ...builtinTools(db, deps.studio, a.effects).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
+    ...(await connectionTools(db, settings.connections)),
+  ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
-  // Stable first (cached), changing parts after.
+  // Stable first and cached: the rules and personality, then memories and the rolling summary
+  // (which change now and then). The time and per-mode notes change every turn, so they come last.
+  const convo = await conversationContext(db, llm, profile.name);
   const now = localParts(Date.now(), config.timezone);
   const system: Anthropic.TextBlockParam[] = [
     { type: "text", text: `${coreRules(ctx)}\n\n${personality(ctx)}`, cache_control: { type: "ephemeral" } },
     {
       type: "text",
+      text: [memoriesForPrompt(db), convo.summary ? `Earlier in your conversations (summary):\n${convo.summary}` : ""].filter(Boolean).join("\n\n"),
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
       text: [
-        memoriesForPrompt(db),
         `Now: ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.weekday]} ${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")} ${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}.`,
-        a.energy.mode === "low" ? "You're on Low power: keep replies simple and short. Full power comes back later." : "",
-        a.mode === "talk" ? "This is a voice call: your reply is spoken aloud. Keep it short and natural, no emoji, no lists, no markdown." : "",
-        a.mode === "oc" ? ocWorkshopNote(db) : "",
+        model === config.anthropic.lowModel ? "You're on Low power right now: keep replies simple and short." : "",
+        modeNote(db, a.mode, a.ctx),
       ].filter(Boolean).join("\n\n"),
     },
   ];
 
   const messages: Anthropic.MessageParam[] = [];
-  for (const m of a.history.slice(-30)) {
+  // The child's message was stored before this call, so it's the last one in `recent`.
+  for (const m of convo.recent.slice(0, -1)) {
     messages.push({ role: m.role === "child" ? "user" : "assistant", content: m.text });
   }
   while (messages.length && messages[0].role !== "user") messages.shift();
@@ -186,6 +205,9 @@ async function generateReply(
 
   const notes: string[] = [];
   if (a.verdict.steer) notes.push(`Safety guidance for this reply: ${a.verdict.steer}`);
+  if (a.switchedToLow && a.energy.fullBackAt) {
+    notes.push(`You've just switched to Low power. Mention it briefly and cheerfully (e.g. "I'm in low-power mode until ${whenText(a.energy.fullBackAt).replace(/^at /, "")}"), no apology, then carry on.`);
+  }
   if (a.report) {
     notes.push(
       `This message means ${parent} needs to know (${a.report.level === "now" ? "right now" : a.report.level === "today" ? "today" : "just so they know"}). ` +
@@ -209,7 +231,7 @@ async function generateReply(
       : [...messages];
     let text = "";
     for (let step = 0; step < 6; step++) {
-      const msg = await llm.call({ bucket: "chat", kind: a.mode === "talk" ? "talk" : a.mode === "oc" ? "oc" : "chat", params: { ...base, messages: convo } as never });
+      const msg = await llm.call({ bucket: "chat", kind: a.mode, params: { ...base, messages: convo } as never });
       if (msg.stop_reason === "refusal") { text = ""; break; }
       text = textOf(msg);
       if (msg.stop_reason !== "tool_use") break;

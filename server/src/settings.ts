@@ -5,16 +5,19 @@ import { get, run } from "./db.js";
 // ── Parent settings (money, limits, safety contacts, connections) ────────────────────────────
 
 export const Budgets = z.object({
+  // The whole week's money, chat and desk together. ~$11.50 spreads a $50 month evenly.
   weeklyUsd: z.number().min(0).max(500).default(11.5),
-  windowUsd: z.number().min(0).max(100).default(3),
+  // The desk and Studio's share of each week, handed out as a daily slice so it can't starve chat.
+  deskSharePercent: z.number().min(0).max(60).default(15),
+  // Full power per rolling window, so one long evening can't use the whole week.
+  windowUsd: z.number().min(0).max(100).default(2.5),
   windowHours: z.number().min(1).max(24).default(5),
-  deskMonthlyUsd: z.number().min(0).max(200).default(10),
-  // Backstop only: the real monthly cap is set on the API organisation in the Anthropic Console.
-  monthlyCapUsd: z.number().min(0).max(1000).default(50),
-  // Below this much energy, Low power is used automatically.
+  // Unused Full power from quieter windows earlier in the week can top a window up by at most this much.
+  rolloverCapUsd: z.number().min(0).max(50).default(2.5),
+  // Everything stops here. Keep it a little under the Console's monthly cap (e.g. $48 under a $50 cap).
+  hardStopUsd: z.number().min(0).max(1000).default(48),
+  // Below this much energy, Low power (the small model) is used, which carries on until the hard stop.
   lowPowerAtPercent: z.number().min(0).max(100).default(15),
-  // Extra weekly allowance that Low power can use after the week's energy is gone.
-  lowPowerReserveUsd: z.number().min(0).max(50).default(1.5),
   // 0 = Sunday … 1 = Monday. The weekly energy tops up at midnight on this day.
   weekResetDay: z.number().int().min(0).max(6).default(1),
 });

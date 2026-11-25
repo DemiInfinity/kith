@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDeskEnergy, computeEnergy, type SpendRow } from "../src/budget/budget.js";
+import { computeDeskEnergy, computeEnergy, projectMonth, splits, type SpendRow } from "../src/budget/budget.js";
 import { costUsd } from "../src/budget/pricing.js";
 import { inQuietHours, nextWeekStart, startOfWeek, zonedTime } from "../src/budget/time.js";
 import { Budgets } from "../src/settings.js";
@@ -44,81 +44,111 @@ describe("time", () => {
 });
 
 describe("energy", () => {
+  // Defaults: $11.50 a week, 15% to the desk → $9.775 a week for chat; $2.50 per 5-hour window.
+  const MON = zonedTime(2026, 11, 23, 0, 30, TZ); // just after the week starts: no rollover yet
+
   it("starts the week on Full power at 100%", () => {
     const e = computeEnergy([], WED, B, TZ);
     expect(e.mode).toBe("full");
     expect(e.percent).toBe(100);
   });
 
-  it("shows weekly energy as a percentage of $11.50", () => {
-    const e = computeEnergy([chat(WED - 48 * HOUR, 2.3)], WED, B, TZ);
+  it("splits the week between chat and the desk", () => {
+    expect(splits(B).chatWeek).toBeCloseTo(9.775);
+    expect(splits(B).deskDaily).toBeCloseTo((11.5 * 0.15) / 7);
+  });
+
+  it("shows weekly energy against the chat share", () => {
+    const e = computeEnergy([chat(WED - 48 * HOUR, 1.955)], WED, B, TZ);
     expect(e.percent).toBe(80);
-    expect(e.mode).toBe("full");
-    expect(e.usd.week).toBeCloseTo(2.3);
+    expect(e.usd.week).toBeCloseTo(1.955);
   });
 
   it("ignores last week's spending", () => {
-    const e = computeEnergy([chat(WED - 4 * 24 * HOUR, 11)], WED, B, TZ);
-    expect(e.percent).toBe(100);
+    expect(computeEnergy([chat(WED - 4 * 24 * HOUR, 11)], WED, B, TZ).percent).toBe(100);
   });
 
-  it("the 5-hour window limits a long evening", () => {
-    const e = computeEnergy([chat(WED - HOUR, 2.7)], WED, B, TZ);
+  it("the 5-hour window limits a long evening, then Low power carries on", () => {
+    const e = computeEnergy([chat(MON + 10 * 60_000, 2.25)], MON + 20 * 60_000, B, TZ);
     expect(e.percent).toBe(10);
     expect(e.limitedBy).toBe("window");
     expect(e.mode).toBe("low");
   });
 
-  it("says when Full power comes back as window spending ages out", () => {
-    const rows = [chat(WED - 4 * HOUR, 1.5), chat(WED - 1 * HOUR, 1.2)];
-    const e = computeEnergy(rows, WED, B, TZ);
-    expect(e.mode).toBe("low");
-    // Once the first $1.50 drops out (in an hour), the window is back above the threshold.
-    expect(e.fullBackAt).toBe(WED - 4 * HOUR + 5 * HOUR);
+  it("rolls unused Full power from quieter windows into later ones (capped)", () => {
+    // Wednesday 16:00: ~2.4 days of the week gone, nothing spent, so the window gets the full rollover cap.
+    const e = computeEnergy([], WED, B, TZ);
+    expect(e.usd.windowAllowance).toBeCloseTo(2.5 + 2.5);
+    // At the very start of the week there's nothing to roll over.
+    expect(computeEnergy([], MON, B, TZ).usd.windowAllowance).toBeCloseTo(2.5);
   });
 
-  it("switches to Low power when the week is nearly spent, back on Monday", () => {
-    const e = computeEnergy([chat(WED - 30 * HOUR, 10.6)], WED, B, TZ);
+  it("says when Full power comes back as window spending ages out", () => {
+    const now = MON + 5 * HOUR;
+    const rows = [chat(MON + 60 * 60_000, 1.3), chat(MON + 4 * HOUR, 1.2)];
+    const e = computeEnergy(rows, now, B, TZ);
+    expect(e.mode).toBe("low");
+    expect(e.limitedBy).toBe("window");
+    expect(e.fullBackAt).toBe(MON + 60 * 60_000 + 5 * HOUR);
+  });
+
+  it("switches to Low power when the week is nearly spent, back when it tops up", () => {
+    const e = computeEnergy([chat(WED - 30 * HOUR, 9)], WED, B, TZ);
     expect(e.mode).toBe("low");
     expect(e.limitedBy).toBe("week");
     expect(e.fullBackAt).toBe(nextWeekStart(WED, TZ, 1));
   });
 
-  it("rests once the week and Low power's reserve are used", () => {
-    const e = computeEnergy([chat(WED - 30 * HOUR, 11.5 + 1.5)], WED, B, TZ);
-    expect(e.mode).toBe("resting");
-    expect(e.percent).toBe(0);
+  it("keeps going on Low power past the week's money (doesn't stop)", () => {
+    expect(computeEnergy([chat(WED - 30 * HOUR, 20)], WED, B, TZ).mode).toBe("low");
   });
 
-  it("rests at the monthly backstop", () => {
-    const rows = [chat(WED - 9 * 24 * HOUR, 30), desk(WED - 2 * 24 * HOUR, 20)];
-    expect(computeEnergy(rows, WED, B, TZ).mode).toBe("resting");
+  it("only rests at the hard stop ($48 by default)", () => {
+    const rows = [chat(WED - 9 * 24 * HOUR, 30), desk(WED - 2 * 24 * HOUR, 17.9)];
+    expect(computeEnergy(rows, WED, B, TZ).mode).not.toBe("resting");
+    rows.push(chat(WED - HOUR, 0.2));
+    const e = computeEnergy(rows, WED, B, TZ);
+    expect(e.mode).toBe("resting");
+    expect(e.limitedBy).toBe("month");
   });
 
   it("desk spending never takes chat energy", () => {
-    const e = computeEnergy([desk(WED - HOUR, 5)], WED, B, TZ);
-    expect(e.percent).toBe(100);
+    expect(computeEnergy([desk(WED - HOUR, 5)], WED, B, TZ).percent).toBe(100);
   });
 
-  it("honours custom budgets", () => {
-    const b = Budgets.parse({ weeklyUsd: 20, windowUsd: 5 });
-    expect(computeEnergy([chat(WED - 2 * HOUR, 4)], WED, b, TZ).percent).toBe(20);
+  it("honours custom budgets and the parent's split", () => {
+    const b = Budgets.parse({ weeklyUsd: 20, deskSharePercent: 50, windowUsd: 5, rolloverCapUsd: 0 });
+    expect(computeEnergy([chat(WED - 2 * HOUR, 2)], WED, b, TZ).percent).toBe(60);
   });
 });
 
-describe("desk energy", () => {
-  it("uses its own $10 monthly budget", () => {
-    const d = computeDeskEnergy([desk(WED - HOUR, 2.5), chat(WED - HOUR, 2)], WED, B, TZ);
-    expect(d.percent).toBe(75);
+describe("desk energy (a daily slice of the week)", () => {
+  const slice = (11.5 * 0.15) / 7;
+  it("starts each day with its slice", () => {
+    const mon = zonedTime(2026, 11, 23, 9, 0, TZ);
+    const d = computeDeskEnergy([], mon, B, TZ);
+    expect(d.usd.allowanceLeft).toBeCloseTo(slice);
     expect(d.canWork).toBe(true);
-    expect(d.mode).toBe("full");
   });
-  it("drops to Low power near the end and stops when spent", () => {
-    expect(computeDeskEnergy([desk(WED - HOUR, 9)], WED, B, TZ).mode).toBe("low");
-    expect(computeDeskEnergy([desk(WED - HOUR, 10)], WED, B, TZ).canWork).toBe(false);
+  it("can't eat into chat, and stops when the slice is used", () => {
+    const mon = zonedTime(2026, 11, 23, 18, 0, TZ);
+    const d = computeDeskEnergy([desk(mon - HOUR, slice), chat(mon - HOUR, 5)], mon, B, TZ);
+    expect(d.canWork).toBe(false);
   });
-  it("tops up on the 1st", () => {
-    const d = computeDeskEnergy([desk(zonedTime(2026, 10, 30, 12, 0, TZ), 10)], WED, B, TZ);
+  it("rolls unused days forward within the week", () => {
+    const d = computeDeskEnergy([], WED, B, TZ); // Mon, Tue, Wed slices unused
+    expect(d.usd.allowanceLeft).toBeCloseTo(slice * 3);
     expect(d.percent).toBe(100);
+  });
+  it("drops to Low power near the end of the slice", () => {
+    const mon = zonedTime(2026, 11, 23, 18, 0, TZ);
+    expect(computeDeskEnergy([desk(mon - HOUR, slice * 0.9)], mon, B, TZ).mode).toBe("low");
+  });
+});
+
+describe("parent figures", () => {
+  it("projects the month from spending so far", () => {
+    const mid = zonedTime(2026, 11, 16, 0, 0, TZ); // half of November gone
+    expect(projectMonth(20, mid, TZ)).toBeCloseTo(40, 0);
   });
 });

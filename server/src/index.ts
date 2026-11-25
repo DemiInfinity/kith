@@ -18,6 +18,7 @@ import { startScheduler } from "./scheduler.js";
 import { DeskClient } from "./desk/deskClient.js";
 import { GoogleBackend, Storage } from "./storage/storage.js";
 import { registerGoogle } from "./routes-google.js";
+import { registerStudy } from "./routes-study.js";
 
 // The Google Picker (choosing a doc to hand to Kith) loads from Google; only allowed when it's set up.
 const PICKER = config.google.pickerApiKey && config.google.appId;
@@ -77,6 +78,7 @@ async function main() {
   registerAuth(app, db);
   registerRoutes(app, { db, llm, safety, reporters, studio });
   registerGoogle(app, db, storage, studio);
+  registerStudy(app, { db, llm, safety, storage });
 
   const clientDir = path.resolve(config.clientDir);
   if (fs.existsSync(clientDir)) {
