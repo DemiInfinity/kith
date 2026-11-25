@@ -59,6 +59,27 @@ describe("notifications for the Mac app", () => {
     expect(inboxAfter(db, next.last).items).toEqual([]);
   });
 
+  it("a burst of more than one page isn't skipped: `last` is the last item returned", () => {
+    const start = inboxAfter(db, null).last;
+    for (let i = 1; i <= 23; i++) recordNative(db, { title: "Pip", body: `n${i}` }, "checkins");
+    const seen: string[] = [];
+    let after = start;
+    let page = inboxAfter(db, after);
+    while (true) {
+      seen.push(...page.items.map((i) => i.body));
+      after = page.last;
+      if (!page.more) break;
+      page = inboxAfter(db, after);
+    }
+    expect(seen).toEqual(Array.from({ length: 23 }, (_, i) => `n${i + 1}`));
+    expect(inboxAfter(db, after)).toEqual({ items: [], last: after, more: false });
+  });
+
+  it("a cursor past the newest id (a reset database) starts again from now", () => {
+    const now = inboxAfter(db, null).last;
+    expect(inboxAfter(db, now + 1000)).toEqual({ items: [], last: now, more: false });
+  });
+
   it("pushToChild records for the Mac app even without web push keys, and respects her choices", async () => {
     await pushToChild(db, { title: "Pip", body: "Revision time" }, "reminders");
     expect(inboxAfter(db, 0).items.map((i) => i.body)).toEqual(["Revision time"]);
@@ -141,7 +162,7 @@ describe("routes", () => {
     role = "child";
     const r = await app.inject({ method: "GET", url: "/api/native/inbox" });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ items: [], last: 0 });
+    expect(r.json()).toEqual({ items: [], last: 0, more: false });
     expect((await app.inject({ method: "PUT", url: "/api/native/calendar", payload: snap() })).statusCode).toBe(200);
     expect((await app.inject({ method: "PUT", url: "/api/native/calendar", payload: { events: "nope" } })).statusCode).toBe(500);
     expect((await app.inject({ method: "DELETE", url: "/api/native/calendar" })).statusCode).toBe(200);

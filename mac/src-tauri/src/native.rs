@@ -2,22 +2,22 @@
 // See capability_for_server() in main.rs: these commands are the only ones that origin may call.
 //
 // - native_info: what this app can do and what's switched on.
-// - native_notify: show a Mac notification (Pip's check-ins and reminders).
-// - native_calendar_snapshot: the coming week from Calendar and Reminders, only while she has
-//   switched on Kith › Share Calendar & Reminders with Pip.
+// - native_notify: show a Mac notification (Pip's check-ins and reminders). A burst is gathered into
+//   one "N more" notification (notify.rs), never dropped.
+// - native_calendar_snapshot: the coming week from the calendars and reminder lists she has chosen
+//   (reminders due in the next 7 days), only while she has switched on Kith › Share Calendar &
+//   Reminders with Pip.
 // - native_add_event / native_add_reminder: Pip asked to add something. A native prompt asks her
 //   first, every time; the page can't skip it.
 // - native_pick_document: she picks a document to show Pip (text only; see files.rs).
 
 use crate::eventkit::{self, Access, Event, NewEvent, NewReminder, Reminder};
 use crate::files::{self, SharedFile};
-use crate::State;
+use crate::{LockExt, State};
 use chrono::{Local, TimeZone};
 use serde::Serialize;
-use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_notification::NotificationExt;
 
 pub const CALL_SHORTCUT: &str = "Control+Alt+Space";
 pub const CALL_SHORTCUT_LABEL: &str = "⌃⌥Space";
@@ -39,7 +39,7 @@ pub fn native_info(state: tauri::State<'_, State>) -> Info {
     Info {
         app: "kith-mac",
         version: env!("CARGO_PKG_VERSION"),
-        share_calendar: state.lock().unwrap().config.share_calendar,
+        share_calendar: state.guard().config.share_calendar,
         calendar: eventkit::access(eventkit::EVENT),
         reminders: eventkit::access(eventkit::REMINDER),
         call_shortcut: CALL_SHORTCUT_LABEL,
@@ -48,22 +48,8 @@ pub fn native_info(state: tauri::State<'_, State>) -> Info {
 }
 
 #[tauri::command]
-pub fn native_notify(app: AppHandle, state: tauri::State<'_, State>, title: String, body: String) -> Result<(), String> {
-    {
-        // A page that went wrong mustn't flood her with notifications: 6 a minute at most.
-        let mut s = state.lock().unwrap();
-        s.notify_times.retain(|t| t.elapsed() < Duration::from_secs(60));
-        if s.notify_times.len() >= 6 {
-            return Err("too many".into());
-        }
-        s.notify_times.push(Instant::now());
-    }
-    app.notification()
-        .builder()
-        .title(eventkit::clip(&title, 80))
-        .body(eventkit::clip(&body, 300))
-        .show()
-        .map_err(|e| e.to_string())
+pub fn native_notify(app: AppHandle, title: String, body: String) {
+    crate::notify::show(&app, &title, &body, false);
 }
 
 #[derive(Serialize)]
@@ -72,15 +58,22 @@ pub struct Snapshot {
     reminders: Vec<Reminder>,
 }
 
-/// The next 7 days, or nothing while sharing is off.
+/// The next 7 days from what she's chosen to share, or nothing while sharing is off.
 #[tauri::command]
 pub async fn native_calendar_snapshot(state: tauri::State<'_, State>) -> Result<Option<Snapshot>, String> {
-    if !state.lock().unwrap().config.share_calendar {
+    let (on, cals, lists) = {
+        let s = state.guard();
+        (s.config.share_calendar, s.config.share_calendars.clone(), s.config.share_lists.clone())
+    };
+    if !on {
         return Ok(None);
     }
-    tauri::async_runtime::spawn_blocking(|| {
-        let now = Local::now().timestamp_millis();
-        Snapshot { events: eventkit::events(now - 3_600_000, now + 7 * 86_400_000), reminders: eventkit::reminders() }
+    tauri::async_runtime::spawn_blocking(move || {
+        let now = Local::now();
+        let week = now.timestamp_millis() + eventkit::REMINDER_DAYS * 86_400_000;
+        // Reminders from the start of today, so today's (even if the time has passed) are there.
+        let today = now.date_naive().and_hms_opt(0, 0, 0).and_then(|d| Local.from_local_datetime(&d).earliest()).map_or(now.timestamp_millis(), |d| d.timestamp_millis());
+        Snapshot { events: eventkit::events(now.timestamp_millis() - 3_600_000, week, &cals), reminders: eventkit::reminders(today, week, &lists) }
     })
     .await
     .map(Some)
@@ -108,7 +101,7 @@ fn ask(app: &AppHandle, text: String) -> bool {
 /// `Ok(true)` added, `Ok(false)` she said not now.
 #[tauri::command]
 pub async fn native_add_event(app: AppHandle, state: tauri::State<'_, State>, event: NewEvent) -> Result<bool, String> {
-    if !state.lock().unwrap().config.share_calendar {
+    if !state.guard().config.share_calendar {
         return Err("Calendar sharing is off.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -124,7 +117,7 @@ pub async fn native_add_event(app: AppHandle, state: tauri::State<'_, State>, ev
 
 #[tauri::command]
 pub async fn native_add_reminder(app: AppHandle, state: tauri::State<'_, State>, reminder: NewReminder) -> Result<bool, String> {
-    if !state.lock().unwrap().config.share_calendar {
+    if !state.guard().config.share_calendar {
         return Err("Reminders sharing is off.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {

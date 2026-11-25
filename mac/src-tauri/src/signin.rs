@@ -16,7 +16,6 @@
 // after two minutes.
 
 use std::io::Read;
-use std::time::Duration;
 use tauri::{AppHandle, Manager, Url};
 use tauri_plugin_opener::OpenerExt;
 
@@ -41,12 +40,7 @@ fn base64url(bytes: &[u8]) -> String {
 
 /// Where the provider's sign-in page is for this handoff (the server's redirect), without following it.
 fn provider_url(server: &str, id: &str, hint: &str) -> Option<String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(15)))
-        .build()
-        .into();
+    let agent = crate::net::agent();
     // app= tells the server which person this app is for; it refuses the other one.
     let login = format!("{server}/auth/login?handoff={id}&app={hint}");
     let resp = agent.get(&login).call().ok()?;
@@ -107,9 +101,13 @@ pub fn start(app: &AppHandle, server: String) {
             }
             return;
         };
-        if let Some(w) = app.get_webview_window(crate::MAIN) {
-            let _ = w.eval(page_script(&id));
+        // The polling script only ever goes into Kith's own page: if the window has moved on
+        // somewhere else meanwhile, it isn't added (and the sign-in starts again from Kith).
+        let Some(w) = app.get_webview_window(crate::MAIN) else { return };
+        if !w.url().is_ok_and(|u| crate::same_origin(&u, &server)) {
+            return;
         }
+        let _ = w.eval(page_script(&id));
         crate::mark_handoff(&app);
         let _ = app.opener().open_url(provider, None::<&str>);
     });

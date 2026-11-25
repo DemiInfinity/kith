@@ -26,8 +26,11 @@ Reminders, documents she chooses, and a shortcut to call Pip from anywhere.
   - On every launch and reload it checks the server answers before showing it.
   - If home can't be reached it says so, with "Try again". It also tries again by itself every 15 seconds and when the
     Mac comes back online.
-  - Kith › Change Server… brings the address form back.
+  - Kith › Change Server… brings the address form back, except in a build with a server baked in (see "Setting the
+    server address").
 - **The microphone** for voice calls. macOS asks once, with "Kith listens when you tap the mic during a call."
+- **The start page's content security policy** (`app.security.csp` in `mac/src-tauri/tauri.conf.json`): its own
+  script and image only, no inline script, and network requests only to check the server answers.
 - **The usual Mac menus:** Edit (copy, paste, undo), View, Window and Kith › Quit.
 - **The menu bar:** closing the window keeps Kith running in the menu bar (Open Kith, Call Pip, Quit Kith), so
   notifications still arrive. Clicking Kith in the Dock brings the window back.
@@ -39,8 +42,8 @@ Privacy & Security.
 
 | What | How it works | Safeguards |
 | --- | --- | --- |
-| **Notifications** | Pip's check-ins, reminders and "your thing is ready" show as Mac notifications, even with the window closed. The page polls the server every 30 seconds. | Same choices as on her phone (Settings › Notifications). At most 6 a minute. |
-| **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip**. Then the coming week's events and her open to-dos go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
+| **Notifications** | Pip's check-ins, reminders and "your thing is ready" show as Mac notifications, even with the window closed. The page polls the server every 30 seconds. | Same choices as on her phone (Settings › Notifications). Up to 5 a minute show as they are; any more are gathered into one "N more notifications" a few seconds later, so none are lost. |
+| **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip** and macOS lets Kith in (the tick stays off if she says no). **Kith › Choose What Pip Sees** lists her calendars and reminder lists to tick or untick (all of them until she changes it; calendars added later aren't shared once she has chosen). The line under it says exactly what Pip sees, e.g. "Pip sees: Home, School (next 7 days) · Homework (due in the next 7 days)". The next 7 days of events and the reminders due in the next 7 days (none without a due date) go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Works from macOS 12: Kith asks with macOS 14's new calendar prompts where they exist and the older one otherwise. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
 | **Documents** | The 📄 button in the chat composer (Mac app only), or drop a file on the window. PDF, Word, RTF, ODT, HTML, text and Markdown. | Text only, up to 12,000 characters. It goes through the same safety check and redaction as her messages. **No photos or videos**: Kith's minors policy rules out image uploads until image-safety detection is in place (docs/minors-policy.md). Pip sees the text for that turn; the chat keeps "📄 name". |
 | **Call Pip** | **⌃⌥Space** from any app (or Call Pip in the menu bar or View menu) brings Kith forward and opens a call. | If another app already uses ⌃⌥Space, Kith carries on without it. |
 
@@ -97,6 +100,8 @@ They install side by side, so you can keep both in the Dock.
 - The server applies the parent's choices: which report levels, quiet hours (urgent ones still come through), and
   generic lock-screen text unless summaries are on.
 - Nothing from the child's chats is ever included.
+- Each poll empties the inbox page by page (the server's `last` is the last item it handed over, and `more` says another
+  page is waiting). Up to 5 a minute show as they are; the rest are gathered into one "N more notifications".
 - Urgent ones (`report-now`) play a sound.
 - Kith.app never asks for them.
 
@@ -106,7 +111,7 @@ They install side by side, so you can keep both in the Dock.
 | --- | --- |
 | Your Kith server | In the window |
 | Signing in (Pocket ID) | In your browser, then handed back to the app (below) |
-| Signing out of the provider, and any `signInHosts` in the config | In the window |
+| Any `signInHosts` in the config (https, or http on this Mac or the home network) | In the window |
 | Anything else (Google Drive, links in chat, `mailto:`) | In your default browser |
 
 **Signing in.** Pocket ID signs in with passkeys, and macOS only lets passkeys run in a real browser (or in an app
@@ -118,7 +123,9 @@ Apple has approved for that site). So "Sign in with Pocket ID" in the app works 
 3. Once you've used your passkey, the browser shows "You're signed in". The server hands the session to the app once,
    and Kith comes back to the front.
 
-The handoff lapses after two minutes, and the server only stores a hash of the id. Pop-ups (`window.open`,
+The handoff lapses after two minutes, and the server only stores a hash of the id. The polling script is only added
+to the window while it's showing the Kith server itself. Nothing else loads in the window during sign-in: there's no
+"anything while signing in" allowance, only the server and `signInHosts`. Pop-ups (`window.open`,
 `target="_blank"`) never open a second app window: Kith pages load in the main window, and anything else goes to the
 browser.
 
@@ -140,13 +147,23 @@ needed:
 
   The example file holds the localhost default.
 
-  `signInHosts` is optional. It lists sign-in hosts that may always load in the window. Without it, sign-in still works:
-  the provider is allowed while a sign-in is in progress.
-- **In the app:** from Kith › Change Server…. This is saved in
-  `~/Library/Application Support/app.kith.mac/config.json` and wins over the built-in default.
+  `signInHosts` is optional. It lists hosts that may load in the window (sign-in itself happens in the browser, so
+  most setups don't need any).
 
-The server must be `https://`. Plain `http://` is allowed only for this Mac (`localhost`) or the local network, which is
-handy for development, e.g. `http://localhost:8787`.
+  **A build with a server baked in is locked to it.** Kith (the child's) has no Change Server… and its start page has
+  no "Change server" button; it uses the baked-in server and `signInHosts` whatever the saved settings say. Kith Parent
+  keeps Change Server…, but asks "Change the Kith server?" first.
+- **In the app** (a build without a baked-in server, or Kith Parent): from Kith › Change Server…. This is saved in
+  `~/Library/Application Support/app.kith.mac/config.json` (`app.kith.parent` for Kith Parent) and wins over the
+  built-in default. The file is written to a temporary file and renamed into place, so it's never half-written; if it's
+  unreadable anyway, the app falls back to the baked-in server, not to this Mac. **Changing the server restarts the
+  app:** Kith's native commands are granted to the server's origin, and a grant can't be taken back while the app runs,
+  so a restart is what stops the old server's pages using them.
+
+The server must be `https://`. Plain `http://` is allowed only for this Mac (`localhost`, `*.localhost`, `127.0.0.0/8`,
+`::1`) or the home network (`*.local`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, link-local, IPv6 `fc00::/7`).
+The address is parsed as an IP, so look-alikes such as `10.example.com` don't count. Handy for development, e.g.
+`http://localhost:8787`.
 
 Sign-in follows the server. A local dev server with `KITH_DEV_LOGIN=true` shows its "Try as…" buttons, and a server
 with Pocket ID sends you to Pocket ID inside the window. The app never turns dev sign-in on itself.
@@ -165,6 +182,10 @@ Then build both apps:
 ```bash
 mac/build-all.sh
 ```
+
+If Rust can build for both kinds of Mac (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`), the apps are
+universal (Apple silicon and Intel, `--target universal-apple-darwin`); otherwise they're for the Mac you're on, and the
+script says so. `KITH_UNIVERSAL=0` always builds for this Mac; `KITH_UNIVERSAL=1` insists on universal.
 
 This puts all four files in `mac/dist/` (git-ignored):
 
@@ -188,8 +209,8 @@ To build just one app without the `.dmg`, run this from `mac/src-tauri`:
 - Kith Parent: `cargo tauri build --bundles app --config tauri.parent.conf.json`
 
 For a quick run while working on the shell, use `cargo tauri dev` from the same folder. To see where each page goes
-(window or browser), start the app with `KITH_DEBUG=1`. It logs origins and paths only, never query strings, since
-sign-in URLs carry one-time codes:
+(window or browser), start the app with `KITH_DEBUG=1`. It logs origins only, never paths or query strings, since
+sign-in URLs carry one-time codes and handoff ids:
 
 ```bash
 open -n --env KITH_DEBUG=1 --stderr /tmp/kith.log mac/src-tauri/target/release/bundle/macos/Kith.app
@@ -213,19 +234,70 @@ xattr -dr com.apple.quarantine /Applications/Kith.app "/Applications/Kith Parent
 
 A build made on the same Mac and never downloaded usually opens without either step.
 
-## Signing and notarising later
+## Signing and notarising (Developer ID)
 
-To share the app without the warning you need an Apple Developer account (paid) and a "Developer ID Application"
-certificate in your keychain. Then:
+Nothing here is set up yet: there's no Apple Developer account. When there is, this is how to ship Kith so it opens
+without the "can't check the app" warning, outside the App Store.
 
-1. Set `bundle.macOS.signingIdentity` in `mac/src-tauri/tauri.conf.json` to the certificate's name, e.g.
-   `"Developer ID Application: Your Name (TEAMID)"`. Or set `APPLE_SIGNING_IDENTITY` when building.
-2. For notarising, set `APPLE_ID`, `APPLE_PASSWORD` (an app-specific password) and `APPLE_TEAM_ID` in the environment
-   before `cargo tauri build`. Type the password at a hidden prompt (`read -s APPLE_PASSWORD; export APPLE_PASSWORD`);
-   don't put it in a file in the repo.
+**Once:**
 
-`mac/src-tauri/Entitlements.plist` already has the microphone, calendars and network entitlements the hardened runtime
-needs.
+1. Join the Apple Developer Program (paid, yearly) as the person or organisation who'll publish Kith.
+2. In Xcode › Settings › Accounts, or at developer.apple.com › Certificates, create a **Developer ID Application**
+   certificate. Keep it in the login keychain of the Mac that builds. Check it's there:
+   `security find-identity -v -p codesigning` lists `Developer ID Application: Your Name (TEAMID)`.
+3. Make an app-specific password at account.apple.com › Sign-In and Security (for `notarytool`), or, better for
+   automation, an App Store Connect API key (Users and Access › Integrations › Keys).
+
+**Each build:**
+
+1. Sign: set `APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"` in the environment (or
+   `bundle.macOS.signingIdentity` in `mac/src-tauri/tauri.conf.json`). Tauri signs with the hardened runtime and
+   `mac/src-tauri/Entitlements.plist` (microphone, calendars, reminders and network are already there).
+2. Notarise: also set `APPLE_ID`, `APPLE_PASSWORD` (the app-specific password) and `APPLE_TEAM_ID`, or for an API key
+   `APPLE_API_ISSUER`, `APPLE_API_KEY` and `APPLE_API_KEY_PATH`. Type secrets at a hidden prompt
+   (`read -s APPLE_PASSWORD; export APPLE_PASSWORD`); never put them in a file in the repo. Then `mac/build-all.sh` as
+   usual: Tauri uploads each app to Apple's notary service, waits, and staples the ticket to the `.app`.
+3. The styled `.dmg` (`mac/installer/make-dmgs.sh`) is made after Tauri's step, so sign and notarise it too:
+
+   ```bash
+   codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp mac/dist/Kith.dmg
+   xcrun notarytool submit mac/dist/Kith.dmg --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait
+   xcrun stapler staple mac/dist/Kith.dmg
+   ```
+
+   (and the same for `Kith Parent.dmg`).
+4. Check: `spctl -a -vvv -t install mac/dist/Kith.dmg` and `spctl -a -vvv /path/to/Kith.app` should say
+   "accepted, source=Notarized Developer ID".
+
+With signing, urgent parent notifications could also use "Time Sensitive" (it needs Apple's entitlement as well).
+
+## Updates
+
+The app can update itself with Tauri's updater (`mac/src-tauri/src/updater.rs`). It's **off** unless
+`mac/kith.config.json` has both of these when you build:
+
+```json
+{ "server": "https://ai.example.com", "updateUrl": "https://example.com/kith/{app}/latest.json", "updatePublicKey": "dW50cnVzdGVkIGNvbW1lbnQ6…" }
+```
+
+Then a minute after it starts, and once a day, the app reads `updateUrl` (https only). If there's a newer version it
+asks "Install it now?", downloads it, checks its signature against `updatePublicKey` (an update not signed with the
+matching private key is refused) and restarts.
+
+To publish updates:
+
+1. Once: `cargo tauri signer generate -w ~/.tauri/kith.key`. Keep the private key and its password out of the repo;
+   the public key goes in `updatePublicKey`.
+2. Build with `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents or path) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set,
+   and `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`. That adds `Kith.app.tar.gz` and its `.sig` next to
+   the app.
+3. Upload the `.tar.gz` and serve a `latest.json` at `updateUrl`:
+   `{ "version": "0.2.0", "notes": "…", "pub_date": "2026-12-01T00:00:00Z", "platforms": { "darwin-aarch64": { "url": "https://…/Kith.app.tar.gz", "signature": "<contents of the .sig>" }, "darwin-x86_64": { … } } }`.
+   Both apps are built from the same config, so `{app}` in `updateUrl` becomes `child` in Kith and `parent` in Kith
+   Parent: each gets its own `latest.json` and archive.
+
+Updates replace the app in place. Unsigned ones still install, but once Kith is shared beyond this family, sign and
+notarise each update too (above).
 
 ## Not done yet
 
@@ -236,9 +308,8 @@ needs.
 - **Parent view of the shared calendar.** The parent sees when sharing is switched on or off, not the events.
 - **"Time Sensitive" notifications.** macOS only allows these for signed apps with Apple's entitlement, so urgent
   parent notifications use a sound instead. With signing, they could break through Focus.
-- **Signing and notarising** (see above).
-- **Universal build.** `cargo tauri build` builds for the Mac you're on. For Intel and Apple silicon in one app, add
-  the other target (`rustup target add x86_64-apple-darwin`) and build with `--target universal-apple-darwin`.
+- **Signing and notarising** (see above): needs an Apple Developer account.
+- **Updates** are wired but off (see above): no update address or signing key yet.
 
 ## The other way: bundle the client
 

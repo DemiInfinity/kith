@@ -101,6 +101,18 @@ describe("Kith Parent", () => {
     expect((await app.inject({ url: "/manifest.webmanifest" })).json().name).toBe("Kith");
     config.devLogin = was;
   });
+  it("hands a burst over page by page without skipping any", async () => {
+    const db = setup();
+    const { parentInboxAfter, recordParentNative } = await import("../src/checkins/parentInbox.js");
+    for (let i = 1; i <= 14; i++) recordParentNative(db, { title: "Kith", body: `n${i}` }, "test", false);
+    const one = parentInboxAfter(db, 0);
+    expect(one.items).toHaveLength(10);
+    expect(one.more).toBe(true);
+    expect(one.last).toBe(one.items[9].id);
+    const two = parentInboxAfter(db, one.last);
+    expect(two.items.map((i) => i.body)).toEqual(["n11", "n12", "n13", "n14"]);
+    expect(two.more).toBe(false);
+  });
 });
 
 describe("budget alerts", () => {
@@ -152,7 +164,7 @@ describe("the parent's inbox for the Mac app", () => {
     const kid = createSession(db, { sub: "dev:child", role: "child", name: "Sam" });
     expect((await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: kid } })).statusCode).toBe(403);
     const first = (await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: mum } })).json();
-    expect(first).toEqual({ items: [], last: 1 });
+    expect(first).toEqual({ items: [], last: 1, more: false });
     // Polling is how Kith Parent on a Mac shows up as one of the parent's devices.
     const { macAppConnected } = await import("../src/checkins/parentInbox.js");
     expect(macAppConnected(db)).toBe(true);
