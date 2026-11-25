@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS oidc_state (
   state TEXT PRIMARY KEY, verifier TEXT NOT NULL, nonce TEXT NOT NULL, created INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS auth_handoff (
+  id_hash TEXT PRIMARY KEY, sid TEXT, role TEXT, error TEXT, created INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, role TEXT NOT NULL,
   text TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'chat', meta TEXT
@@ -139,6 +142,8 @@ export function run(db: DB, sql: string, ...params: (string | number | null)[]) 
 
 /** Small additive migrations for existing databases. */
 function migrate(db: DB) {
+  const st = (db.prepare("PRAGMA table_info(oidc_state)").all() as { name: string }[]).map((c) => c.name);
+  if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
   const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
   db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");

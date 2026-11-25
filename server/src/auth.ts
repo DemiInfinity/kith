@@ -78,6 +78,27 @@ function setCookie(reply: FastifyReply, sid: string, role: Role) {
   });
 }
 
+// ── Sign-in from an installed web app (Dock or Home Screen) ─────────────────────────────────
+// The provider's page is outside the app, so the system opens it in a separate window, and that
+// window may not share cookies with the app. So the app makes a random one-time id, opens
+// /auth/login?handoff=<id>, and polls /auth/handoff/<id>. After the callback the new session is tied
+// to that id (only its SHA-256 is stored), for one use within 2 minutes; the poll sets the cookie in
+// the app's own context. No session id ever goes in a URL.
+export const HANDOFF_ID = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
+const HANDOFF_MS = 2 * 60_000;
+const hashId = (id: string) => crypto.createHash("sha256").update(id).digest("hex");
+
+function finishHandoff(db: DB, handoff: string | null | undefined, result: { sid: string; role: Role } | { error: string }) {
+  if (!handoff) return;
+  run(db, "INSERT OR REPLACE INTO auth_handoff(id_hash, sid, role, error, created) VALUES (?,?,?,?,?)",
+    handoff, "sid" in result ? result.sid : null, "sid" in result ? result.role : null, "error" in result ? result.error : null, Date.now());
+}
+
+/** Clears handoffs that were never collected. */
+export function expireHandoffs(db: DB, now = Date.now()) {
+  run(db, "DELETE FROM auth_handoff WHERE created < ?", now - HANDOFF_MS);
+}
+
 // Kept in memory only, to hint the provider at sign-out.
 const idTokens = new Map<string, string>();
 
@@ -103,13 +124,15 @@ export function resetOidcForTests() { oidcConfig = null; }
 export function registerAuth(app: FastifyInstance, db: DB) {
   const redirectUri = `${config.publicUrl}/auth/callback`;
 
-  app.get("/auth/login", async (_req, reply) => {
+  app.get("/auth/login", async (req, reply) => {
     if (!config.oidc.issuer) return reply.code(503).send({ error: "Sign-in isn't set up yet (KITH_OIDC_ISSUER)." });
+    const handoffId = (req.query as { handoff?: string }).handoff;
+    if (handoffId !== undefined && !HANDOFF_ID.test(handoffId)) return reply.code(400).send({ error: "bad handoff" });
     const cfg = await discover();
     const verifier = oidc.randomPKCECodeVerifier();
     const state = oidc.randomState();
     const nonce = oidc.randomNonce();
-    run(db, "INSERT INTO oidc_state(state, verifier, nonce, created) VALUES (?,?,?,?)", state, verifier, nonce, Date.now());
+    run(db, "INSERT INTO oidc_state(state, verifier, nonce, created, handoff) VALUES (?,?,?,?,?)", state, verifier, nonce, Date.now(), handoffId ? hashId(handoffId) : null);
     const url = oidc.buildAuthorizationUrl(cfg, {
       redirect_uri: redirectUri,
       scope: config.oidc.childGroup || config.oidc.parentGroup ? "openid email profile groups" : "openid email profile",
@@ -124,9 +147,15 @@ export function registerAuth(app: FastifyInstance, db: DB) {
   app.get("/auth/callback", async (req, reply) => {
     const q = req.query as { state?: string; error?: string };
     if (q.error) return reply.redirect("/?signin=failed");
-    const row = q.state ? get<{ verifier: string; nonce: string; created: number }>(db, "SELECT verifier, nonce, created FROM oidc_state WHERE state = ?", q.state) : undefined;
+    const row = q.state ? get<{ verifier: string; nonce: string; created: number; handoff: string | null }>(db, "SELECT verifier, nonce, created, handoff FROM oidc_state WHERE state = ?", q.state) : undefined;
     if (!row || Date.now() - row.created > 15 * 60_000) return reply.redirect("/?signin=expired");
     run(db, "DELETE FROM oidc_state WHERE state = ?", q.state!);
+    // In a sign-in window opened by an installed app, finish on a "you can close this" page.
+    const done = (to: string, result: { sid: string; role: Role } | { error: string }) => {
+      if (!row.handoff) return reply.redirect(to);
+      finishHandoff(db, row.handoff, result);
+      return reply.redirect("error" in result ? `/?signin=done-${result.error}` : "/?signin=done");
+    };
     try {
       const cfg = await discover();
       const current = new URL(req.url, config.publicUrl);
@@ -138,17 +167,33 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       const verified = claims.email_verified === true || config.oidc.trustEmail;
       const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).filter((g): g is string => typeof g === "string") : [];
       const role = roleFor({ sub: claims.sub, email, emailVerified: verified, groups });
-      if (!role) return reply.redirect("/?signin=not-allowed");
+      if (!role) return done("/?signin=not-allowed", { error: "not-allowed" });
       const viaGroup = role === "parent" ? config.oidc.parentGroup : config.oidc.childGroup;
       const group = viaGroup && groups.some((g) => g.toLowerCase() === viaGroup.toLowerCase()) ? viaGroup : "";
       if (tokens.id_token) idTokens.set(claims.sub, tokens.id_token);
       const sid = createSession(db, { sub: `${claims.sub}|${verified && email ? email : ""}|${group}`, role, name: firstName(claims as { given_name?: unknown; name?: unknown }) });
       setCookie(reply, sid, role);
-      return reply.redirect(role === "parent" ? "/parent" : "/");
+      return done(role === "parent" ? "/parent" : "/", { sid, role });
     } catch (err) {
       req.log.warn({ err }, "sign-in failed");
-      return reply.redirect("/?signin=failed");
+      return done("/?signin=failed", { error: "failed" });
     }
+  });
+
+  // The installed app polls here. Single use: the first successful poll sets the cookie and the
+  // handoff is gone.
+  app.get("/auth/handoff/:id", { config: { rateLimit: { max: 90, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!HANDOFF_ID.test(id)) return reply.code(400).send({ error: "bad handoff" });
+    expireHandoffs(db);
+    const h = hashId(id);
+    const row = get<{ sid: string | null; role: Role | null; error: string | null }>(db, "SELECT sid, role, error FROM auth_handoff WHERE id_hash = ?", h);
+    if (!row) return { pending: true };
+    run(db, "DELETE FROM auth_handoff WHERE id_hash = ?", h);
+    if (row.error || !row.sid || !row.role) return reply.code(403).send({ error: row.error ?? "failed" });
+    if (!get(db, "SELECT id FROM sessions WHERE id = ?", row.sid)) return reply.code(410).send({ error: "expired" });
+    setCookie(reply, row.sid, row.role);
+    return { ok: true, redirect: row.role === "parent" ? "/parent" : "/" };
   });
 
   // Signs out of Kith, and (if the provider supports it, as Pocket ID does) out of the provider too:

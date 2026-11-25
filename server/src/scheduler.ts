@@ -63,6 +63,7 @@ export function retention(db: DB, now = Date.now()) {
   run(db, "DELETE FROM browse_log WHERE ts < ?", cutoff);
   run(db, "DELETE FROM sessions WHERE expires < ?", now);
   run(db, "DELETE FROM oidc_state WHERE created < ?", now - 15 * MIN);
+  run(db, "DELETE FROM auth_handoff WHERE created < ?", now - 2 * MIN);
   // Reports, summaries and the journal are kept for a year so both can look back.
   run(db, "DELETE FROM reports WHERE ts < ?", now - 365 * DAY);
   run(db, "DELETE FROM spend WHERE ts < ?", now - 400 * DAY);

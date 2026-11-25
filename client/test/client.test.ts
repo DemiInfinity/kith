@@ -50,3 +50,37 @@ describe("personality preview", () => {
     expect(sampleLine(p([]))).toMatch(/cheer you on/);
   });
 });
+
+describe("signing in from an installed app", () => {
+  it("makes a 32-byte, URL-safe one-time id", async () => {
+    const { newHandoffId } = await import("../src/lib/signin");
+    const a = newHandoffId(), b = newHandoffId();
+    expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(a).not.toBe(b);
+  });
+  it("polls until the session is handed over, then says where to go", async () => {
+    const { vi } = await import("vitest");
+    vi.useFakeTimers();
+    (globalThis as { document?: unknown }).document = { visibilityState: "visible" };
+    const { waitForHandoff } = await import("../src/lib/signin");
+    const replies = [{ pending: true }, { pending: true }, { ok: true, redirect: "/" }];
+    const seen: string[] = [];
+    const fake = (async (url: string) => { seen.push(url); const j = replies.shift()!; return { ok: true, status: 200, json: async () => j } as Response; }) as unknown as typeof fetch;
+    const p = waitForHandoff("x".repeat(43), new AbortController().signal, fake);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await p).toEqual({ ok: true, redirect: "/" });
+    expect(seen).toHaveLength(3);
+    expect(seen[0]).toBe(`/auth/handoff/${"x".repeat(43)}`);
+    vi.useRealTimers();
+  });
+  it("stops on a refusal", async () => {
+    const { vi } = await import("vitest");
+    vi.useFakeTimers();
+    const { waitForHandoff } = await import("../src/lib/signin");
+    const fake = (async () => ({ ok: false, status: 403, json: async () => ({ error: "not-allowed" }) }) as Response) as unknown as typeof fetch;
+    const p = waitForHandoff("y".repeat(43), new AbortController().signal, fake);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await p).toEqual({ ok: false, error: "not-allowed" });
+    vi.useRealTimers();
+  });
+});

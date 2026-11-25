@@ -1,3 +1,4 @@
+import { isInstalledApp, newHandoffId, waitForHandoff } from "./lib/signin";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
@@ -23,9 +24,39 @@ import { Study } from "./screens/Study";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
 
+/** Shown in the sign-in window opened by an installed app, once it's done. */
+function SignInDone({ error }: { error: string | null }) {
+  useEffect(() => { const t = setTimeout(() => { try { window.close(); } catch { /* the browser decides */ } }, 600); return () => clearTimeout(t); }, []);
+  return (
+    <div className="main">
+      <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+        <LogoMark size={72} />
+        <h2 style={{ fontSize: 30 }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
+        <span style={{ color: "var(--text-2)" }}>{error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
+      </div>
+    </div>
+  );
+}
+
 function SignIn() {
   const [info, setInfo] = useState<{ oidc: boolean; label: string; dev: boolean } | null>(null);
+  const [waiting, setWaiting] = useState<AbortController | null>(null);
+  const [handoffErr, setHandoffErr] = useState("");
   const reason = new URLSearchParams(location.search).get("signin");
+  // In an installed app, sign-in happens in a separate window and the session is handed over here.
+  const signInFromApp = async (e: React.MouseEvent) => {
+    if (!isInstalledApp()) return; // a normal browser tab: just follow the link
+    e.preventDefault();
+    setHandoffErr("");
+    const id = newHandoffId();
+    const ctrl = new AbortController();
+    setWaiting(ctrl);
+    window.open(`/auth/login?handoff=${id}`, "kith-signin", "popup,width=520,height=760");
+    const r = await waitForHandoff(id, ctrl.signal);
+    setWaiting(null);
+    if (r.ok) { location.href = r.redirect; return; }
+    if (r.error !== "cancelled") setHandoffErr(r.error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : "Sign-in didn’t finish. Try again?");
+  };
   useEffect(() => { api<{ oidc: boolean; label: string; dev: boolean }>("/api/public/signin").then(setInfo).catch(() => undefined); }, []);
   return (
     <div className="main">
@@ -35,7 +66,15 @@ function SignIn() {
         <span className="hand">a companion that grows up with you, kept at home</span>
         {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}
         {reason === "failed" && <div className="notice">Sign-in didn’t work. Try again?</div>}
-        {info?.oidc && <a className="btn primary" href="/auth/login" style={{ textDecoration: "none" }}>Sign in with {info.label}</a>}
+        {handoffErr && <div className="notice">{handoffErr}</div>}
+        {info?.oidc && !waiting && <a className="btn primary" href="/auth/login" onClick={signInFromApp} style={{ textDecoration: "none" }}>Sign in with {info.label}</a>}
+        {waiting && (
+          <div className="stack" style={{ alignItems: "center" }}>
+            <span className="typing" aria-hidden><i /><i /><i /></span>
+            <span>Finish signing in in the window that opened, then come back here.</span>
+            <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
+          </div>
+        )}
         {info && !info.oidc && !info.dev && <span className="small">Sign-in isn’t set up yet. See docs/setup.md.</span>}
         {info?.dev && (
           <div className="stack" style={{ width: "100%" }}>
@@ -253,6 +292,9 @@ export function App() {
     api<Me>("/api/me").then(setMe).catch((e) => (e instanceof ApiError && e.status === 401 ? setMe("signed-out") : setErr((e as Error).message)));
     void registerServiceWorker();
   }, []);
+  // The sign-in window an installed app opened: say it's done (whatever the session state here).
+  const sp = new URLSearchParams(location.search).get("signin") ?? "";
+  if (sp === "done" || sp.startsWith("done-")) return <SignInDone error={sp === "done" ? null : sp.slice(5)} />;
   if (err) return <div className="main"><div className="screen narrow"><div className="notice">Kith can’t reach home right now. {err}</div></div></div>;
   if (me === null) return <div className="main" aria-busy="true" />;
   if (me === "signed-out") return <SignIn />;

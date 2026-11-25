@@ -70,13 +70,12 @@ beforeAll(async () => {
 });
 afterAll(() => provider.close());
 
-async function signIn(claims: Record<string, unknown>) {
+async function signIn(claims: Record<string, unknown>, handoff?: string, existing?: { app: ReturnType<typeof Fastify>; db: ReturnType<typeof openDb> }) {
   user = claims;
-  const db = openDb(":memory:");
-  const app = Fastify();
-  await app.register(cookie);
-  registerAuth(app, db);
-  const start = await app.inject({ method: "GET", url: "/auth/login" });
+  const db = existing?.db ?? openDb(":memory:");
+  const app = existing?.app ?? Fastify();
+  if (!existing) { await app.register(cookie); registerAuth(app, db); }
+  const start = await app.inject({ method: "GET", url: handoff ? `/auth/login?handoff=${handoff}` : "/auth/login" });
   expect(start.statusCode).toBe(302);
   const auth = new URL(start.headers.location as string);
   expect(auth.origin + auth.pathname).toBe(`${issuer}/authorize`);
@@ -136,5 +135,48 @@ describe("signing in with Pocket ID", () => {
     registerAuth(app, db);
     const r = await app.inject({ method: "GET", url: "/auth/callback?code=x&state=forged" });
     expect(r.headers.location).toBe("/?signin=expired");
+  });
+  describe("from an installed web app (Dock or Home Screen)", () => {
+    const newId = () => crypto.randomBytes(32).toString("base64url");
+    it("hands the session to the app's poll once, and the sign-in window finishes on a 'done' page", async () => {
+      const id = newId();
+      const first = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" }, id);
+      expect(first.back.headers.location).toBe("/?signin=done");
+      const poll = await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      expect(poll.json()).toEqual({ ok: true, redirect: "/" });
+      const sid = /kith_sid=([^;]+)/.exec(String(poll.headers["set-cookie"]))![1];
+      const me = await first.app.inject({ method: "POST", url: "/auth/logout", cookies: { kith_sid: sid } });
+      expect(me.statusCode).toBe(200);
+      // Single use.
+      expect((await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
+    });
+    it("says pending until sign-in finishes, and passes on a refusal", async () => {
+      const id = newId();
+      const db = openDb(":memory:");
+      const app = Fastify();
+      await app.register(cookie);
+      registerAuth(app, db);
+      expect((await app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
+      const r = await signIn({ sub: "u-9", groups: ["family"] }, id, { app, db });
+      expect(r.back.headers.location).toBe("/?signin=done-not-allowed");
+      const poll = await app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      expect(poll.statusCode).toBe(403);
+      expect(poll.headers["set-cookie"]).toBeUndefined();
+    });
+    it("expires after 2 minutes, and rejects malformed ids", async () => {
+      const id = newId();
+      const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, id);
+      first.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 3 * 60_000);
+      expect((await first.app.inject({ method: "GET", url: `/auth/handoff/${id}` })).json()).toEqual({ pending: true });
+      expect((await first.app.inject({ method: "GET", url: "/auth/handoff/short" })).statusCode).toBe(400);
+      expect((await first.app.inject({ method: "GET", url: "/auth/login?handoff=bad!" })).statusCode).toBe(400);
+    });
+    it("never stores the id itself, or puts a session id in a URL", async () => {
+      const id = newId();
+      const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, id);
+      const stored = first.db.prepare("SELECT id_hash, sid FROM auth_handoff").all() as { id_hash: string; sid: string }[];
+      expect(stored[0].id_hash).not.toContain(id);
+      expect(String(first.back.headers.location)).not.toContain(stored[0].sid);
+    });
   });
 });

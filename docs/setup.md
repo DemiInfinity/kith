@@ -268,6 +268,14 @@ The first time your child signs in, a short wizard sets up their companion (name
 with, notifications, and how staying safe works). Both sides have a help centre: Settings › Help for your child, and
 Help in the parent view.
 
+## Signing in from an installed app
+
+When Kith is added to the Dock (Safari › File › Add to Dock) or to an iPhone Home Screen, the sign-in page (Pocket
+ID) is outside the app, so the system opens it in a separate window, and that window may not share cookies with the
+app. Kith handles this itself: the app opens sign-in in a window with a random one-time id, and waits. When sign-in
+finishes, that window says "You're signed in" and closes (or asks you to close it), and the app collects the session
+once (within 2 minutes) and carries on. In a normal browser tab, sign-in works as before. Nothing to set up.
+
 ## Light and full
 
 Kith runs on a small machine (for example a Late 2014 Mac mini: 4 threads, 8 GB RAM) in its **light** profile, which
