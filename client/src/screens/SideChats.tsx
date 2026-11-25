@@ -3,7 +3,7 @@ import { api, type Me } from "../api";
 import { Markdown } from "../components/bits";
 import { Icon } from "../components/Icons";
 
-export interface ThreadRow { id: number; title: string; from_text: string | null; messages: number; last: string | null; updated: number }
+export interface ThreadRow { id: number; title: string; from_text: string | null; messages: number; last: string | null; updated: number; lang?: "es" | "ja" | null }
 interface HistoryFile { file: string; thread: number; from: string; title: string }
 
 /** The slide-out for switching between the main chat and side chats, and reading archived chats. */
@@ -25,8 +25,8 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
     return () => removeEventListener("keydown", k);
   }, [open, onClose]);
 
-  const newChat = async () => {
-    const t = await api<{ id: number }>("/api/threads", { body: {} });
+  const newChat = async (lang?: "es" | "ja") => {
+    const t = await api<{ id: number }>("/api/threads", { body: lang ? { lang, title: lang === "es" ? "Español" : "日本語" } : {} });
     onPick(t.id);
   };
   const rename = async (id: number) => {
@@ -52,7 +52,11 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
           <b style={{ fontFamily: "var(--serif)", fontSize: 22 }}>Chats</b>
           <button className="x" aria-label={docked ? "Close side chats" : "Close"} onClick={onClose}><Icon name="close" /></button>
         </div>
-        <button className="btn primary small" onClick={newChat}><Icon name="newchat" size={18} /> New side chat</button>
+        <button className="btn primary small" onClick={() => newChat()}><Icon name="newchat" size={18} /> New side chat</button>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="chip" style={{ flex: 1 }} onClick={() => newChat("es")}><span className="langdot">Ñ</span> In Español</button>
+          <button className="chip" style={{ flex: 1 }} onClick={() => newChat("ja")}><span className="langdot">あ</span> In 日本語</button>
+        </div>
         <span className="small">Split off to talk about something else without losing your place. Tip: tap any message and choose “Side chat from here”.</span>
         <div className="stack" style={{ gap: 6 }}>
           {threads.map((t) => (
@@ -65,7 +69,7 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
               ) : (
                 <>
                   <button className="threadpick" onClick={() => onPick(t.id)}>
-                    <Icon name={t.id === 1 ? "chat" : "sidechats"} on={t.id === current} size={20} />
+                    {t.lang ? <span className="langdot" aria-label={t.lang === "es" ? "In Spanish" : "In Japanese"}>{t.lang === "es" ? "Ñ" : "あ"}</span> : <Icon name={t.id === 1 ? "chat" : "sidechats"} on={t.id === current} size={20} />}
                     <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                       <b style={{ display: "block", fontSize: 14 }}>{t.id === 1 ? `Main chat with ${me.profile.name}` : t.title}</b>
                       <span className="small" style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.last ?? (t.from_text ? `from: ${t.from_text}` : "nothing yet")}</span>

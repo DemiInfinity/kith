@@ -164,6 +164,9 @@ function migrate(db: DB) {
   const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
   db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");
+  const th = (db.prepare("PRAGMA table_info(threads)").all() as { name: string }[]).map((c) => c.name);
+  if (!th.includes("lang")) db.exec("ALTER TABLE threads ADD COLUMN lang TEXT");
+  if (!th.includes("topic")) db.exec("ALTER TABLE threads ADD COLUMN topic TEXT");
   // Thread 1 is always the main chat.
   db.prepare("INSERT OR IGNORE INTO threads(id, ts, title, updated) VALUES (1, ?, 'Chat', ?)").run(Date.now(), Date.now());
 }

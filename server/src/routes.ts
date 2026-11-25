@@ -9,7 +9,7 @@ import type { DB } from "./db.js";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
-import { createThread, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
+import { createThread, getThread, inThreadLanguage, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
 import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
 import { LANGS, logPractice } from "./study/languages.js";
@@ -97,13 +97,15 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   // ── Side chats ────────────────────────────────────────────────────────────────────────
   app.get("/api/threads", { preHandler: child }, async () => ({ threads: listThreads(db) }));
   app.post("/api/threads", { preHandler: child }, async (req) => {
-    const b = z.object({ title: z.string().max(60).optional(), fromMessageId: z.number().int().optional() }).parse(req.body ?? {});
+    const b = z.object({ title: z.string().max(60).optional(), fromMessageId: z.number().int().optional(), lang: z.enum(LANGS).optional(), topic: z.string().max(120).optional() }).parse(req.body ?? {});
     const from = b.fromMessageId ? get<{ text: string; thread_id: number }>(db, "SELECT text, thread_id FROM messages WHERE id = ?", b.fromMessageId) : undefined;
-    return createThread(db, { title: b.title, fromText: from?.text, parentId: from?.thread_id });
+    // Splitting off from a Spanish side chat gives another Spanish side chat.
+    const lang = b.lang ?? (from ? getThread(db, from.thread_id)?.lang ?? null : null);
+    return createThread(db, { title: b.title, fromText: from?.text, parentId: from?.thread_id, lang, topic: b.topic });
   });
   app.patch("/api/threads/:id", { preHandler: child }, async (req, reply) => {
-    const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional() }).parse(req.body ?? {});
-    return updateThread(db, Number((req.params as { id: string }).id), b) ? { ok: true } : reply.code(400).send({ error: "The main chat can’t be archived." });
+    const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional(), lang: z.enum(LANGS).nullable().optional() }).parse(req.body ?? {});
+    return updateThread(db, Number((req.params as { id: string }).id), b) ? { ok: true } : reply.code(400).send({ error: "The main chat stays as it is: start a side chat for that." });
   });
 
   // ── Things they asked to schedule ─────────────────────────────────────────────────────
@@ -138,6 +140,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
   app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
     const body = ChatBody.parse(req.body);
+    // A side chat in Spanish or Japanese: every turn in it is language practice.
+    Object.assign(body, inThreadLanguage(db, body));
     const turn = await takeTurn(turnDeps(), body);
     // Coursework help is logged so they can show their teacher exactly what help they had.
     const subject = getSubject(db, body.ctx.subjectId);

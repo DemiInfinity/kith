@@ -801,3 +801,4 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .lesson .fixnote s { opacity: 0.7; }
 .lesson .savechip { display: inline-flex; gap: 4px; align-items: center; margin: 6px 6px 0 0; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--lilac); background: none; color: var(--lilac); font-size: 13px; font-weight: 800; }
 .lesson .savechip:disabled { opacity: 0.75; }
+.langdot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 13px; font-weight: 900; background: rgba(217,163,224,0.16); color: var(--lilac); flex: none; }

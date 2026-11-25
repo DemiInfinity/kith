@@ -177,3 +177,23 @@ describe("language routes", () => {
     done();
   });
 });
+
+describe("side chats in a language", () => {
+  it("turn every plain chat turn into practice in that language, and can be switched", async () => {
+    const { createThread, inThreadLanguage, updateThread, listThreads } = await import("../src/companion/threads.js");
+    const db = openDb(":memory:");
+    const t = createThread(db, { title: "Español · Your weekend", lang: "es", topic: "Your weekend" });
+    expect(inThreadLanguage(db, { thread: t.id, mode: "chat", ctx: {} })).toEqual({ mode: "language", ctx: { lang: "es", topic: "Your weekend" } });
+    // Other modes (a call, study) are left alone, and so is an ordinary side chat.
+    expect(inThreadLanguage(db, { thread: t.id, mode: "talk", ctx: {} }).mode).toBe("talk");
+    const plain = createThread(db, { title: "Art stuff" });
+    expect(inThreadLanguage(db, { thread: plain.id, mode: "chat", ctx: {} }).mode).toBe("chat");
+    updateThread(db, plain.id, { lang: "ja" });
+    expect(inThreadLanguage(db, { thread: plain.id, mode: "chat", ctx: {} }).ctx).toEqual({ lang: "ja", topic: undefined });
+    updateThread(db, plain.id, { lang: null });
+    expect(inThreadLanguage(db, { thread: plain.id, mode: "chat", ctx: {} }).mode).toBe("chat");
+    // The main chat always stays as it is.
+    expect(updateThread(db, 1, { lang: "es" })).toBe(false);
+    expect(listThreads(db).find((x) => x.id === t.id)?.lang).toBe("es");
+  });
+});

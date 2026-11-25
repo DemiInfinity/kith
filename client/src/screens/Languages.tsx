@@ -27,7 +27,7 @@ export const NATIVE: Record<Lang, { title: string; badge: string; hello: string 
 
 type Screen = { k: "home" } | { k: "cards"; lang: Lang } | { k: "kana"; script: "hiragana" | "katakana" } | { k: "settings"; lang: Lang };
 
-export function Languages({ me, go }: { me: Me; go: (to: string) => void }) {
+export function Languages({ me, go, openThread }: { me: Me; go: (to: string) => void; openThread: (id: number) => void }) {
   const [v, setV] = useState<View | null>(null);
   const [err, setErr] = useState("");
   const [screen, setScreen] = useState<Screen>({ k: "home" });
@@ -44,9 +44,14 @@ export function Languages({ me, go }: { me: Me; go: (to: string) => void }) {
   if (screen.k === "kana") return <KanaTrainer script={screen.script} progress={v.kana} onBack={back} onScript={(script) => setScreen({ k: "kana", script })} />;
   if (screen.k === "settings") return <LangSettings info={info(screen.lang)} onBack={back} />;
 
-  const chat = (l: LangInfo) => {
-    const q = new URLSearchParams({ mode: "language", lang: l.lang, topic: l.topic, label: `${NATIVE[l.lang].title} · ${l.topic}` });
-    go(`/?${q}`);
+  // Practice happens in its own side chat in that language, so the main chat stays as it is.
+  const chat = async (l: LangInfo) => {
+    try {
+      const t = await api<{ id: number }>("/api/threads", { body: { lang: l.lang, topic: l.topic, title: `${NATIVE[l.lang].title} · ${l.topic}`.slice(0, 60) } });
+      openThread(t.id);
+    } catch {
+      go(`/?${new URLSearchParams({ mode: "language", lang: l.lang, topic: l.topic, label: `${NATIVE[l.lang].title} · ${l.topic}` })}`);
+    }
   };
   const hira = rows("hiragana");
   const learned = new Set(v.kana.filter((k) => k.learned).map((k) => k.kana));
@@ -85,7 +90,7 @@ export function Languages({ me, go }: { me: Me; go: (to: string) => void }) {
                 </button>
               ) : (
                 <button className="todo" onClick={() => setScreen({ k: "cards", lang: l.lang })}>
-                  <Icon name="cards" size={20} /><span><b>{l.cards.due ? `${l.cards.due} cards due · ${minutes} min` : "Flashcards: nothing due"}</b><br /><span className="small">{l.cards.known} words you know · {l.cards.total} cards</span></span>
+                  <Icon name="cards" size={20} /><span><b>{l.cards.due ? `${l.cards.due} ${l.cards.due === 1 ? "card" : "cards"} due · ${minutes} min` : "Flashcards: nothing due"}</b><br /><span className="small">{l.cards.known} words you know · {l.cards.total} cards</span></span>
                 </button>
               )}
               {l.lang === "ja" && nextRow && (
@@ -99,7 +104,7 @@ export function Languages({ me, go }: { me: Me; go: (to: string) => void }) {
                 </button>
               )}
               <button className="todo" onClick={() => chat(l)}>
-                <Icon name="chat2" size={20} /><span><b>Chat with {name}: {l.topic}</b><br /><span className="small">In {l.name}, at your level. Tap hints when you need them.</span></span>
+                <Icon name="chat2" size={20} /><span><b>Chat with {name}: {l.topic}</b><br /><span className="small">A side chat in {l.name}, at your level. Tap hints when you need them.</span></span>
               </button>
             </div>
           </div>

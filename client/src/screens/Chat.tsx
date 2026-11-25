@@ -32,8 +32,8 @@ export const BUILTIN: { cmd: string; name: string; desc: string; icon: IconName 
   { cmd: "reload-skills", name: "Reload skills", desc: "Get the latest skills from your grown-up", icon: "newchat" },
   { cmd: "memory", name: "Memory", desc: "What’s remembered about you", icon: "brain" },
   { cmd: "schedule", name: "Scheduled", desc: "Reminders and things you asked for", icon: "calendar" },
-  { cmd: "es", name: "Español", desc: "Practise Spanish with me", icon: "globe" },
-  { cmd: "ja", name: "日本語", desc: "Practise Japanese with me", icon: "globe" },
+  { cmd: "es", name: "Español", desc: "A side chat in Spanish", icon: "globe" },
+  { cmd: "ja", name: "日本語", desc: "A side chat in Japanese", icon: "globe" },
   { cmd: "desk", name: "Desk", desc: "Open the desk", icon: "desk" },
   { cmd: "new", name: "New side chat", desc: "Start a side chat", icon: "newchat" },
   { cmd: "call", name: "Call", desc: "Start a call", icon: "call" },
@@ -131,7 +131,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     setText("");
     const card = (body: React.ReactNode) => setCards([{ id: Date.now(), cmd, body }]);
     try {
-      if (cmd === "es" || cmd === "ja") go(`/?mode=language&lang=${cmd}&label=${encodeURIComponent(cmd === "es" ? "Español" : "日本語")}`);
+      // /es and /ja open a side chat in that language (the main chat stays as it is).
+      if (cmd === "es" || cmd === "ja") onSplit((await api<{ id: number }>("/api/threads", { body: { lang: cmd, title: cmd === "es" ? "Español" : "日本語" } })).id);
       else if (cmd === "desk") go("/pip");
       else if (cmd === "schedule") go("/pip/scheduled");
       else if (cmd === "call") go("/talk");

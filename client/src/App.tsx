@@ -188,6 +188,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     try { return Number(sessionStorage.getItem("kith-thread")) || 1; } catch { return 1; }
   });
   const [threadTitle, setThreadTitle] = useState("");
+  const [threadLang, setThreadLang] = useState<"es" | "ja" | null>(null);
   const pickThread = (id: number) => {
     setThread(id);
     try { sessionStorage.setItem("kith-thread", String(id)); } catch { /* fine */ }
@@ -195,17 +196,20 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     if (location.pathname !== "/") go("/");
   };
   useEffect(() => {
-    if (thread === 1) { setThreadTitle(""); return; }
+    if (thread === 1) { setThreadTitle(""); setThreadLang(null); return; }
     api<{ threads: ThreadRow[] }>("/api/threads").then((r) => {
       const t = r.threads.find((x) => x.id === thread);
-      if (!t) pickThread(1); else setThreadTitle(t.title);
+      if (!t) pickThread(1); else { setThreadTitle(t.title); setThreadLang(t.lang ?? null); }
     }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread]);
   // "Ask Pip" from Study, Art or the OC workshop opens the main chat with a context chip.
   const q = new URLSearchParams(location.search);
   const qLang = q.get("lang");
-  const chatContext: ChatContext | null = q.get("mode") === "language" && (qLang === "es" || qLang === "ja")
+  // A side chat in Spanish or Japanese is language practice all the way through.
+  const chatContext: ChatContext | null = thread !== 1 && threadLang
+    ? { mode: "language", ctx: { lang: threadLang }, label: threadLang === "es" ? "Español" : "日本語" }
+    : q.get("mode") === "language" && (qLang === "es" || qLang === "ja")
     ? { mode: "language", ctx: { lang: qLang, topic: q.get("topic")?.slice(0, 120) || undefined }, label: q.get("label") || (qLang === "es" ? "Español" : "日本語") }
     : q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
     ? {
@@ -243,7 +247,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/study") screen = <Study me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/stories") screen = <Stories me={me} />;
-  else if (path === "/languages") screen = <Languages me={me} go={go} />;
+  else if (path === "/languages") screen = <Languages me={me} go={go} openThread={pickThread} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else if (path === "/lab") screen = <AvatarLab />;
   else if (path === "/help") screen = <KidHelp me={me} go={go} />;
@@ -254,10 +258,19 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       {thread !== 1 && (
         <div className="threadbar">
           <Icon name="sidechats" size={18} /><b style={{ flex: 1 }}>{threadTitle || "Side chat"}</b>
+          <select className="select" style={{ width: "auto", minHeight: 32, padding: "0 10px" }} aria-label="Language for this side chat" value={threadLang ?? ""}
+            onChange={async (e) => { const lang = (e.target.value || null) as "es" | "ja" | null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
+            <option value="">English</option><option value="es">Español</option><option value="ja">日本語</option>
+          </select>
           <button className="chip" style={{ minHeight: 32 }} onClick={() => pickThread(1)}>Back to main chat</button>
         </div>
       )}
-      <Chat key={thread} me={me} thread={thread} context={chatContext} onClearContext={() => go("/")} onSplit={pickThread}
+      <Chat key={thread} me={me} thread={thread} context={chatContext}
+        onClearContext={async () => {
+          // In a language side chat, the ✕ switches that side chat back to English.
+          if (thread !== 1 && threadLang) { await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang: null } }); setThreadLang(null); }
+          else go("/");
+        }} onSplit={pickThread}
         onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
     </>
   );
