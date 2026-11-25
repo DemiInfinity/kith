@@ -3,6 +3,7 @@ import type { DB } from "../db.js";
 import { all, run } from "../db.js";
 import { config } from "../config.js";
 import { loadProfile } from "../settings.js";
+import { recordNative } from "../native.js";
 
 export const pushReady = () => Boolean(config.push.publicKey && config.push.privateKey);
 
@@ -21,8 +22,10 @@ export type PushKind = "checkins" | "reminders" | "deskReady" | "test";
 
 /** Sends to the child's devices, if they want this kind. Returns how many got it. */
 export async function pushToChild(db: DB, payload: { title: string; body: string; url?: string }, kind: PushKind = "checkins"): Promise<number> {
-  if (!pushReady()) return 0;
   if (kind !== "test" && !loadProfile(db).notifications[kind]) return 0;
+  // The Mac app shows these as Mac notifications (web push can't reach its web view).
+  recordNative(db, payload, kind);
+  if (!pushReady()) return 0;
   let sent = 0;
   for (const row of all<{ endpoint: string; json: string }>(db, "SELECT endpoint, json FROM push_subs")) {
     try {

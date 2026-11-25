@@ -1,7 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "launcher",
-  "description": "Only the app's own start page (bundled, local) may call the shell. The Kith server's pages get no access to it.",
+  "description": "The app's own start page (bundled, local) may read and save the server address. The Kith server's pages get only the native commands granted at runtime (main.rs, grant_native).",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "local": true,
+  "permissions": ["core:default", "allow-setup-info", "allow-save-server"]
 }

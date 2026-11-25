@@ -28,6 +28,7 @@ import { modeNote, prefersLowPower, type Mode, type ModeCtx } from "./modes.js";
 import { conversationContext } from "./context.js";
 import { getThread, MAIN_THREAD, threadNote, touchThread } from "./threads.js";
 import { enabledSkills, skillForCommand, skillsNote, skillText } from "./skills.js";
+import { calendarNote, nativeTools } from "../native.js";
 import { writeHistory } from "./history.js";
 import { getSubject } from "../study/study.js";
 import { logActivity } from "../desk/activity.js";
@@ -88,7 +89,10 @@ export function restingText(_e: Energy, parent: string) {
 
 export { whenText };
 
-export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ctx?: ModeCtx; thread?: number }): Promise<TurnResult> {
+/** A document she shared from the Mac app: its text only (no images; see docs/minors-policy.md). */
+export interface SharedDoc { name: string; text: string }
+
+export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ctx?: ModeCtx; thread?: number; file?: SharedDoc }): Promise<TurnResult> {
   const thread = input.thread && getThread(deps.db, input.thread) ? input.thread : MAIN_THREAD;
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
@@ -98,9 +102,13 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
 
   const raw = input.text.trim().slice(0, 4000);
   const history = recentMessages(db, 40, thread);
-  const verdict = await safety.checkInput(raw, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`));
+  // A shared document goes through the same safety check and redaction as what they type.
+  const file = input.file ? { name: input.file.name.trim().slice(0, 120) || "document", text: input.file.text.slice(0, 12_000) } : undefined;
+  const checked = file ? `${raw}\n\n[They shared a document, “${file.name}”:]\n${file.text}` : raw;
+  const verdict = await safety.checkInput(checked, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`));
   const { text: clean } = redactPersonal(raw);
-  const child = store(db, "child", clean, input.mode, undefined, thread);
+  const doc = file ? { name: redactPersonal(file.name).text, text: redactPersonal(file.text).text } : undefined;
+  const child = store(db, "child", doc ? `${clean}\n\n📄 ${doc.name}` : clean, input.mode, undefined, thread);
 
   let report: TurnResult["report"] = null;
   if (verdict.level !== "none") {
@@ -126,7 +134,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
       const switchedToLow = energy.mode === "low" && (!last || JSON.parse(last.json) === "full");
       run(db, "INSERT INTO settings(key, json) VALUES('last_power', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(energy.mode));
       if (switchedToLow) logActivity(db, "🔋", `Switched to Low power${energy.fullBackAt ? ` (Full power back ${whenText(energy.fullBackAt)})` : ""}`);
-      replyText = await generateReply(deps, { clean, thread, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
+      replyText = await generateReply(deps, { clean, doc, thread, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
       if (report) mood = "concerned";
     } catch (err) {
       if (err instanceof OfflineError) {
@@ -164,7 +172,7 @@ export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: 
 
 async function generateReply(
   deps: Deps,
-  a: { clean: string; thread: number; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
+  a: { clean: string; doc?: SharedDoc; thread: number; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
 ): Promise<string> {
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
@@ -178,6 +186,7 @@ async function generateReply(
   const tools: ToolDef[] = [
     ...builtinTools(db, deps.studio, a.effects).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...(await connectionTools(db, settings.connections)),
+    ...nativeTools(db),
   ];
   // Skills the parent wrote: the list is in the prompt; the full text loads only when it's used.
   const skills = enabledSkills(db);
@@ -221,6 +230,7 @@ async function generateReply(
         modeNote(db, a.mode, a.ctx),
         threadNote(db, a.thread),
         skillsNote(db),
+        calendarNote(db),
         "Older conversations are archived. Your summary covers the gist; only if they ask you to remember something specific from before that isn't in it, use recall_history to look it up (don't use it otherwise).",
       ].filter(Boolean).join("\n\n"),
     },
@@ -232,7 +242,16 @@ async function generateReply(
     messages.push({ role: m.role === "child" ? "user" : "assistant", content: m.text });
   }
   while (messages.length && messages[0].role !== "user") messages.shift();
-  messages.push({ role: "user", content: a.clean });
+  messages.push({
+    role: "user",
+    content: a.doc
+      ? [
+          // Only for this turn; later turns see "📄 name" in the history.
+          { type: "document", source: { type: "text", media_type: "text/plain", data: a.doc.text }, title: a.doc.name },
+          { type: "text", text: a.clean },
+        ]
+      : a.clean,
+  });
 
   const notes: string[] = [];
   if (commanded) notes.push(`They typed /${commanded.command}, so use this skill now.\n\n${skillText(commanded, parent)}`);

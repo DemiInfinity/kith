@@ -4,5 +4,13 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Kith listens when you tap the mic during a call.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Pip can see what's coming up this week, and add things you ask for (you say yes each time).</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Pip can see what's coming up this week, and add things you ask for (you say yes each time).</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>Pip can see your to-dos, and add reminders you ask for (you say yes each time).</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>Pip can see your to-dos, and add reminders you ask for (you say yes each time).</string>
 </dict>
 </plist>

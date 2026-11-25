@@ -1,4 +1,5 @@
 import { isInstalledApp, newHandoffId, waitForHandoff } from "./lib/signin";
+import { checkNativeActions, startNative } from "./lib/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
@@ -177,13 +178,16 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
   useEffect(() => { void load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
+  // In the Mac app: notifications, Calendar & Reminders, ⌃⌥Space to call, dropped documents.
+  // Once: go only calls a stable setter.
+  useEffect(() => startNative(go), []);
 
   const onSaved = (p: Profile) => setMe((m) => ({ ...m, profile: p }));
   if (!me.profile.setupDone) return <Meet me={me} onDone={onSaved} />;
 
   const energy = state?.energy;
   const baseMood: Mood = mood !== "happy" ? mood : energy?.mode === "low" ? "sleepy" : energy?.mode === "resting" ? "resting" : "happy";
-  const onTurn = (t: Turn) => { setState((s) => (s ? { ...s, energy: t.energy } : s)); void load(); };
+  const onTurn = (t: Turn) => { setState((s) => (s ? { ...s, energy: t.energy } : s)); void load(); void checkNativeActions(); };
   const name = me.profile.name;
   const working = state?.desk.working;
   const doing = doingText(state, baseMood);

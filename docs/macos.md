@@ -12,6 +12,9 @@ The web app switches to that layout at 1100px wide or more, so the window never 
 Because the window loads the live server, sign-in, cookies, the sandboxed desk frames and every future change to the web
 app are the same in the Mac app, with nothing to rebuild. There's no second UI to maintain.
 
+On top of that, the app gives Pip a few parts of the Mac (see "Pip and the Mac" below): notifications, Calendar and
+Reminders, documents she chooses, and a shortcut to call Pip from anywhere.
+
 ## What the app adds
 
 - **A proper Mac window:** about 1500×920 the first time, then it remembers its size and position. The title bar blends
@@ -26,6 +29,36 @@ app are the same in the Mac app, with nothing to rebuild. There's no second UI t
   - Kith › Change Server… brings the address form back.
 - **The microphone** for voice calls. macOS asks once, with "Kith listens when you tap the mic during a call."
 - **The usual Mac menus:** Edit (copy, paste, undo), View, Window and Kith › Quit.
+- **The menu bar:** closing the window keeps Kith running in the menu bar (Open Kith, Call Pip, Quit Kith), so
+  notifications still arrive. Clicking Kith in the Dock brings the window back.
+
+## Pip and the Mac
+
+Each of these asks the child the first time (macOS's own prompts) and can be switched off again in System Settings ›
+Privacy & Security.
+
+| What | How it works | Safeguards |
+| --- | --- | --- |
+| **Notifications** | Pip's check-ins, reminders and "your thing is ready" show as Mac notifications, even with the window closed. The page polls the server every 30 seconds. | Same choices as on her phone (Settings › Notifications). At most 6 a minute. |
+| **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip**. Then the coming week's events and her open to-dos go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
+| **Documents** | The 📄 button in the chat composer (Mac app only), or drop a file on the window. PDF, Word, RTF, ODT, HTML, text and Markdown. | Text only, up to 12,000 characters. It goes through the same safety check and redaction as her messages. **No photos or videos**: Kith's minors policy rules out image uploads until image-safety detection is in place (docs/minors-policy.md). Pip sees the text for that turn; the chat keeps "📄 name". |
+| **Call Pip** | **⌃⌥Space** from any app (or Call Pip in the menu bar or View menu) brings Kith forward and opens a call. | If another app already uses ⌃⌥Space, Kith carries on without it. |
+
+How it fits together:
+
+- **In the app (Rust, `mac/src-tauri/src/`):** `native.rs` holds the commands, `eventkit.rs` uses Apple's EventKit,
+  and `files.rs` reads documents (PDFKit for PDFs, macOS's `textutil` for Word and the rest).
+- **Who may use the commands:** only pages from the configured Kith server, in the main window. That's a Tauri
+  capability added at start-up for that one origin. The sign-in provider, other sites and the desk's sandboxed frames
+  get nothing. The bundled start page has its own two commands (read and save the server address) and none of these.
+- **In the web app (`client/src/lib/native.ts`):** does nothing in a normal browser. In the Mac app it polls the
+  notification inbox, sends the calendar snapshot, passes Pip's requests to the native prompt and handles ⌃⌥Space and
+  dropped files.
+- **On the server (`server/src/native.ts`):** child-only routes under `/api/native/`, the inbox that `pushToChild()`
+  also writes to, the shared calendar, and Pip's `add_calendar_event` and `add_reminder` tools. The tools are offered
+  only while she's sharing.
+
+These need the server to be on the version with `server/src/native.ts`. An older server just ignores them.
 
 ## Where links open
 
@@ -128,14 +161,16 @@ certificate in your keychain. Then:
    before `cargo tauri build`. Type the password at a hidden prompt (`read -s APPLE_PASSWORD; export APPLE_PASSWORD`);
    don't put it in a file in the repo.
 
-`mac/src-tauri/Entitlements.plist` already has the microphone and network entitlements the hardened runtime needs.
+`mac/src-tauri/Entitlements.plist` already has the microphone, calendars and network entitlements the hardened runtime
+needs.
 
 ## Not done yet
 
-- **Notifications.** The app's web view (WKWebView, embedded in an app) doesn't support web push or the web
-  Notifications API: those are Safari-only, including Safari's Add to Dock apps. Kith's in-app updates still show while
-  the window is open. To get Mac notifications, the server's pages would need a small bridge to Tauri's notification
-  plugin, which means giving the remote site access to the app. Left out for now on purpose.
+- **Notifications arrive within about 30 seconds,** not instantly: the app polls (web push can't reach an app's web
+  view). If she quits Kith from the menu bar, none arrive until she opens it again. Clicking a notification opens Kith
+  but not a particular screen.
+- **Photos.** Left out on purpose until image-safety detection is added (see the minors policy).
+- **Parent view of the shared calendar.** The parent sees when sharing is switched on or off, not the events.
 - **Signing and notarising** (see above).
 - **Universal build.** `cargo tauri build` builds for the Mac you're on. For Intel and Apple silicon in one app, add
   the other target (`rustup target add x86_64-apple-darwin`) and build with `--target universal-apple-darwin`.

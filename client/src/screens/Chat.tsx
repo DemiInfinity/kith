@@ -3,6 +3,7 @@ import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type Re
 import { dayLabel, EnergyCard } from "../components/bits";
 import type { AppState, Memory } from "../api";
 import { Icon, type IconName } from "../components/Icons";
+import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
 export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string }
@@ -56,6 +57,19 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [made, setMade] = useState<Record<number, Turn["effects"]>>({});
   const [text, setText] = useState("");
+  // A document shared from the Mac app (picked, or dropped on the window): its text only.
+  const [file, setFile] = useState<SharedFile | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ ok: boolean; file?: SharedFile; error?: string }>).detail;
+      if (d.ok && d.file) { setFile(d.file); setErr(""); } else setErr(d.error ?? "Couldn't read that file.");
+    };
+    addEventListener("kith-file", on);
+    return () => removeEventListener("kith-file", on);
+  }, []);
+  const attach = async () => {
+    try { const f = await pickDocument(); if (f) { setFile(f); setErr(""); } } catch (e) { setErr((e as Error).message ?? String(e)); }
+  };
   // "/" commands from the skills their grown-up wrote.
   const [cmds, setCmds] = useState<{ id: number; name: string; description: string; command: string | null }[]>([]);
   const [slashPick, setSlashPick] = useState(0);
@@ -145,17 +159,19 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   };
 
   const send = async (t = text) => {
-    const body = t.trim();
+    const shared = file;
+    const body = t.trim() || (shared ? "Can you have a look at this?" : "");
     if (!body || busy) return;
-    if (await runBuiltin(body)) return;
+    if (!shared && await runBuiltin(body)) return;
     setText("");
+    setFile(null);
     setErr("");
     setBusy(true);
     onMood("thinking");
-    const temp: Message = { id: -Date.now(), ts: Date.now(), role: "child", text: body, mode, meta: null };
+    const temp: Message = { id: -Date.now(), ts: Date.now(), role: "child", text: shared ? `${body}\n\n📄 ${shared.name}` : body, mode, meta: null };
     setMessages((m) => [...(m ?? []), temp]);
     try {
-      const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread } });
+      const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
       if (turn.effects.jobs.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
       onTurn(turn);
@@ -163,7 +179,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       if (turn.openHelp) openHelp();
     } catch (e) {
       setMessages((m) => (m ?? []).filter((x) => x.id !== temp.id));
-      setText(body);
+      setText(t.trim());
+      setFile(shared);
       setErr((e as Error).message);
       onMood("happy");
     } finally {
@@ -267,6 +284,13 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           ))}
         </div>
       )}
+      {file && (
+        <div className="filechip" role="status">
+          <Icon name="note" size={16} />
+          <span><b>{file.name}</b>{file.truncated ? <span className="small"> · {name} will read the first part</span> : null}</span>
+          <button type="button" className="iconbtn" aria-label="Remove the document" onClick={() => setFile(null)}><Icon name="close" size={14} /></button>
+        </div>
+      )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <textarea
           aria-label={`Message ${name}`} placeholder={`Message ${name}…`} value={text} rows={1} maxLength={4000}
@@ -278,8 +302,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
           }}
         />
+        {isMacApp() && <button type="button" className="roundbtn" aria-label={`Show ${name} a document`} title="Show a document (PDF, Word, text)" onClick={attach}><Icon name="note" size={22} /></button>}
         <button type="button" className="roundbtn" aria-label="Talk instead" onClick={() => go("/talk")}><Icon name="mic" size={22} /></button>
-        <button type="submit" className="roundbtn send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>
+        <button type="submit" className="roundbtn send" aria-label="Send" disabled={busy || (!text.trim() && !file)}><Icon name="send" size={22} /></button>
       </form>
       </div>
     </>
