@@ -14,7 +14,8 @@ import { computeEnergy, recentRows, type Energy } from "../budget/budget.js";
 import { OfflineError, textOf, type LLM } from "../llm.js";
 import { loadParentSettings, loadProfile } from "../settings.js";
 import { redactPersonal } from "../safety/rules.js";
-import type { SafetyChecker } from "../safety/check.js";
+import { CHECK_UNAVAILABLE, type SafetyChecker } from "../safety/check.js";
+import { noteSafetyUnavailable } from "../safety/unavailable.js";
 import type { InputVerdict } from "../safety/types.js";
 import { createReport, deliverReport, type Reporter, type ReportLevel } from "../reporting/reporter.js";
 import { identity, safeguards, soulText, type PromptCtx } from "./prompt.js";
@@ -108,12 +109,16 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   const file = input.file ? { name: input.file.name.trim().slice(0, 120) || "document", text: input.file.text.slice(0, 12_000) } : undefined;
   const checked = file ? `${raw}\n\n[They shared a document, “${file.name}”:]\n${file.text}` : raw;
   const practiceLang = input.mode === "language" ? input.ctx?.lang : undefined;
-  const verdict = await safety.checkInput(checked, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`), { lang: practiceLang });
+  // At the hard stop (resting) only the fixed rules run, plus the English gloss where they need it.
+  let energy = energyNow(db);
+  const verdict = await safety.checkInput(checked, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`), { lang: practiceLang, rulesOnly: energy.mode === "resting" });
   const { text: clean } = redactPersonal(raw);
   const doc = file ? { name: redactPersonal(file.name).text, text: redactPersonal(file.text).text } : undefined;
   const child = store(db, "child", doc ? `${clean}\n\n📄 ${doc.name}` : clean, input.mode, undefined, thread);
+  const reportCtx = { companionName: profile.name, childName: deps.childName };
 
   let report: TurnResult["report"] = null;
+  let rec: ReturnType<typeof createReport> | null = null;
   if (verdict.level !== "none") {
     const parentText = verdict.parentSummary || "Something came up that I think you should know about.";
     report = {
@@ -121,15 +126,19 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
       parentText,
       childNotice: `I'm letting ${parent} know: “${parentText}” You're not in trouble.`,
     };
+    // Recorded before the reply is made, so a turn that dies part-way still leaves the report
+    // (delivery waits until the child has been told, below).
+    rec = createReport(db, { level: report.level, category: verdict.categories.join(",") || "worry", childNotice: report.childNotice, parentText: report.parentText });
   }
 
-  let energy = energyNow(db);
   let replyText: string;
   let mood: Mood = energy.mode === "low" ? "sleepy" : "happy";
 
   if (verdict.held && !report) {
-    // The safety check couldn't read it properly (a new language without its English gloss): hold it.
-    replyText = "I couldn't check that message properly just now, so I'll hold off answering. Could you try again in a moment, or say it in English?";
+    // The safety check couldn't run (the model failed twice, or no English gloss): hold it, and let
+    // the parent know the check was down (never what the message said).
+    replyText = practiceLang ? `${CHECK_UNAVAILABLE} Or say it in English?` : CHECK_UNAVAILABLE;
+    noteSafetyUnavailable(db, reportCtx, deps.reporters);
   } else if (energy.mode === "resting") {
     replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : restingText(energy, parent);
     mood = report ? "concerned" : "resting";
@@ -148,7 +157,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
           ? fallbackSafetyReply(verdict, parent, settings.helplines)
           : `I'm not switched on yet: ${parent} needs to add my API key. “Grown-up?” already works.`;
       } else {
-        console.error("[chat] reply failed", err);
+        console.error("[chat] reply failed", (err as Error).message);
         replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : "Sorry, my brain went fuzzy for a second. Can you say that again?";
       }
     }
@@ -158,18 +167,23 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   energy = energyNow(db);
 
   // Told first (the reply above), then the parent hears.
-  if (report) {
-    const rec = createReport(db, { level: report.level, category: verdict.categories.join(",") || "worry", childNotice: report.childNotice, parentText: report.parentText });
-    const ctx = { companionName: profile.name, childName: deps.childName };
-    setImmediate(() => void deliverReport(db, deps.reporters, rec, ctx));
+  if (rec) {
+    const r = rec;
+    setImmediate(() => void deliverReport(db, deps.reporters, r, reportCtx));
   }
 
   return { child, reply, mood, energy, report, openHelp: verdict.level === "now", effects };
 }
 
+/** The helplines as words, never empty: Childline if the list somehow has nothing usable. */
+export function helplineWords(helplines: { name: string; number: string }[], join = ", or ", fmt = (h: { name: string; number: string }) => `${h.name} on ${h.number}`): string {
+  const ok = helplines.filter((h) => h.name.trim() && h.number.trim());
+  return (ok.length ? ok : [{ name: "Childline", number: "0800 1111" }]).map(fmt).join(join);
+}
+
 /** When the model can't be used, safety still gets a proper answer. */
 export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: { name: string; number: string }[]) {
-  const lines = helplines.map((h) => `${h.name} on ${h.number}`).join(", or ");
+  const lines = helplineWords(helplines);
   if (v.level === "now") {
     return `I'm really glad you told me. This is important, so I'm letting ${parent} know right now, and you're not in trouble. You can talk to ${lines}. If you're in danger, call 999.`;
   }
@@ -192,7 +206,7 @@ async function generateReply(
   const tools: ToolDef[] = [
     ...builtinTools(db, deps.studio, a.effects).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...(await connectionTools(db, settings.connections)),
-    ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, a.effects as { confirms: Pending[] }, { coursework }),
+    ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, a.effects as { confirms: Pending[] }, { coursework, safety }),
     ...nativeTools(db),
   ];
   // Skills the parent wrote: the list is in the prompt; the full text loads only when it's used.
@@ -213,7 +227,7 @@ async function generateReply(
 
   // Stable first and cached: the rules and personality, then memories and the rolling summary
   // (which change now and then). The time and per-mode notes change every turn, so they come last.
-  const convo = await conversationContext(db, llm, profile.name, a.thread, (folded, summary) => {
+  const convo = await conversationContext(db, llm, profile.name, a.thread, safety, (folded, summary) => {
     writeHistory({
       thread: a.thread, threadTitle: getThread(db, a.thread)?.title ?? "Chat", companionName: profile.name, childName: deps.childName,
       summary, messages: folded,
@@ -270,7 +284,7 @@ async function generateReply(
     notes.push(
       `This message means ${parent} needs to know (${a.report.level === "now" ? "right now" : a.report.level === "today" ? "today" : "just so they know"}). ` +
         `In this reply, tell them first, kindly and honestly: you're going to let ${parent} know, what you'll say ("${a.report.parentText}"), and why. ` +
-        `Say they're not in trouble.${a.report.level === "now" ? ` Also remind them they can talk to ${settings.helplines.map((h) => `${h.name} (${h.number})`).join(" or ")} and call 999 if they're in danger.` : ""}`,
+        `Say they're not in trouble.${a.report.level === "now" ? ` Also remind them they can talk to ${helplineWords(settings.helplines, " or ", (h) => `${h.name} (${h.number})`)} and call 999 if they're in danger.` : ""}`,
     );
   }
 

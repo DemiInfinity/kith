@@ -30,6 +30,10 @@ export const config = {
   clientDir: env.KITH_CLIENT_DIR ?? "../client/dist",
   timezone: env.KITH_TIMEZONE ?? "Europe/London",
   sessionSecret: env.KITH_SESSION_SECRET ?? "",
+  // How many reverse proxies sit in front of Kith (Fastify's trustProxy). One (Caddy, nginx or a
+  // tunnel) is usual. Trusting more than are really there lets anyone pick their own address with
+  // X-Forwarded-For, and so their own rate limit.
+  trustProxy: trustProxyHops(env.KITH_TRUST_PROXY),
 
   // People. Matched on the verified email (or the OIDC subject) from the sign-in provider.
   people: {
@@ -103,9 +107,10 @@ export const config = {
   },
 
   // Secrets for parent-approved connections, referenced by name from the connections settings.
-  // The parent view never sees or stores them.
+  // The parent view never sees or stores them. Only KITH_CONN_* variables can be named, so a
+  // connection can never be pointed at Kith's own keys (the API key, the desk token…).
   secret(name: string): string {
-    return name ? env[name] ?? "" : "";
+    return CONN_SECRET.test(name) ? env[name] ?? "" : "";
   },
 
   // Google Drive for the child's own account (drive.file only). Your own OAuth client; see docs/google.md.
@@ -133,6 +138,19 @@ export const config = {
 };
 
 export type Config = typeof config;
+
+/** A connection's token must live in a KITH_CONN_* environment variable. */
+export const CONN_SECRET = /^KITH_CONN_[A-Z0-9_]{1,70}$/;
+
+/** KITH_TRUST_PROXY: a number of hops (default 1). "true"/"false" are read as 1/0, never "trust everything". */
+export function trustProxyHops(v: string | undefined): number {
+  if (v === undefined || v.trim() === "") return 1;
+  if (/^(true|yes|on)$/i.test(v)) return 1;
+  if (/^(false|no|off)$/i.test(v)) return 0;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 5) throw new Error(`KITH_TRUST_PROXY should be a number of proxies (0–5), got "${v}"`);
+  return n;
+}
 
 function parseVoices(v: string): { label: string; voice: string }[] {
   return list(v).map((pair) => {

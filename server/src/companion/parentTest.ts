@@ -29,6 +29,9 @@ export async function parentTestChat(deps: { db: DB; llm: LLM; safety: SafetyChe
   }
   const model = energy.mode === "full" ? config.anthropic.fullModel : config.anthropic.lowModel;
   const verdict = await safety.checkInput(text, history.map((h) => `${h.role === "parent" ? "Grown-up" : profile.name}: ${h.text}`));
+  if (verdict.held) {
+    return { reply: `(The safety check couldn't run just now, so ${profile.name} would hold this message for your child too: "try again in a moment".)`, model: "none", power: energy.mode, ms: Date.now() - started, safety: { input: "couldn't run", output: "held back" } };
+  }
   const ctx: PromptCtx = { profile, childName: deps.childName, parentLabel: config.people.parentLabel, helplines: settings.helplines };
   const system: Anthropic.TextBlockParam[] = [
     { type: "text", text: safeguards(ctx, settings.safeguards, settings.safeguardsDoc) },

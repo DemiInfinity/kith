@@ -94,6 +94,8 @@ export const LangProfile = z.object({
   romaji: z.boolean().default(true),
   interests: z.string().max(200).default(""),
   requested: z.number().optional(),
+  // The parent switched it off: only the parent can switch it back on.
+  offByParent: z.boolean().default(false),
 });
 export type LangProfile = z.infer<typeof LangProfile>;
 export type LangProfiles = Record<string, LangProfile>;
@@ -109,12 +111,23 @@ export function loadLangProfiles(db: DB): LangProfiles {
   for (const [code, v] of Object.entries(raw)) if (CODE_RE.test(code) && langInfo(db, code)) out[code] = LangProfile.parse(v ?? {});
   return out;
 }
-export function saveLangProfile(db: DB, lang: string, input: unknown): LangProfile {
+/** The child tried to undo something the parent decided. */
+export class LangLocked extends Error {}
+
+/**
+ * Saves a language's settings. Status only changes through asking, approving and declining. When
+ * the parent switches a language off, it stays off until the parent switches it back on: the child
+ * can pause and resume her own languages, but not one her grown-up turned off.
+ */
+export function saveLangProfile(db: DB, lang: string, input: unknown, by: "child" | "parent" = "child"): LangProfile {
   const all = loadLangProfiles(db);
   if (!all[lang]) throw new Error("That language isn't set up.");
-  // Status only changes through asking, approving and declining.
-  const { status: _s, requested: _r, ...rest } = (input ?? {}) as Record<string, unknown>;
-  all[lang] = LangProfile.parse({ ...all[lang], ...rest });
+  const { status: _s, requested: _r, offByParent: _o, ...rest } = (input ?? {}) as Record<string, unknown>;
+  const cur = all[lang];
+  let offByParent = cur.offByParent;
+  if (by === "parent" && typeof rest.enabled === "boolean") offByParent = !rest.enabled;
+  if (by === "child" && cur.offByParent && rest.enabled === true) throw new LangLocked("Your grown-up switched this language off, so only they can switch it back on.");
+  all[lang] = LangProfile.parse({ ...cur, ...rest, offByParent });
   saveAll(db, all);
   return all[lang];
 }

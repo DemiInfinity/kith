@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { DB } from "./db.js";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
-import { childName, requireRole } from "./auth.js";
+import { childName, registerSessionAdmin, requireRole } from "./auth.js";
 import { createThread, getThread, inThreadLanguage, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
 import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
@@ -30,7 +30,9 @@ import { activitySince, logActivity } from "./desk/activity.js";
 import { companionFiles, safeguardsDoc } from "./companion/files.js";
 import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
-import { deviceCount, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
+import { CHECK_UNAVAILABLE } from "./safety/check.js";
+import { noteSafetyUnavailable } from "./safety/unavailable.js";
+import { deviceCount, isPushEndpoint, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { notifyParent } from "./checkins/parentPush.js";
 import { registerParentInbox } from "./checkins/parentInbox.js";
 import { parentTestChat } from "./companion/parentTest.js";
@@ -54,6 +56,13 @@ const either = requireRole("child", "parent");
 export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   const { db, studio } = d;
   const turnDeps = (): Deps => ({ ...d, childName: childName(db) });
+  registerSessionAdmin(app, db);
+
+  /** The input check couldn't run: hold this (503) and let the parent know the check was down. */
+  const heldForCheck = (reply: import("fastify").FastifyReply) => {
+    noteSafetyUnavailable(db, { companionName: loadProfile(db).name, childName: childName(db) }, d.reporters);
+    return reply.code(503).send({ error: CHECK_UNAVAILABLE, code: "safety-unavailable" });
+  };
 
   app.get("/api/me", { preHandler: either }, async (req) => {
     const s = loadParentSettings(db);
@@ -331,7 +340,9 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
 
   // ── The companion's profile: its files and what's scheduled ───────────────────────────
-  app.get("/api/pip/files", { preHandler: either }, async () => companionFiles(db, childName(db)));
+  // The child's only: these hold memories, the rolling summary of her chats and check-in texts,
+  // which the parent never sees. (The parent sees the safeguards at /api/parent/safeguards.)
+  app.get("/api/pip/files", { preHandler: child }, async () => companionFiles(db, childName(db)));
 
   // soul.md and identity.md are the child's to write. Safeguards sit above them either way, but
   // obviously unsuitable text (romance, sexual, personal details) isn't kept.
@@ -339,6 +350,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     if (!text.trim()) return true;
     const rules = checkInputRules(text);
     const v = await d.safety.checkInput(text, []);
+    if (v.held) { heldForCheck(reply); return false; }
     const bad = [...rules.categories, ...v.categories].filter((c) => ["sexual", "romance", "personal_info"].includes(c));
     if (bad.length || v.level !== "none") {
       reply.code(422).send({ error: bad.includes("personal_info") ? "Leave out personal details like your address or school." : "That bit can’t go in. Pip stays a friendly AI sidekick: no romance or grown-up stuff." });
@@ -365,7 +377,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     return r.ok ? r : reply.code(422).send({ error: r.reason });
   });
   app.get("/api/parent/safeguards", { preHandler: parent }, async () => safeguardsDoc(db, childName(db)));
-  app.get("/api/pip/schedule", { preHandler: either }, async () => {
+  app.get("/api/pip/schedule", { preHandler: child }, async () => {
     const s = loadParentSettings(db);
     const p = loadProfile(db);
     const today = localDate(Date.now(), config.timezone);
@@ -474,6 +486,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   app.post("/api/desk/make", { preHandler: child, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const b = MakeBody.parse(req.body);
     const check = await d.safety.checkInput(`${b.title}. ${b.brief}`, []);
+    if (check.held) return heldForCheck(reply);
     if (["sexual", "romance"].some((c) => check.categories.includes(c as never)) || check.level !== "none") {
       return reply.code(422).send({ error: "That's not something I can make. Want to try a different idea?" });
     }
@@ -483,6 +496,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   app.post("/api/desk/items/:id/change", { preHandler: child, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const { change } = z.object({ change: z.string().trim().min(1).max(1000) }).parse(req.body);
     const check = await d.safety.checkInput(change, []);
+    if (check.held) return heldForCheck(reply);
     if (check.level !== "none" || check.categories.some((c) => ["sexual", "romance"].includes(c))) {
       return reply.code(422).send({ error: "That's not a change I can make." });
     }
@@ -525,7 +539,10 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
 
   // ── Push (each device belongs to the child or the parent who turned it on) ─────────────
-  const Sub = z.object({ endpoint: z.string().url(), keys: z.object({ p256dh: z.string(), auth: z.string() }) });
+  const Sub = z.object({
+    endpoint: z.string().url().max(1000).refine(isPushEndpoint, "Not a browser push service."),
+    keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
+  });
   app.post("/api/push/subscribe", { preHandler: either }, async (req) => {
     saveSubscription(db, Sub.parse(req.body), req.user!.role === "parent" ? "parent" : "child");
     return { ok: true };

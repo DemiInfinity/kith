@@ -151,7 +151,7 @@ export async function exchangeCode(code: string, verifier: string, f: Fetch = fe
   const claims = JSON.parse(Buffer.from((j.id_token ?? "..").split(".")[1] ?? "", "base64url").toString("utf8") || "{}") as { email?: string; email_verified?: boolean };
   if (!claims.email || !claims.email_verified) throw new Error("Couldn't confirm which Google account this is.");
   const expected = config.google.expectedEmail.toLowerCase();
-  if (expected && claims.email.toLowerCase() !== expected) throw new Error(`Please connect ${expected}, not ${claims.email}.`);
+  if (expected && claims.email.toLowerCase() !== expected) throw new Error("That's a different Google account from the one set up for Kith. Please connect that one.");
   return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600, scopes: granted };
 }
 
