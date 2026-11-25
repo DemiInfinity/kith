@@ -73,9 +73,12 @@ async function main() {
 
   const clientDir = path.resolve(config.clientDir);
   if (fs.existsSync(clientDir)) {
-    await app.register(fastifyStatic, { root: clientDir, wildcard: false, index: false });
+    await app.register(fastifyStatic, {
+      root: clientDir, wildcard: false, index: false,
+      // Built assets have hashed names; everything else (sw.js, manifest, index) is re-checked.
+      setHeaders: (res, p) => res.header("Cache-Control", p.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache"),
+    });
     const indexHtml = fs.readFileSync(path.join(clientDir, "index.html"));
-    app.get("/sw.js", (_req, reply) => reply.header("Cache-Control", "no-cache").type("text/javascript").send(fs.readFileSync(path.join(clientDir, "sw.js"))));
     app.get("/*", (req, reply) => {
       const p = path.join(clientDir, path.normalize(req.url.split("?")[0]).replace(/^(\.\.[/\\])+/, ""));
       if (p.startsWith(clientDir) && fs.existsSync(p) && fs.statSync(p).isFile()) return reply.sendFile(path.relative(clientDir, p));

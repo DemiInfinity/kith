@@ -55,7 +55,7 @@ export function textOf(msg: Anthropic.Message): string {
 export async function callJson<T>(
   llm: LLM,
   opts: Omit<CallOpts, "params"> & {
-    params: Omit<Anthropic.MessageCreateParamsNonStreaming, "output_config">;
+    params: Anthropic.MessageCreateParamsNonStreaming;
     schema: Record<string, unknown>;
     parse: (v: unknown) => T;
   },
@@ -64,7 +64,10 @@ export async function callJson<T>(
     ...opts,
     params: {
       ...opts.params,
-      output_config: { format: { type: "json_schema", schema: opts.schema } },
+      output_config: {
+        ...((opts.params as { output_config?: Record<string, unknown> }).output_config ?? {}),
+        format: { type: "json_schema", schema: opts.schema },
+      },
     } as Anthropic.MessageCreateParamsNonStreaming,
   });
   if (msg.stop_reason === "refusal") throw new Error("The safety check model declined to answer.");

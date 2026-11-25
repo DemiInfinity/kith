@@ -6,3 +6,4 @@ data/
 *.sqlite-*
 coverage/
 .DS_Store
+data-dev/
