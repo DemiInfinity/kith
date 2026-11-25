@@ -4,6 +4,9 @@
 import type { InputCategory, Level, OutputCategory } from "./types.js";
 import { maxLevel } from "./types.js";
 
+/** Languages the rules below are written in (English, plus Spanish and Japanese patterns). */
+export const RULED_LANGS = ["en", "es", "ja"];
+
 interface Rule<C> { category: C; level?: Level; patterns: RegExp[] }
 
 const INPUT_RULES: Rule<InputCategory>[] = [

@@ -37,7 +37,7 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
 export type Look = "buddy" | "fox" | "cat" | "dragon" | "robot" | "star" | "frog" | "owl" | "panda";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
 export type Mode = "chat" | "talk" | "oc" | "study" | "art" | "story" | "language";
-export interface ModeCtx { subjectId?: number; coursework?: boolean; storyId?: number; lang?: "es" | "ja"; topic?: string }
+export interface ModeCtx { subjectId?: number; coursework?: boolean; storyId?: number; lang?: string; topic?: string }
 
 export interface Profile {
   name: string; look: Look; traits: string[]; chatty: number; silly: number; detail: number; voice: string;

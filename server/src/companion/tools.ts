@@ -10,6 +10,7 @@ import { addWorld, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
 import { searchHistory } from "./history.js";
 import { addSchedule } from "./schedules.js";
 import { config } from "../config.js";
+import { askForLanguage } from "../study/languageRequests.js";
 
 export interface TurnEffects {
   memories: string[];
@@ -25,6 +26,21 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
     ({ name, description, input_schema, connection: "companion", level: "act", run });
 
   return [
+    tool(
+      "request_language",
+      "When they say they'd like to learn a new language (for example \"I want to learn French\"), ask their grown-up for them. Nothing is practised until the grown-up says yes; tell them that kindly. Ask about their level and whether it's for school or for fun first if you don't know. Don't use this for Spanish or Japanese if they're already learning them.",
+      obj({
+        language: { type: "string", description: "The language, in English, e.g. 'French'" },
+        level: { type: "string", enum: ["A1", "A2", "B1"], description: "A1 just starting, A2 getting going, B1 chatting comfortably" },
+        goal: { type: "string", enum: ["school", "fun"] },
+        interests: { type: "string", description: "What they'd like to talk about in it, if they said" },
+      }, ["language", "level", "goal", "interests"]),
+      async (input) => {
+        const v = z.object({ language: z.string().min(2).max(40), level: z.enum(["A1", "A2", "B1"]), goal: z.enum(["school", "fun"]), interests: z.string().max(200).default("") }).parse(input);
+        const r = await askForLanguage(db, v.language, { level: v.level, goal: v.goal, interests: v.interests });
+        return r.message;
+      },
+    ),
     tool(
       "schedule",
       "Schedule something they ASKED you to: a reminder (sent to their phone and shown in chat; never in quiet hours) or something to make on your desk at a set time. Only when they ask. Use their local time.",

@@ -19,9 +19,11 @@ import {
 } from "./study/story.js";
 import { markdownToHtml, MIME } from "./storage/google.js";
 import {
-  addLangCards, dueLangCards, gradeLangCard, KANA_RE, kanaProgress, LANG_NAME, langCardStats, LANGS, languageSummary, loadLangProfiles,
-  markKana, practiceWeek, saveLangProfile, STARTERS, topicFor,
+  addExtraLanguage, addLangCards, addLanguage, catalogue, decideLanguage, dismissDeclined, dueLangCards, gradeLangCard, isActive, KANA_RE,
+  kanaProgress, langCardStats, LangCode, langInfo, langName, languageSummary, loadLangProfiles, markKana, practiceWeek, removeLanguage,
+  saveLangProfile, STARTERS, topicFor,
 } from "./study/languages.js";
+import { askForLanguage, dismissUnlisted, unlistedAsks } from "./study/languageRequests.js";
 import type { Storage } from "./storage/storage.js";
 
 const child = requireRole("child");
@@ -32,7 +34,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   const today = () => localDate(Date.now(), config.timezone);
 
   /** Small-model JSON with the output safety check on the visible text. */
-  async function askJson<T>(reply: FastifyReply, opts: { kind: "study" | "story" | "art" | "language"; full?: boolean; system: string; prompt: string; schema: Record<string, unknown>; parse: (v: unknown) => T; visible: (v: T) => string }) {
+  async function askJson<T>(reply: FastifyReply, opts: { kind: "study" | "story" | "art" | "language"; lang?: string; full?: boolean; system: string; prompt: string; schema: Record<string, unknown>; parse: (v: unknown) => T; visible: (v: T) => string }) {
     const e = energyNow(db);
     if (e.mode === "resting") return reply.code(409).send({ error: "I'm resting until the energy tops up. “Grown-up?” always works." });
     try {
@@ -41,7 +43,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
         params: { model: opts.full && e.mode === "full" ? config.anthropic.fullModel : config.anthropic.lowModel, max_tokens: 6000, output_config: { effort: "low" }, system: opts.system, messages: [{ role: "user", content: opts.prompt }] } as never,
         schema: opts.schema, parse: opts.parse,
       });
-      const check = await safety.checkOutput(opts.visible(out), opts.prompt.slice(0, 2000));
+      const check = await safety.checkOutput(opts.visible(out), opts.prompt.slice(0, 2000), "chat", { lang: opts.lang });
       if (!check.ok) return reply.code(422).send({ error: "I couldn't make that one in a way that's okay. Want to try something else?" });
       return out;
     } catch (err) {
@@ -147,32 +149,63 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   app.get("/api/study/help-log", { preHandler: child }, async () => ({ entries: helpLog(db) }));
 
   // ── Languages ──────────────────────────────────────────────────────────────────────────
-  const langOf = (req: { params: unknown }) => z.enum(LANGS).parse((req.params as { lang: string }).lang);
+  const langParam = (req: { params: unknown }) => LangCode.parse((req.params as { lang: string }).lang);
+  /** Practice only for languages she's learning now (approved and switched on). */
+  const activeLang = (req: { params: unknown }, reply: FastifyReply) => {
+    const lang = langParam(req);
+    if (!isActive(db, lang)) { reply.code(409).send({ error: "That language is waiting for your grown-up to say yes." }); return null; }
+    return lang;
+  };
   const languagesView = () => {
     const profiles = loadLangProfiles(db);
     return {
-      languages: LANGS.map((lang) => ({
-        lang, name: LANG_NAME[lang], profile: profiles[lang], cards: langCardStats(db, lang), week: practiceWeek(db, lang),
-        topic: topicFor(lang, profiles[lang], today()),
-      })),
+      languages: Object.entries(profiles).map(([lang, profile]) => {
+        const info = langInfo(db, lang)!;
+        return {
+          lang, name: info.name, native: info.native, badge: info.badge, voice: info.voice, romanisation: info.romanisation ?? "",
+          starters: !!STARTERS[lang], profile, cards: langCardStats(db, lang), week: practiceWeek(db, lang), topic: topicFor(lang, profile, today()),
+        };
+      }),
+      catalogue: catalogue(db).filter((l) => !profiles[l.code]).map((l) => ({ code: l.code, name: l.name, native: l.native, badge: l.badge })),
       kana: kanaProgress(db),
       summary: languageSummary(db),
     };
   };
   app.get("/api/languages", { preHandler: child }, async () => languagesView());
-  app.put("/api/languages/:lang", { preHandler: either }, async (req) => saveLangProfile(db, langOf(req), req.body));
-  app.get("/api/languages/:lang/cards/due", { preHandler: child }, async (req) => ({ cards: dueLangCards(db, langOf(req)) }));
+  app.put("/api/languages/:lang", { preHandler: either }, async (req, reply) => {
+    try { return saveLangProfile(db, langParam(req), req.body); } catch (e) { return reply.code(404).send({ error: (e as Error).message }); }
+  });
+  // "Add a language": asks the grown-up first.
+  const AskBody = z.object({
+    language: z.string().trim().min(2).max(40),
+    level: z.enum(["A1", "A2", "B1"]).optional(), goal: z.enum(["school", "fun"]).optional(),
+    board: z.string().max(40).optional(), tier: z.enum(["Foundation", "Higher"]).optional(), interests: z.string().max(200).optional(),
+  });
+  app.post("/api/languages/ask", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const { language, ...profile } = AskBody.parse(req.body);
+    if (!(await okInput(reply, `${language} ${profile.interests ?? ""}`))) return;
+    return askForLanguage(db, language, profile);
+  });
+  app.post("/api/languages/:lang/dismiss", { preHandler: child }, async (req) => { dismissDeclined(db, langParam(req)); return { ok: true }; });
+  app.get("/api/languages/:lang/cards/due", { preHandler: child }, async (req, reply) => {
+    const lang = activeLang(req, reply);
+    return lang ? { cards: dueLangCards(db, lang) } : undefined;
+  });
   const LangCardsBody = z.object({ topic: z.string().max(80).default(""), cards: z.array(z.object({ front: z.string().max(200), back: z.string().max(300), reading: z.string().max(120).optional() })).min(1).max(60) });
   app.post("/api/languages/:lang/cards", { preHandler: child }, async (req, reply) => {
+    const lang = activeLang(req, reply);
+    if (!lang) return;
     const b = LangCardsBody.parse(req.body);
     // Phrases saved from chat are the companion's words, but check them anyway: they become study material.
     const text = b.cards.map((c) => `${c.front} ${c.back}`).join("\n");
     const cats = [...checkInputRules(text).categories, ...checkOutputRules(text)];
     if (cats.some((c) => ["sexual", "romance", "grown_up_content"].includes(c))) return reply.code(422).send({ error: "That one can't go on a card." });
-    return { added: addLangCards(db, langOf(req), b.topic, b.cards) };
+    return { added: addLangCards(db, lang, b.topic, b.cards) };
   });
-  app.post("/api/languages/:lang/starter", { preHandler: child }, async (req) => {
-    const lang = langOf(req);
+  app.post("/api/languages/:lang/starter", { preHandler: child }, async (req, reply) => {
+    const lang = activeLang(req, reply);
+    if (!lang) return;
+    if (!STARTERS[lang]) return reply.code(404).send({ error: "No starter words for that one yet: make some on a topic instead." });
     return { added: addLangCards(db, lang, "Starter words", STARTERS[lang]) };
   });
   app.post("/api/languages/cards/:id/review", { preHandler: child }, async (req, reply) => {
@@ -180,17 +213,21 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
     return gradeLangCard(db, Number((req.params as { id: string }).id), grade as Grade) ?? reply.code(404).send({ error: "not found" });
   });
   app.post("/api/languages/:lang/cards/generate", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
-    const lang = langOf(req);
+    const lang = activeLang(req, reply);
+    if (!lang) return;
     const b = z.object({ topic: z.string().trim().min(2).max(120), count: z.number().int().min(4).max(20).default(10) }).parse(req.body);
     if (!(await okInput(reply, b.topic))) return;
     const p = loadLangProfiles(db)[lang];
+    const info = langInfo(db, lang)!;
+    const reading = lang === "ja" ? " Reading: the whole front in hiragana." : info.romanisation ? ` Reading: the ${info.romanisation}.` : " Reading: leave empty.";
     const out = await askJson(reply, {
       kind: "language",
-      system: `You write ${LANG_NAME[lang]} vocabulary flashcards for a teenage learner at CEFR ${p.level}${lang === "es" ? ` (${p.variety === "spain" ? "Spain" : "Latin American"} Spanish)` : ""}. Front: the ${LANG_NAME[lang]} word or short phrase${lang === "ja" ? " (kana, or simple kanji)" : ""}. Back: the English meaning.${lang === "ja" ? " Reading: the whole front in hiragana." : " Reading: leave empty."} Common, useful, age-appropriate words only.`,
+      system: `You write ${info.name} vocabulary flashcards for a teenage learner at CEFR ${p.level}${lang === "es" ? ` (${p.variety === "spain" ? "Spain" : "Latin American"} Spanish)` : ""}. Front: the ${info.name} word or short phrase. Back: the English meaning.${reading} Common, useful, age-appropriate words only.`,
       prompt: `Make ${b.count} cards on: ${b.topic}`,
       schema: { type: "object", additionalProperties: false, required: ["cards"], properties: { cards: { type: "array", items: { type: "object", additionalProperties: false, required: ["front", "back", "reading"], properties: { front: { type: "string" }, back: { type: "string" }, reading: { type: "string" } } } } } },
       parse: (v) => z.object({ cards: z.array(z.object({ front: z.string(), back: z.string(), reading: z.string() })) }).parse(v),
       visible: (v) => v.cards.map((c) => `${c.front} ${c.back}`).join("\n"),
+      lang,
     });
     if (!out || reply.sent) return;
     return { added: addLangCards(db, lang, b.topic, out.cards) };
@@ -199,8 +236,36 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
     const b = z.object({ kana: z.string().regex(KANA_RE), correct: z.boolean() }).parse(req.body);
     try { return markKana(db, b.kana, b.correct); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
   });
-  // The parent sees levels, counts and topics: never the practice chats.
-  app.get("/api/parent/languages", { preHandler: requireRole("parent") }, async () => ({ summary: languageSummary(db), profiles: loadLangProfiles(db) }));
+
+  // The parent: approve or decline requests, add or remove languages. Levels, counts and topics only.
+  const parent = requireRole("parent");
+  app.get("/api/parent/languages", { preHandler: parent }, async () => {
+    const profiles = loadLangProfiles(db);
+    return {
+      summary: languageSummary(db), profiles,
+      languages: Object.entries(profiles).map(([code, p]) => ({ code, name: langName(db, code), native: langInfo(db, code)?.native ?? code, status: p.status, enabled: p.enabled, level: p.level, goal: p.goal, requested: p.requested ?? null })),
+      catalogue: catalogue(db).map((l) => ({ code: l.code, name: l.name, native: l.native, added: !!profiles[l.code] && profiles[l.code].status !== "declined" })),
+      unlisted: unlistedAsks(db),
+    };
+  });
+  app.post("/api/parent/languages/:lang/decide", { preHandler: parent }, async (req, reply) => {
+    const { approve } = z.object({ approve: z.boolean() }).parse(req.body);
+    return decideLanguage(db, langParam(req), approve) ? { ok: true } : reply.code(404).send({ error: "There's no request waiting for that language." });
+  });
+  app.post("/api/parent/languages", { preHandler: parent }, async (req, reply) => {
+    const b = z.object({ code: LangCode.optional(), name: z.string().trim().min(2).max(40).optional(), level: z.enum(["A1", "A2", "B1"]).optional() }).parse(req.body);
+    try {
+      const code = b.code ?? addExtraLanguage(db, b.name ?? "").code;
+      const p = addLanguage(db, code, b.level ? { level: b.level } : {});
+      if (b.name) dismissUnlisted(db, b.name);
+      return { code, profile: p };
+    } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+  });
+  app.delete("/api/parent/languages/:lang", { preHandler: parent }, async (req) => ({ ok: removeLanguage(db, langParam(req)) }));
+  app.post("/api/parent/languages/unlisted/dismiss", { preHandler: parent }, async (req) => {
+    dismissUnlisted(db, z.object({ name: z.string().max(40) }).parse(req.body).name);
+    return { ok: true };
+  });
 
   // ── Art ────────────────────────────────────────────────────────────────────────────────
   app.get("/api/art", { preHandler: child }, async () => ({

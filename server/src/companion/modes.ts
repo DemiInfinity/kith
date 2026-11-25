@@ -6,12 +6,12 @@ import { ocWorkshopNote } from "../desk/oc.js";
 import { studyNote } from "../study/study.js";
 import { artNote } from "../study/art.js";
 import { storyNote } from "../study/story.js";
-import { languageNote, type Lang } from "../study/languages.js";
+import { languageNote } from "../study/languages.js";
 
 export const MODES = ["chat", "talk", "oc", "study", "art", "story", "language"] as const;
 export type Mode = (typeof MODES)[number];
 
-export interface ModeCtx { subjectId?: number; coursework?: boolean; storyId?: number; lang?: Lang; topic?: string }
+export interface ModeCtx { subjectId?: number; coursework?: boolean; storyId?: number; lang?: string; topic?: string }
 
 /** Spend label for the ledger. */
 export function spendKind(mode: Mode) {

@@ -13,7 +13,7 @@ import { createThread, getThread, inThreadLanguage, listThreads, MAIN_THREAD, up
 import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
 import { macAppConnected } from "./checkins/parentInbox.js";
-import { LANGS, logPractice } from "./study/languages.js";
+import { activeLangs, isActive, LangCode, langInfo, logPractice } from "./study/languages.js";
 import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
@@ -96,16 +96,23 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
 
   // ── Side chats ────────────────────────────────────────────────────────────────────────
-  app.get("/api/threads", { preHandler: child }, async () => ({ threads: listThreads(db) }));
-  app.post("/api/threads", { preHandler: child }, async (req) => {
-    const b = z.object({ title: z.string().max(60).optional(), fromMessageId: z.number().int().optional(), lang: z.enum(LANGS).optional(), topic: z.string().max(120).optional() }).parse(req.body ?? {});
+  // With the languages she can chat in (approved and switched on), for "In Español" and the like.
+  app.get("/api/threads", { preHandler: child }, async () => ({
+    threads: listThreads(db),
+    languages: activeLangs(db).map((code) => { const i = langInfo(db, code)!; return { code, name: i.name, native: i.native, badge: i.badge, voice: i.voice }; }),
+  }));
+  app.post("/api/threads", { preHandler: child }, async (req, reply) => {
+    const b = z.object({ title: z.string().max(60).optional(), fromMessageId: z.number().int().optional(), lang: LangCode.optional(), topic: z.string().max(120).optional() }).parse(req.body ?? {});
+    if (b.lang && !isActive(db, b.lang)) return reply.code(409).send({ error: "That language is waiting for your grown-up to say yes." });
     const from = b.fromMessageId ? get<{ text: string; thread_id: number }>(db, "SELECT text, thread_id FROM messages WHERE id = ?", b.fromMessageId) : undefined;
     // Splitting off from a Spanish side chat gives another Spanish side chat.
-    const lang = b.lang ?? (from ? getThread(db, from.thread_id)?.lang ?? null : null);
+    const inherited = from ? getThread(db, from.thread_id)?.lang ?? null : null;
+    const lang = b.lang ?? (inherited && isActive(db, inherited) ? inherited : null);
     return createThread(db, { title: b.title, fromText: from?.text, parentId: from?.thread_id, lang, topic: b.topic });
   });
   app.patch("/api/threads/:id", { preHandler: child }, async (req, reply) => {
-    const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional(), lang: z.enum(LANGS).nullable().optional() }).parse(req.body ?? {});
+    const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional(), lang: LangCode.nullable().optional() }).parse(req.body ?? {});
+    if (b.lang && !isActive(db, b.lang)) return reply.code(409).send({ error: "That language is waiting for your grown-up to say yes." });
     return updateThread(db, Number((req.params as { id: string }).id), b) ? { ok: true } : reply.code(400).send({ error: "The main chat stays as it is: start a side chat for that." });
   });
 
@@ -134,7 +141,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   const ChatBody = z.object({
     text: z.string().trim().min(1).max(4000),
     mode: z.enum(MODES).default("chat"),
-    ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional(), lang: z.enum(LANGS).optional(), topic: z.string().max(120).optional() }).default({}),
+    ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional(), lang: LangCode.optional(), topic: z.string().max(120).optional() }).default({}),
     thread: z.number().int().optional(),
     // A document shared from the Mac app (its text only).
     file: z.object({ name: z.string().max(200), text: z.string().min(1).max(12_000) }).optional(),
@@ -150,7 +157,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       logHelp(db, subject?.subject.name ?? (body.mode === "art" ? "Art" : "Coursework"), turn.child.text, "Tutor help only: explanations, questions and feedback (no work produced).");
     }
     // Language practice counts towards "days this week" (the topic only, never the chat).
-    if (body.mode === "language" && body.ctx.lang) logPractice(db, body.ctx.lang, "chat", body.ctx.topic ?? "");
+    if (body.mode === "language" && body.ctx.lang && isActive(db, body.ctx.lang)) logPractice(db, body.ctx.lang, "chat", body.ctx.topic ?? "");
     return { ...turn, energy: childEnergy(turn.energy) };
   });
 

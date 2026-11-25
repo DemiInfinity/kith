@@ -5,11 +5,12 @@
 import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 import { redactPersonal } from "../safety/rules.js";
+import { isActive } from "../study/languages.js";
 
 export const MAIN_THREAD = 1;
 
 // A side chat can be in Spanish or Japanese: every turn in it is then language practice.
-export type ThreadLang = "es" | "ja";
+export type ThreadLang = string;
 export interface Thread { id: number; ts: number; title: string; parent_id: number | null; from_text: string | null; archived: number; updated: number; lang: ThreadLang | null; topic: string | null }
 
 export function listThreads(db: DB, includeArchived = false): (Thread & { messages: number; last: string | null })[] {
@@ -44,7 +45,8 @@ export function inThreadLanguage<M extends string, C extends { lang?: ThreadLang
   // The main chat is always English: language practice only happens in side chats.
   if (!b.thread || b.thread === MAIN_THREAD) return b.mode === "language" ? { mode: "chat", ctx: { ...b.ctx, lang: undefined, topic: undefined } } : { mode: b.mode, ctx: b.ctx };
   const t = getThread(db, b.thread);
-  if (!t?.lang || b.mode !== "chat") return { mode: b.mode, ctx: b.ctx };
+  // A language the grown-up removed (or hasn't approved) is an ordinary chat again.
+  if (!t?.lang || b.mode !== "chat" || !isActive(db, t.lang)) return { mode: b.mode, ctx: b.ctx };
   return { mode: "language", ctx: { ...b.ctx, lang: t.lang, topic: b.ctx.topic ?? t.topic ?? undefined } };
 }
 

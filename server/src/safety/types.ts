@@ -41,6 +41,8 @@ export interface InputVerdict {
   /** Guidance for the companion's reply (e.g. "gently decline, no romance, stay warm"). */
   steer: string;
   source: "rules" | "rules+model" | "model";
+  /** The check couldn't fully run (e.g. no English gloss for a new language): don't answer it yet. */
+  held?: boolean;
 }
 
 export interface OutputVerdict {

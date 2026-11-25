@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat, type ChatContext } from "./screens/Chat";
 import { Languages } from "./screens/Languages";
-import { SideChats, type ThreadRow } from "./screens/SideChats";
+import { SideChats, type ChatLang, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
 import { ProfilePanel, Settings } from "./screens/Profile";
@@ -188,7 +188,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     try { return Number(sessionStorage.getItem("kith-thread")) || 1; } catch { return 1; }
   });
   const [threadTitle, setThreadTitle] = useState("");
-  const [threadLang, setThreadLang] = useState<"es" | "ja" | null>(null);
+  const [threadLang, setThreadLang] = useState<string | null>(null);
+  const [chatLangs, setChatLangs] = useState<ChatLang[]>([]);
   const narrow = typeof window !== "undefined" && window.innerWidth < 600;
   const pickThread = (id: number) => {
     setThread(id);
@@ -198,8 +199,9 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   };
   useEffect(() => {
     if (thread === 1) { setThreadTitle(""); setThreadLang(null); return; }
-    api<{ threads: ThreadRow[] }>("/api/threads").then((r) => {
+    api<{ threads: ThreadRow[]; languages?: ChatLang[] }>("/api/threads").then((r) => {
       const t = r.threads.find((x) => x.id === thread);
+      setChatLangs(r.languages ?? []);
       if (!t) pickThread(1); else { setThreadTitle(t.title); setThreadLang(t.lang ?? null); }
     }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,8 +209,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   // "Ask Pip" from Study, Art or the OC workshop opens the main chat with a context chip.
   const q = new URLSearchParams(location.search);
   // A side chat in Spanish or Japanese is language practice all the way through.
-  const chatContext: ChatContext | null = thread !== 1 && threadLang
-    ? { mode: "language", ctx: { lang: threadLang }, label: threadLang === "es" ? "Español" : "日本語" }
+  // (Only languages she's learning now: one her grown-up removed is an ordinary side chat again.)
+  const tl = chatLangs.find((l) => l.code === threadLang);
+  const chatContext: ChatContext | null = thread !== 1 && tl
+    ? { mode: "language", ctx: { lang: tl.code }, label: tl.native, voice: tl.voice }
     : q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
     ? {
         mode: q.get("mode") as ChatContext["mode"],
@@ -257,9 +261,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         <div className="threadbar">
           <Icon name="sidechats" size={18} /><b>{threadTitle || "Side chat"}</b>
           <select className="select" style={{ width: "auto", minHeight: 32, padding: "0 10px" }} aria-label="Language for this side chat" value={threadLang ?? ""}
-            onChange={async (e) => { const lang = (e.target.value || null) as "es" | "ja" | null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
+            onChange={async (e) => { const lang = e.target.value || null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
             {/* Short names on a phone, where the picture takes the middle of the bar. */}
-            <option value="">{narrow ? "Eng" : "English"}</option><option value="es">{narrow ? "Esp" : "Español"}</option><option value="ja">日本語</option>
+            <option value="">{narrow ? "Eng" : "English"}</option>
+            {chatLangs.map((l) => <option key={l.code} value={l.code}>{narrow && l.native.length > 6 ? l.native.slice(0, 3) : l.native}</option>)}
           </select>
         </div>
       )}

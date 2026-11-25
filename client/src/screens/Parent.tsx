@@ -58,37 +58,79 @@ function VoiceCheck({ v }: { v: VoiceS }) {
 
 interface TestMsg { role: "parent" | "companion"; text: string; meta?: string }
 
-interface LangSummary { lang: "es" | "ja"; name: string; level: string; goal: string; words: number; cards: number; week: { days: number; chats: number; reviews: number; kana: number; topics: string[] }; hiragana?: number; katakana?: number }
+interface LangSummary { lang: string; name: string; level: string; goal: string; words: number; cards: number; week: { days: number; chats: number; reviews: number; kana: number; topics: string[] }; hiragana?: number; katakana?: number }
 type LangLevel = "A1" | "A2" | "B1";
+interface ParentLangs {
+  summary: LangSummary[];
+  languages: { code: string; name: string; native: string; status: "active" | "pending" | "declined"; enabled: boolean; level: LangLevel; goal: string; requested: number | null }[];
+  catalogue: { code: string; name: string; native: string; added: boolean }[];
+  unlisted: { name: string; ts: number }[];
+}
 
-/** Languages at the topic level: levels, words learned and what they chatted about, never the chats. */
+/** Languages at the topic level: requests to approve, levels, words learned and what they chatted
+ *  about, never the chats. The parent can also add or remove a language directly. */
 function ParentLanguages({ child, companion }: { child: string; companion: string }) {
-  const [v, setV] = useState<{ summary: LangSummary[]; profiles: Record<"es" | "ja", { enabled: boolean; level: LangLevel }> } | null>(null);
-  const load = useCallback(() => api<NonNullable<typeof v>>("/api/parent/languages").then(setV).catch(() => undefined), []);
+  const [v, setV] = useState<ParentLangs | null>(null);
+  const [add, setAdd] = useState("");
+  const [custom, setCustom] = useState("");
+  const [err, setErr] = useState("");
+  const load = useCallback(() => api<ParentLangs>("/api/parent/languages").then(setV).catch(() => undefined), []);
   useEffect(() => { void load(); }, [load]);
   if (!v) return null;
-  const setLang = async (lang: "es" | "ja", patch: object) => { await api(`/api/languages/${lang}`, { method: "PUT", body: patch }); void load(); };
-  const title = { es: "Español", ja: "日本語" } as const;
+  const act = async (f: () => Promise<unknown>) => { setErr(""); try { await f(); } catch (e) { setErr((e as Error).message); } void load(); };
+  const setLang = (code: string, patch: object) => act(() => api(`/api/languages/${code}`, { method: "PUT", body: patch }));
+  const decide = (code: string, approve: boolean) => act(() => api(`/api/parent/languages/${code}/decide`, { body: { approve } }));
+  const remove = (code: string, name: string) => { if (confirm(`Take ${name} off ${child || "your child"}’s list? Their cards and progress are kept in case it comes back.`)) void act(() => api(`/api/parent/languages/${code}`, { method: "DELETE" })); };
+  const pending = v.languages.filter((l) => l.status === "pending");
+  const active = v.languages.filter((l) => l.status === "active");
+  const addable = v.catalogue.filter((c) => !c.added);
+  const who = child || "Your child";
   return (
     <section className="card psec">
-      <div className="spread"><h3 className="psec-h"><span className="psec-ic"><Icon name="globe" size={18} /></span>Languages this week</h3><span className="small">{child || "Your child"} sees the same summary</span></div>
-      {(["es", "ja"] as const).map((lang) => {
-        const s = v.summary.find((x) => x.lang === lang);
-        const p = v.profiles[lang];
+      <div className="spread"><h3 className="psec-h"><span className="psec-ic"><Icon name="globe" size={18} /></span>Languages this week</h3><span className="small">{who} sees the same summary</span></div>
+      {pending.map((l) => (
+        <div key={l.code} className="pwarn" style={{ alignItems: "center", flexWrap: "wrap" }}>
+          <Icon name="globe" size={18} /><span style={{ flex: 1, minWidth: 200 }}><b>{who} would like to learn {l.name}</b> ({l.level}, {l.goal === "school" ? "for school" : "for fun"}). Nothing is practised until you say yes.</span>
+          <button className="btn primary small" onClick={() => void decide(l.code, true)}>Approve</button>
+          <button className="btn ghost small" onClick={() => void decide(l.code, false)}>Not now</button>
+        </div>
+      ))}
+      {v.unlisted.map((u) => (
+        <div key={u.name} className="pwarn" style={{ alignItems: "center", flexWrap: "wrap" }}>
+          <Icon name="question" size={18} /><span style={{ flex: 1, minWidth: 200 }}><b>{who} asked to learn {u.name}</b>, which isn’t on Kith’s list. Add it if you’re happy for {companion} to teach it.</span>
+          <button className="btn primary small" onClick={() => void act(() => api("/api/parent/languages", { body: { name: u.name } }))}>Add it</button>
+          <button className="btn ghost small" onClick={() => void act(() => api("/api/parent/languages/unlisted/dismiss", { body: { name: u.name } }))}>Dismiss</button>
+        </div>
+      ))}
+      {active.length === 0 && <span className="small">No languages yet.</span>}
+      {active.map((l) => {
+        const s = v.summary.find((x) => x.lang === l.code);
         return (
-          <div key={lang} className="memrow" style={{ alignItems: "flex-start", padding: "10px 12px", flexWrap: "wrap", gap: 10 }}>
+          <div key={l.code} className="memrow" style={{ alignItems: "flex-start", padding: "10px 12px", flexWrap: "wrap", gap: 10 }}>
             <span className="t" style={{ flex: 1, minWidth: 200 }}>
-              <b>{title[lang]}</b> {s ? <>· {s.words} words learned{s.hiragana !== undefined ? ` · ${s.hiragana} of 46 hiragana` : ""}</> : <span className="small">· switched off</span>}<br />
+              <b>{l.native}</b>{l.native !== l.name ? <span className="small"> {l.name}</span> : null} {s ? <>· {s.words} words learned{s.hiragana !== undefined ? ` · ${s.hiragana} of 46 hiragana` : ""}</> : <span className="small">· switched off</span>}<br />
               {s && <span className="small">{s.week.days} {s.week.days === 1 ? "day" : "days"} of practice · {s.week.chats} practice chats with {companion}{s.week.topics.length ? ` · topics: ${s.week.topics.join(", ")}` : ""}</span>}
             </span>
-            <select className="select" style={{ width: 92 }} aria-label={`${title[lang]} level`} value={p.level} onChange={(e) => void setLang(lang, { level: e.target.value })}>
+            <select className="select" style={{ width: 92 }} aria-label={`${l.name} level`} value={l.level} onChange={(e) => void setLang(l.code, { level: e.target.value })}>
               <option>A1</option><option>A2</option><option>B1</option>
             </select>
-            <Toggle label="On" checked={p.enabled} onChange={(on) => void setLang(lang, { enabled: on })} />
+            <Toggle label="On" checked={l.enabled} onChange={(on) => void setLang(l.code, { enabled: on })} />
+            <button className="x" aria-label={`Remove ${l.name}`} onClick={() => remove(l.code, l.name)}><Icon name="trash" size={16} /></button>
           </div>
         );
       })}
-      <span className="small">You see levels, counts and topics. The practice chats themselves stay private, like the rest of Kith, and the usual safety reports still reach you in English.</span>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <select className="select" style={{ flex: 1, minWidth: 180 }} aria-label="Add a language" value={add} onChange={(e) => setAdd(e.target.value)}>
+          <option value="">Add a language…</option>
+          {addable.map((c) => <option key={c.code} value={c.code}>{c.native === c.name ? c.name : `${c.name} · ${c.native}`}</option>)}
+          <option value="__other">Another language…</option>
+        </select>
+        {add === "__other" && <input className="input" style={{ flex: 1, minWidth: 160 }} placeholder="Which one?" maxLength={40} value={custom} onChange={(e) => setCustom(e.target.value)} />}
+        <button className="btn ghost small" disabled={!add || (add === "__other" && custom.trim().length < 2)}
+          onClick={() => void act(async () => { await api("/api/parent/languages", { body: add === "__other" ? { name: custom.trim() } : { code: add } }); setAdd(""); setCustom(""); })}>Add</button>
+      </div>
+      {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
+      <span className="small">You see levels, counts and topics. The practice chats themselves stay private, like the rest of Kith, and the usual safety reports still reach you in English. For languages without their own safety rules, each message is also checked through a private English translation that’s never saved or shown.</span>
     </section>
   );
 }

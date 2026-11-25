@@ -201,3 +201,150 @@ describe("side chats in a language", () => {
     expect(listThreads(db).find((x) => x.id === t.id)?.lang).toBe("es");
   });
 });
+
+// ── Asking for new languages ──────────────────────────────────────────────────────────────
+import { addExtraLanguage, addLanguage, catalogue, decideLanguage, findLanguage, isActive, removeLanguage, requestLanguage } from "../src/study/languages.js";
+import { askForLanguage, unlistedAsks } from "../src/study/languageRequests.js";
+import { Safety, needsGloss } from "../src/safety/check.js";
+import type { LLM } from "../src/llm.js";
+
+describe("new languages", () => {
+  it("has about twenty in the catalogue, found by name, native name or code", () => {
+    const db = openDb(":memory:");
+    expect(catalogue(db).length).toBeGreaterThanOrEqual(20);
+    expect(findLanguage(db, "French")?.code).toBe("fr");
+    expect(findLanguage(db, "français")?.code).toBe("fr");
+    expect(findLanguage(db, "mandarin")?.code).toBe("zh");
+    expect(findLanguage(db, "Klingon")).toBeUndefined();
+  });
+  it("waits for the grown-up: pending until approved, and nothing is practised before", async () => {
+    const db = openDb(":memory:");
+    const NOON = Date.UTC(2026, 10, 25, 12, 0); // outside quiet hours
+    const r = await askForLanguage(db, "French", { level: "A2", goal: "school", tier: "Higher", interests: "music" }, NOON);
+    expect(r).toMatchObject({ status: "pending", code: "fr", name: "French" });
+    expect(loadLangProfiles(db).fr).toMatchObject({ status: "pending", level: "A2", goal: "school", tier: "Higher", interests: "music" });
+    expect(isActive(db, "fr")).toBe(false);
+    expect(languageNote(db, "fr")).toBe(""); // no practice chat yet
+    // The grown-up is told once (via the parent inbox, even without push keys).
+    const inbox = () => db.prepare("SELECT kind, body FROM native_parent_inbox").all() as { kind: string; body: string }[];
+    expect(inbox().map((x) => x.kind)).toEqual(["language"]);
+    expect(inbox()[0].body).toContain("would like to learn French");
+    await askForLanguage(db, "french", {}, NOON + 1000);
+    expect(inbox()).toHaveLength(1);
+    expect(decideLanguage(db, "fr", true)).toBe(true);
+    expect(isActive(db, "fr")).toBe(true);
+    expect(languageNote(db, "fr")).toContain("French conversation at CEFR level A2");
+    expect(languageNote(db, "fr")).toContain("GCSE Higher");
+    expect(languageSummary(db).map((s) => s.lang)).toContain("fr");
+  });
+  it("can be declined, and asked again later", async () => {
+    const db = openDb(":memory:");
+    await askForLanguage(db, "Korean");
+    decideLanguage(db, "ko", false);
+    expect(loadLangProfiles(db).ko.status).toBe("declined");
+    expect(isActive(db, "ko")).toBe(false);
+    expect(requestLanguage(db, "Korean")).toMatchObject({ ok: true, status: "pending" });
+  });
+  it("flags a language that isn't on the list to the grown-up, who can add it", async () => {
+    const db = openDb(":memory:");
+    const r = await askForLanguage(db, "Esperanto");
+    expect(r.status).toBe("unsupported");
+    expect(r.message).toContain("ask your grown-up");
+    expect(unlistedAsks(db).map((u) => u.name)).toEqual(["Esperanto"]);
+    const info = addExtraLanguage(db, "Esperanto");
+    expect(info.code).toBe("x-esperanto");
+    addLanguage(db, info.code);
+    expect(isActive(db, "x-esperanto")).toBe(true);
+    expect(languageNote(db, "x-esperanto")).toContain("Esperanto conversation");
+  });
+  it("lets the grown-up add or remove any language directly, keeping the main chat English", async () => {
+    const db = openDb(":memory:");
+    addLanguage(db, "de", { level: "B1" });
+    expect(isActive(db, "de")).toBe(true);
+    expect(removeLanguage(db, "es")).toBe(true);
+    expect(Object.keys(loadLangProfiles(db)).sort()).toEqual(["de", "ja"]);
+    const { inThreadLanguage, createThread } = await import("../src/companion/threads.js");
+    expect(inThreadLanguage(db, { thread: 1, mode: "language", ctx: { lang: "de" } }).mode).toBe("chat");
+    const t = createThread(db, { title: "Deutsch", lang: "de" });
+    expect(inThreadLanguage(db, { thread: t.id, mode: "chat", ctx: {} }).mode).toBe("language");
+    // A side chat in a language that was removed is an ordinary chat again.
+    const old = createThread(db, { title: "Español", lang: "es" });
+    expect(inThreadLanguage(db, { thread: old.id, mode: "chat", ctx: {} }).mode).toBe("chat");
+  });
+  it("doesn't let the child switch a pending language on by saving its profile", () => {
+    const db = openDb(":memory:");
+    requestLanguage(db, "Italian");
+    saveLangProfile(db, "it", { status: "active", level: "A2" });
+    expect(loadLangProfiles(db).it).toMatchObject({ status: "pending", level: "A2" });
+  });
+});
+
+describe("safety in a language without hand-written rules", () => {
+  // A fake model: the gloss prompt gets an English translation; the safety prompts say "fine".
+  const TRANSLATIONS: Record<string, string> = {
+    "Je veux mourir": "I want to die",
+    "Ich will nicht mehr leben": "I don't want to be alive",
+    "Voglio morire": "I want to die",
+    "J'aime dessiner des dragons et écouter de la musique": "I like drawing dragons and listening to music",
+    "Am Wochenende gehe ich ins Kino mit meiner Freundin": "At the weekend I'm going to the cinema with my friend",
+    "Mi piace la pizza e il gelato": "I like pizza and ice cream",
+    "Es ist unser kleines Geheimnis": "It's our little secret",
+  };
+  const glosses: string[] = [];
+  const fake = (glossWorks = true): LLM => ({
+    available: true,
+    call: async (o) => {
+      const p = o.params as { system: string; messages: { content: string }[] };
+      let json: unknown;
+      if (p.system.includes("Translate the text into plain English")) {
+        if (!glossWorks) throw new Error("gloss down");
+        glosses.push(p.messages[0].content);
+        json = { english: TRANSLATIONS[p.messages[0].content] ?? p.messages[0].content };
+      } else if (p.system.includes("draft reply")) json = { ok: true, categories: [], reason: "" };
+      else json = { level: "none", categories: [], parent_summary: "", steer: "" };
+      return { id: "m", type: "message", role: "assistant", model: "x", stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 }, content: [{ type: "text", text: JSON.stringify(json), citations: null }] } as never;
+    },
+  });
+  it("only glosses languages without their own rules", () => {
+    expect(needsGloss("fr")).toBe(true);
+    expect(needsGloss("es")).toBe(false);
+    expect(needsGloss("ja")).toBe(false);
+    expect(needsGloss(undefined)).toBe(false);
+  });
+  it("catches clear crisis phrases in French, German and Italian", async () => {
+    const s = new Safety(fake());
+    for (const [t, lang] of [["Je veux mourir", "fr"], ["Ich will nicht mehr leben", "de"], ["Voglio morire", "it"]]) {
+      const v = await s.checkInput(t, [], { lang });
+      expect(v.level, t).toBe("now");
+      expect(v.categories, t).toContain("self_harm");
+    }
+  });
+  it("doesn't raise false alarms on ordinary practice sentences", async () => {
+    const s = new Safety(fake());
+    for (const [t, lang] of [["J'aime dessiner des dragons et écouter de la musique", "fr"], ["Am Wochenende gehe ich ins Kino mit meiner Freundin", "de"], ["Mi piace la pizza e il gelato", "it"]]) {
+      const v = await s.checkInput(t, [], { lang });
+      expect(v.level, t).toBe("none");
+      expect(v.held, t).toBeUndefined();
+      expect((await s.checkOutput(t, "", "chat", { lang })).ok, t).toBe(true);
+    }
+  });
+  it("catches the companion keeping secrets in German", async () => {
+    const v = await new Safety(fake()).checkOutput("Es ist unser kleines Geheimnis", "", "chat", { lang: "de" });
+    expect(v.ok).toBe(false);
+    expect(v.categories).toContain("secrecy");
+  });
+  it("holds the message and the reply if the gloss can't run", async () => {
+    const s = new Safety(fake(false));
+    expect((await s.checkInput("Bonjour", [], { lang: "fr" })).held).toBe(true);
+    expect((await s.checkOutput("Bonjour !", "", "chat", { lang: "fr" })).ok).toBe(false);
+    // Spanish has its own rules, so no gloss is needed (and nothing is held).
+    expect((await s.checkInput("Hola", [], { lang: "es" })).held).toBeUndefined();
+  });
+  it("never stores the gloss", async () => {
+    const db = openDb(":memory:");
+    glosses.length = 0;
+    await new Safety(fake()).checkInput("Je veux mourir", [], { lang: "fr" });
+    expect(glosses).toEqual(["Je veux mourir"]);
+    expect(JSON.stringify(db.prepare("SELECT * FROM messages").all())).not.toContain("I want to die");
+  });
+});

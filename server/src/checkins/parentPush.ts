@@ -21,7 +21,7 @@ async function deliver(db: DB, n: ParentNote, showSummary: boolean, ttl: number,
   return pushReady() ? sendTo(db, "parent", p, ttl) : 0;
 }
 
-export type ParentKind = "report-now" | "report-today" | "report-fyi" | "weekly" | "budget" | "test";
+export type ParentKind = "report-now" | "report-today" | "report-fyi" | "weekly" | "budget" | "test" | "language";
 
 export interface ParentNote { kind: ParentKind; summary?: string }
 
@@ -34,15 +34,16 @@ export function parentPayload(n: ParentNote, showSummary: boolean) {
     weekly: "This week's summary is ready.",
     budget: "There's an update about this month's energy.",
     test: "Notifications from Kith reach this device.",
+    language: "A language request is waiting for you.",
   };
   const isReport = n.kind.startsWith("report-");
-  const body = isReport && showSummary && n.summary ? n.summary.replace(/\s+/g, " ").slice(0, 140) : n.kind === "budget" && n.summary ? n.summary : generic[n.kind];
+  const body = isReport && showSummary && n.summary ? n.summary.replace(/\s+/g, " ").slice(0, 140) : (n.kind === "budget" || n.kind === "language") && n.summary ? n.summary : generic[n.kind];
   return { title: n.kind === "report-now" ? "Kith: needs you" : "Kith", body, url: "/parent", tag: `kith-parent-${n.kind}` };
 }
 
 function wanted(db: DB, kind: ParentKind): boolean {
   const p = loadParentSettings(db).notify;
-  if (kind === "test") return true;
+  if (kind === "test" || kind === "language") return true; // a request only the parent can answer
   if (kind === "report-now") return p.now;
   if (kind === "report-today") return p.today;
   if (kind === "report-fyi") return p.fyi;

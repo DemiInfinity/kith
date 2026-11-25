@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { callJson, type LLM } from "../llm.js";
 import { config } from "../config.js";
-import { checkInputRules, checkOutputRules, redactPersonal } from "./rules.js";
+import { checkInputRules, checkOutputRules, redactPersonal, RULED_LANGS } from "./rules.js";
 import { maxLevel, type InputCategory, type InputVerdict, type Level, type OutputCategory, type OutputVerdict } from "./types.js";
 
 const INPUT_CATEGORIES: InputCategory[] = [
@@ -81,10 +81,16 @@ grown-up content unsuitable for a 14-year-old (graphic violence, drugs how-to, e
 Warmth, encouragement, jokes, homework help, stories with age-appropriate peril, suggesting they talk to friends,
 family or Childline are all fine. When in doubt about something genuinely harmful, set ok=false. reason: one short line.`;
 
+/** `lang`: the practice language, when the text may be in it (see `needsGloss`). */
+export interface CheckOpts { lang?: string }
 export interface SafetyChecker {
-  checkInput(text: string, context: string[]): Promise<InputVerdict>;
-  checkOutput(reply: string, childText: string, bucket?: "chat" | "desk"): Promise<OutputVerdict>;
+  checkInput(text: string, context: string[], opts?: CheckOpts): Promise<InputVerdict>;
+  checkOutput(reply: string, childText: string, bucket?: "chat" | "desk", opts?: CheckOpts): Promise<OutputVerdict>;
 }
+
+const GLOSS_PROMPT = `Translate the text into plain English, literally and completely, keeping its meaning and tone.
+It's only used by a safety check, so never soften, censor, summarise or explain: just the English. If it's already English, repeat it.
+Text in [[...]] or ((...)) brackets is part of the text: translate it too.`;
 
 const STEER_DEFAULT: Partial<Record<InputCategory, string>> = {
   self_harm: "Take this seriously and stay calm and kind. Encourage talking to their grown-up right now and offer Childline (0800 1111) or 999 if they're in danger.",
@@ -101,8 +107,34 @@ const STEER_DEFAULT: Partial<Record<InputCategory, string>> = {
 export class Safety implements SafetyChecker {
   constructor(private llm: LLM) {}
 
-  async checkInput(text: string, context: string[]): Promise<InputVerdict> {
-    const rules = checkInputRules(text);
+  /** An English version made only for the fixed rules: never stored or shown. Throws if it can't run. */
+  async gloss(text: string): Promise<string> {
+    if (!this.llm.available) throw new Error("no model for the gloss");
+    const v = await callJson(this.llm, {
+      bucket: "chat", kind: "safety",
+      params: {
+        model: config.anthropic.safetyModel, max_tokens: 2000, output_config: { effort: "low" },
+        system: GLOSS_PROMPT, messages: [{ role: "user", content: redactPersonal(text).text.slice(0, 6000) }],
+      } as never,
+      schema: { type: "object", additionalProperties: false, required: ["english"], properties: { english: { type: "string" } } },
+      parse: (x) => z.object({ english: z.string() }).parse(x),
+    });
+    return v.english;
+  }
+
+  async checkInput(text: string, context: string[], opts: CheckOpts = {}): Promise<InputVerdict> {
+    let rules = checkInputRules(text);
+    // A language without hand-written rules: the fixed English rules also read an English gloss.
+    // If the gloss can't be made, the message is held, the same as when the check can't run.
+    if (needsGloss(opts.lang)) {
+      try {
+        const g = checkInputRules(await this.gloss(text));
+        rules = { level: maxLevel(rules.level, g.level), categories: [...new Set([...rules.categories, ...g.categories])] };
+      } catch (err) {
+        console.warn("[safety] couldn't make the English gloss; holding the message", err);
+        return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: "", source: "rules", held: true };
+      }
+    }
     const steerFromRules = rules.categories.map((c) => STEER_DEFAULT[c]).filter(Boolean).join(" ");
     if (!this.llm.available) {
       return { level: rules.level, categories: rules.categories, parentSummary: rulesSummary(rules.categories), steer: steerFromRules, source: "rules" };
@@ -138,9 +170,17 @@ export class Safety implements SafetyChecker {
     }
   }
 
-  async checkOutput(reply: string, childText: string, bucket: "chat" | "desk" = "chat"): Promise<OutputVerdict> {
+  async checkOutput(reply: string, childText: string, bucket: "chat" | "desk" = "chat", opts: CheckOpts = {}): Promise<OutputVerdict> {
     const ruleCats = checkOutputRules(reply);
     if (ruleCats.length) return { ok: false, categories: ruleCats, reason: "Caught by the fixed safety rules." };
+    if (needsGloss(opts.lang)) {
+      try {
+        const g = checkOutputRules(await this.gloss(reply));
+        if (g.length) return { ok: false, categories: g, reason: "Caught by the fixed safety rules (on the English gloss)." };
+      } catch {
+        return { ok: false, categories: [], reason: "The safety check couldn't run, so the reply was held back." };
+      }
+    }
     if (!this.llm.available) return { ok: true, categories: [], reason: "Fixed rules only (no API key)." };
     // Fail closed: if the check can't run, the reply isn't shown.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -165,6 +205,11 @@ export class Safety implements SafetyChecker {
     }
     return { ok: false, categories: [], reason: "The safety check couldn't run, so the reply was held back." };
   }
+}
+
+/** Spanish and Japanese have hand-written rules; any other practice language also gets the gloss. */
+export function needsGloss(lang: string | undefined): boolean {
+  return !!lang && !RULED_LANGS.includes(lang);
 }
 
 export function rulesSummary(categories: InputCategory[]): string {

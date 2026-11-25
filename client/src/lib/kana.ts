@@ -52,21 +52,28 @@ export function toRomaji(input: string): string {
   return out;
 }
 
-/** Says a word with the device's own voice (built into iPhone, iPad and Mac; private and free). */
-export function say(text: string, lang: "es" | "ja", variety: "spain" | "latam" = "spain") {
+/** Says a word with the device's own voice (built into iPhone, iPad and Mac; private and free).
+ *  `voice` is a locale like "es-ES" or "fr-FR"; returns false if the device has no voice for it. */
+export function say(text: string, voice: string) {
   try {
     const synth = window.speechSynthesis;
-    if (!synth) return false;
+    if (!synth || !voice) return false;
+    const base = voice.split("-")[0];
+    const voices = synth.getVoices();
+    const v = voices.find((x) => x.lang.replace("_", "-") === voice) ?? voices.find((x) => x.lang.startsWith(base));
+    if (voices.length && !v) return false;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text.replace(/\(\(.*?\)\)|\[\[.*?\]\]/g, ""));
-    u.lang = lang === "ja" ? "ja-JP" : variety === "latam" ? "es-MX" : "es-ES";
-    const v = synth.getVoices().find((x) => x.lang.replace("_", "-").startsWith(u.lang)) ?? synth.getVoices().find((x) => x.lang.startsWith(lang));
+    u.lang = voice;
     if (v) u.voice = v;
     u.rate = 0.9;
     synth.speak(u);
     return true;
   } catch { return false; }
 }
+
+/** Device-voice locale for a language, for the two built in. */
+export const voiceFor = (lang: string, variety: "spain" | "latam" = "spain") => lang === "ja" ? "ja-JP" : lang === "es" ? (variety === "latam" ? "es-MX" : "es-ES") : "";
 
 // ── Practice-chat markup: ((hint)), [[fix: a → b | why]], [[save: phrase | meaning | reading]] ──
 

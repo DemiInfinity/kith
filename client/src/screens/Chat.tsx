@@ -4,10 +4,10 @@ import { dayLabel, EnergyCard } from "../components/bits";
 import type { AppState, Memory } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
-import { hasKana, parseLesson, say } from "../lib/kana";
+import { hasKana, parseLesson, say, voiceFor } from "../lib/kana";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
-export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string }
+export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string; voice?: string }
 
 interface Props {
   me: Me;
@@ -55,6 +55,7 @@ const QUICK: Record<string, string[][]> = {
   art: [["bulb", "Give me a drawing prompt"], ["brush", "How do I shade skin tones?"], ["landmark", "Who should I look at for bold colour?"], ["chat2", "Here's what I drew today…"]],
   es: [["chat2", "¡Hola! ¿Qué tal?"], ["question", "¿Cómo se dice “dragon”?"], ["cards", "Quiz me on my words"], ["note", "Can you explain the past tense?"]],
   ja: [["chat2", "こんにちは！"], ["question", "How do I say “I like drawing”?"], ["cards", "Quiz me on hiragana"], ["note", "Let’s practise ordering ramen"]],
+  anylang: [["chat2", "Hi! Let’s chat"], ["question", "How do I say “dragon”?"], ["cards", "Quiz me on my words"], ["note", "Explain a bit of grammar"]],
   oc: [["sparkle", "Help me make a new OC"], ["art", "Make a palette for my OC"], ["map", "Let's build their world"], ["mask", "Let's play a scene"]],
 };
 
@@ -209,7 +210,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
 
   const shown = messages ?? [];
   const lang = context?.mode === "language" ? context.ctx.lang : undefined;
-  const quick = (lang ? QUICK[lang] : QUICK[mode]) ?? QUICK.chat;
+  const quick = (lang ? QUICK[lang] ?? QUICK.anylang : QUICK[mode]) ?? QUICK.chat;
 
   return (
     <>
@@ -229,7 +230,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
               {newDay && <span className="daymark">{dayLabel(m.ts)}</span>}
               <div className={`msg ${m.role === "child" ? "me" : "pip"}`}>
                 <div className="bubble" onClick={() => m.id > 0 && setPicked(picked === m.id ? null : m.id)}>
-                  {m.mode === "language" && m.role === "companion" ? <Lesson text={m.text} hints={hints} lang={lang} /> : m.text}
+                  {m.mode === "language" && m.role === "companion" ? <Lesson text={m.text} hints={hints} lang={lang} voice={context?.voice} /> : m.text}
                 </div>
               </div>
               {picked === m.id && (
@@ -326,7 +327,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
 }
 
 /** A practice-chat reply: hints she can show or tap, gentle corrections, and phrases to save as cards. */
-function Lesson({ text, hints, lang }: { text: string; hints: boolean; lang?: "es" | "ja" }) {
+function Lesson({ text, hints, lang, voice }: { text: string; hints: boolean; lang?: string; voice?: string }) {
   const pieces = parseLesson(text);
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [saved, setSaved] = useState<Record<number, string>>({});
@@ -358,7 +359,7 @@ function Lesson({ text, hints, lang }: { text: string; hints: boolean; lang?: "e
           </button>
         );
       })}
-      <button className="hinttap speak" onClick={(e) => { stop(e); say(plain, speakLang); }} aria-label="Hear it"><Icon name="speaker" size={14} /></button>
+      <button className="hinttap speak" onClick={(e) => { stop(e); say(plain, voice || voiceFor(speakLang)); }} aria-label="Hear it"><Icon name="speaker" size={14} /></button>
     </span>
   );
 }

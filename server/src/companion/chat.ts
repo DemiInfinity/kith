@@ -105,7 +105,8 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   // A shared document goes through the same safety check and redaction as what they type.
   const file = input.file ? { name: input.file.name.trim().slice(0, 120) || "document", text: input.file.text.slice(0, 12_000) } : undefined;
   const checked = file ? `${raw}\n\n[They shared a document, “${file.name}”:]\n${file.text}` : raw;
-  const verdict = await safety.checkInput(checked, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`));
+  const practiceLang = input.mode === "language" ? input.ctx?.lang : undefined;
+  const verdict = await safety.checkInput(checked, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`), { lang: practiceLang });
   const { text: clean } = redactPersonal(raw);
   const doc = file ? { name: redactPersonal(file.name).text, text: redactPersonal(file.text).text } : undefined;
   const child = store(db, "child", doc ? `${clean}\n\n📄 ${doc.name}` : clean, input.mode, undefined, thread);
@@ -124,7 +125,10 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   let replyText: string;
   let mood: Mood = energy.mode === "low" ? "sleepy" : "happy";
 
-  if (energy.mode === "resting") {
+  if (verdict.held && !report) {
+    // The safety check couldn't read it properly (a new language without its English gloss): hold it.
+    replyText = "I couldn't check that message properly just now, so I'll hold off answering. Could you try again in a moment, or say it in English?";
+  } else if (energy.mode === "resting") {
     replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : restingText(energy, parent);
     mood = report ? "concerned" : "resting";
   } else {
@@ -302,7 +306,7 @@ async function generateReply(
       convo.push({ role: "user", content: results });
     }
     if (!text) continue;
-    const check = await safety.checkOutput(text, a.clean);
+    const check = await safety.checkOutput(text, a.clean, "chat", { lang: a.mode === "language" ? a.ctx.lang : undefined });
     if (check.ok) return text;
     console.warn("[chat] reply held back by the safety check:", check.categories.join(","), check.reason);
     notes.push(`Your last draft was stopped by the safety check (${check.reason}). Answer again, following the rules.`);
