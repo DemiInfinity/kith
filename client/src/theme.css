@@ -337,7 +337,7 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .durl { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #f1e4ef; font-size: 13px; font-weight: 700; }
 .dbrowse-grid { display: flex; flex-direction: column; gap: 6px; }
 .dbrowser .dshot { border: 0; border-radius: 0 0 8px 8px; }
-@media (min-width: 1250px) { .pscreen { aspect-ratio: 16 / 9; min-height: 0; } }
+
 .dshot { aspect-ratio: 16 / 9; border-radius: 8px; border: 1px solid #eadbe9; background: #fff; display: grid; place-items: center; overflow: hidden; text-align: center; }
 .screen169 { position: relative; width: 100%; aspect-ratio: 16 / 9; }
 .screen169 img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -362,21 +362,6 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   .deskpage { flex-direction: column; }
   .deskside { width: 100%; }
 }
-@media (max-width: 760px) {
-  .pscreen { flex-direction: column; padding: 10px; }
-  .pfolders { flex-direction: row; width: auto; overflow-x: auto; gap: 4px; }
-  .picon { min-width: 78px; }
-  .pcenter { grid-template-columns: 1fr; }
-  .dwin { grid-row: auto; }
-  .dbrowse-grid { grid-template-columns: 1fr; }
-  .pbuddy { flex-direction: row; justify-content: center; gap: 10px; }
-  .pbuddy svg { width: 84px; height: 84px; }
-  .pnow { flex-wrap: wrap; }
-  .pnow-bar { width: 90px; }
-  .tlabel { display: none; }
-  .pmeta { display: none; }
-}
-
 /* ── Profile (tap the avatar) ────────────────────────────────────────────────────────── */
 .profilehead { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .mdfile { border-radius: 16px; background: var(--card); border: 1px solid var(--line); overflow: hidden; }
@@ -386,10 +371,7 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .callbtn { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; background: var(--lilac); color: var(--ink); font-size: 13px; font-weight: 900; border: 0; white-space: nowrap; }
 .tabbar button.sos { color: var(--ember); }
 .deskpage, .deskmain, .pcomp, .pscreen, .pcenter, .dwin { min-width: 0; max-width: 100%; }
-@media (max-width: 760px) {
-  .pfolders { max-width: 100%; scrollbar-width: none; }
-  .pfolders::-webkit-scrollbar { display: none; }
-}
+
 
 /* Looking around, and working on its laptop */
 .avatar .face, .avatar .head, .avatar .ears { transition: transform 0.5s ease; transform-origin: 100px 120px; }
@@ -473,11 +455,7 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .ctxchip .x { width: 30px; height: 30px; }
 .roundbtn .navicon { display: block; }
 @media (max-width: 1099px) { .desktop-only { display: none !important; } }
-@media (min-width: 1250px) {
-  .pfolders { display: grid; grid-template-columns: repeat(2, 76px); align-content: start; gap: 6px; width: auto; }
-  .picon { padding: 6px 2px; }
-  .picon span:first-child { font-size: 24px; }
-}
+
 .il { display: inline-flex; align-items: center; gap: 5px; }
 .il .navicon, .hic .navicon { flex: none; }
 .hic { display: inline-flex; flex: none; }
@@ -504,7 +482,7 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .screen169.driving:focus { outline: none; }
 .ttype input { width: 190px; min-height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color: #fff; padding: 0 10px; font: inherit; font-size: 12.5px; }
 .ttype input::placeholder { color: rgba(255,255,255,0.55); }
-@media (max-width: 760px) { .ttype input { width: 130px; } .dwin.maxwin { position: static; } }
+
 .pscreen.hasmax .pcenter { position: static; }
 /* Maximised: fills the desktop exactly (the taskbar below always stays), and the 16:9 page fits inside. */
 .dwin.maxwin { align-self: stretch; justify-self: stretch; }
@@ -522,3 +500,16 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 @keyframes zz { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(-6px); opacity: 0.95; } }
 @keyframes sleepfade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .psleep, .psleep .zz { animation: none; } }
+/* The 16:9 monitor: laid out at 1440×810 and scaled to the space available. */
+.pmonitor { width: 100%; position: relative; overflow: hidden; border-radius: 18px; }
+.pmonitor > .pcomp { position: absolute; top: 0; left: 0; transform-origin: 0 0; max-width: none; }
+.pcomp .pscreen { flex: 1; min-height: 0; }
+.pcomp .pcenter { grid-template-columns: minmax(0, 1fr) 230px; grid-template-rows: minmax(0, auto) 1fr; min-height: 0; }
+.pcomp .dwin.browserwin { align-self: stretch; max-height: 100%; }
+.pcomp .dwin.browserwin .dbrowser { flex: 1; min-height: 0; }
+.pcomp .dwin.browserwin .dbrowse-grid { flex: 1; min-height: 0; }
+.pcomp .dwin.browserwin .dshot { flex: 1; min-height: 0; aspect-ratio: auto; background: #1d1428; }
+.pcomp .dwin.browserwin .screen169 { height: 100%; width: auto; max-width: 100%; }
+.pcomp .dwin { min-height: 0; max-height: 100%; }
+.pcomp .dwin-body { flex: 1; min-height: 0; }
+.pcomp .pbar { flex-wrap: nowrap; }

@@ -41,6 +41,8 @@ const TAG: Record<string, React.CSSProperties> = {
   sheet: { background: "#DFF5E7", color: "#1E7A45" }, slides: { background: "#FFEBD6", color: "#B05A10" }, app: { background: "#EEDDF6", color: "#7A3C8A" }, me: { background: "#F1E4EF", color: "#7A5C76" },
 };
 
+const MON = { w: 1440, h: 810 };
+
 /** Pip's desk, as designed: its own little computer at home, with nothing hidden. */
 export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boolean; go?: (to: string) => void }) {
   const [desk, setDesk] = useState<DeskView | null>(null);
@@ -65,6 +67,19 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   // The screen sleeps (goes black) when nobody's looking; a click wakes it, and after two quiet
   // minutes it sleeps again, unless someone is driving the browser.
   const [awake, setAwake] = useState(false);
+  // The monitor is a standard 16:9 screen, drawn at one size and scaled to fit, so it looks the
+  // same on a phone, a tablet or a big screen (just smaller).
+  const monRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0.6);
+  useEffect(() => {
+    const el = monRef.current;
+    if (!el) return;
+    const fit = () => setScale(Math.min(1.25, el.clientWidth / MON.w));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const lastPoke = useRef(Date.now());
   const poke = () => { lastPoke.current = Date.now(); if (!awake) setAwake(true); };
   const [driving, setDriving] = useState(false);
@@ -330,7 +345,8 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   return (
     <div className="deskpage">
       <div className="deskmain">
-        <div className="pcomp">
+        <div className="pmonitor" ref={monRef} style={{ height: MON.h * scale }}>
+        <div className="pcomp" style={{ width: MON.w, height: MON.h, transform: `scale(${scale})` }}>
           <div className="pbar">
             <b>{name}’s computer</b>
             <span className="pmeta">at home · {br?.mode === "safelist" ? "safe-listed websites only" : "the web, with a block list"} · every page logged</span>
@@ -404,6 +420,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
               </>
             ))}
           </div>
+        </div>
         </div>
         {info}
         <span className="small">{name}’s desk is a locked-down container on the home server. {name} can write, draw and build small things there{today?.google ? ", and save them into the Kith folder in your Google Drive" : ""}. Its browser reads the web through a block list ({me.parentLabel} chooses what’s blocked), stops at robot checks, treats what it reads as information rather than instructions, and logs every page. It can’t sign in, install anything, message anyone, delete your files or touch the rest of the house.</span>
