@@ -230,6 +230,8 @@ docker compose logs -f kith
   - Set `KITH_BIND=0.0.0.0` (or keep 127.0.0.1 if the proxy is on the same host).
   - Proxy to port 8787, and set `KITH_PUBLIC_URL` to the https address.
   - Microphone access needs https.
+  - Turn on WebSocket support in the proxy (in Nginx Proxy Manager: "Websockets support"). Calls and live updates
+    use it.
 - **Data** lives in two volumes:
   - `kith-data`: the SQLite database.
   - `desk-data`: everything on the desk.
