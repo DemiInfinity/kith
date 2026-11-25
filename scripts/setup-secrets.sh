@@ -3,6 +3,7 @@
 #
 #   ./scripts/setup-secrets.sh          # walk through everything (Enter keeps what's already set)
 #   ./scripts/setup-secrets.sh --check  # only show what's set and what's missing (never the values)
+#   ./scripts/setup-secrets.sh --only KITH_GOOGLE_CLIENT_SECRET  # re-enter just one value
 #
 # - Secrets are typed with hidden input and never printed, logged or passed on a command line.
 # - Generated secrets (KITH_SECRET_KEY, KITH_DESK_TOKEN, VAPID keys) are made here and never shown.
@@ -16,6 +17,8 @@ cd "$(dirname "$0")/.."
 ENV_FILE=.env
 CHECK_ONLY=false
 [ "${1:-}" = "--check" ] && CHECK_ONLY=true
+ONLY=""
+[ "${1:-}" = "--only" ] && ONLY="${2:-}"
 
 if [ ! -f docker-compose.yml ]; then echo "Run this from the Kith folder." >&2; exit 1; fi
 if [ ! -f "$ENV_FILE" ]; then
@@ -96,6 +99,18 @@ summary() {
 }
 
 if $CHECK_ONLY; then summary; exit 0; fi
+
+# Re-enter one value (generated keys are never replaced here).
+if [ -n "$ONLY" ]; then
+  case "$ONLY" in
+    KITH_SECRET_KEY|KITH_DESK_TOKEN|KITH_VAPID_PUBLIC_KEY|KITH_VAPID_PRIVATE_KEY) echo "$ONLY is generated and can't be re-entered." >&2; exit 1;;
+    KITH_*|ANTHROPIC_API_KEY) ;;
+    *) echo "Unknown setting: $ONLY" >&2; exit 1;;
+  esac
+  secret "$ONLY" "$ONLY"
+  echo "Restart Kith to use it: docker compose --profile voice up -d kith"
+  exit 0
+fi
 
 echo
 echo "${bold}Kith secrets setup${off}"
