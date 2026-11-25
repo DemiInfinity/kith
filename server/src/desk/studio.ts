@@ -82,6 +82,9 @@ Return JSON: title (short), summary (one short line for the desk, e.g. "chapter 
 Also rows: for flashcards [[front, back], …], for quizzes [[question, answer], …], for timelines [[when, what], …]; otherwise [].
 And slides: for slide decks [{title, body}, …] matching the deck (so it can also become a Google Slides file); otherwise [].`;
 
+/** A desk job interrupted by restarts this many times is given up on. */
+export const MAX_JOB_ATTEMPTS = 2;
+
 export class Studio {
   private queue: number[] = [];
   private running = false;
@@ -133,9 +136,19 @@ export class Studio {
     return get<Job>(this.db, "SELECT id, ts, kind, title, status, progress, file_id, error, updated FROM desk_jobs WHERE id = ?", id);
   }
 
-  /** Re-queue anything left unfinished by a restart. */
+  /**
+   * Re-queue anything left unfinished by a restart. A job that was already started twice (and so
+   * may be what keeps stopping the server) is marked failed instead of trying forever.
+   */
   resume() {
-    for (const j of all<{ id: number }>(this.db, "SELECT id FROM desk_jobs WHERE status IN ('queued','working') ORDER BY ts")) this.queue.push(j.id);
+    for (const j of all<{ id: number; title: string; attempts: number }>(this.db, "SELECT id, title, attempts FROM desk_jobs WHERE status IN ('queued','working') ORDER BY ts")) {
+      if (j.attempts >= MAX_JOB_ATTEMPTS) {
+        this.update(j.id, { status: "failed", error: "It was interrupted twice, so I stopped trying. Ask me again if you still want it." });
+        logActivity(this.db, "⚠️", `Couldn't finish ${j.title}`);
+        continue;
+      }
+      this.queue.push(j.id);
+    }
     void this.pump();
   }
 
@@ -154,6 +167,7 @@ export class Studio {
         if (!row) continue;
         try {
           this.update(id, { status: "working", progress: 5 });
+          run(this.db, "UPDATE desk_jobs SET attempts = attempts + 1 WHERE id = ?", id);
           const req = JSON.parse(row.request);
           const fileId = req.kind === "edit" ? await this.edit(id, req) : await this.make(id, req);
           this.update(id, { status: "done", progress: 100, file_id: fileId });

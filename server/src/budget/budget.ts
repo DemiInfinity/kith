@@ -1,6 +1,7 @@
 import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 import type { Budgets } from "../settings.js";
+import { config } from "../config.js";
 import { costUsd, type UsageLike } from "./pricing.js";
 import { localParts, nextWeekStart, startOfDay, startOfMonth, startOfWeek, zonedTime } from "./time.js";
 
@@ -38,6 +39,15 @@ const WEEK = 7 * DAY;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const sum = (rows: SpendRow[]) => rows.reduce((t, r) => t + r.usd, 0);
 
+/**
+ * A chat turn at its most expensive: up to 6 Claude steps (tools), each with a long context
+ * (~40k tokens in) and a full 8k-token answer. New turns on a model stop while one of these could
+ * still pass the hard stop.
+ */
+export function worstTurnUsd(model: string): number {
+  return 6 * costUsd(model, { input_tokens: 40_000, output_tokens: 8_000 });
+}
+
 export function splits(b: Budgets) {
   const share = clamp(b.deskSharePercent, 0, 100) / 100;
   return { chatWeek: b.weeklyUsd * (1 - share), deskWeek: b.weeklyUsd * share, deskDaily: (b.weeklyUsd * share) / 7 };
@@ -52,8 +62,14 @@ export function splits(b: Budgets) {
  * - When the week or the window runs low, Low power (the small model) takes over smoothly and keeps
  *   going. Full power comes back when the window frees up or the week tops up.
  * - Everything rests only at the hard stop (default $48, under a $50 Console cap).
+ *
+ * Near the hard stop, Full power ends while one worst-case Full-power turn could still pass it,
+ * and everything rests while one worst-case Low-power turn could.
  */
-export function computeEnergy(rows: SpendRow[], now: number, b: Budgets, tz: string): Energy {
+export function computeEnergy(
+  rows: SpendRow[], now: number, b: Budgets, tz: string,
+  margin: { fullTurnUsd: number; lowTurnUsd: number } = { fullTurnUsd: worstTurnUsd(config.anthropic.fullModel), lowTurnUsd: worstTurnUsd(config.anthropic.lowModel) },
+): Energy {
   const weekStart = startOfWeek(now, tz, b.weekResetDay);
   const weekResetsAt = nextWeekStart(now, tz, b.weekResetDay);
   const windowStart = now - b.windowHours * HOUR;
@@ -80,10 +96,16 @@ export function computeEnergy(rows: SpendRow[], now: number, b: Budgets, tz: str
   const percent = Math.round(frac * 100);
   const usd = { week, window, month, deskWeek, windowAllowance, chatWeekBudget: chatWeek };
 
-  if (b.hardStopUsd > 0 && month >= b.hardStopUsd) {
+  if (b.hardStopUsd > 0 && month + margin.lowTurnUsd >= b.hardStopUsd) {
     return { mode: "resting", percent: 0, fullBackAt: null, limitedBy: "month", weekResetsAt, usd };
   }
   const threshold = b.lowPowerAtPercent / 100;
+  if (b.hardStopUsd > 0 && month + margin.fullTurnUsd >= b.hardStopUsd) {
+    // Close to the hard stop: Low power until the month starts again.
+    const p = localParts(now, tz);
+    const nextMonth = p.month === 12 ? zonedTime(p.year + 1, 1, 1, 0, 0, tz) : zonedTime(p.year, p.month + 1, 1, 0, 0, tz);
+    return { mode: "low", percent: Math.min(percent, Math.round(threshold * 100)), fullBackAt: nextMonth, limitedBy: "month", weekResetsAt, usd };
+  }
   if (frac > threshold) return { mode: "full", percent, fullBackAt: null, limitedBy: null, weekResetsAt, usd };
 
   const limitedBy: "week" | "window" = weekFrac <= threshold ? "week" : "window";
@@ -103,7 +125,7 @@ export function computeEnergy(rows: SpendRow[], now: number, b: Budgets, tz: str
 }
 
 /** The desk's daily slice of the week. Unused days roll forward within the same week. */
-export function computeDeskEnergy(rows: SpendRow[], now: number, b: Budgets, tz: string): DeskEnergy {
+export function computeDeskEnergy(rows: SpendRow[], now: number, b: Budgets, tz: string, marginUsd = worstTurnUsd(config.anthropic.fullModel)): DeskEnergy {
   const weekStart = startOfWeek(now, tz, b.weekResetDay);
   const dayStart = startOfDay(now, tz);
   const monthStart = startOfMonth(now, tz);
@@ -114,7 +136,8 @@ export function computeDeskEnergy(rows: SpendRow[], now: number, b: Budgets, tz:
   const daysSoFar = Math.min(7, Math.floor((dayStart - weekStart) / DAY + 0.5) + 1);
   const allowanceLeft = deskDaily * daysSoFar - week;
   const month = sum(rows.filter((r) => r.ts >= monthStart && r.ts <= now));
-  const atStop = b.hardStopUsd > 0 && month >= b.hardStopUsd;
+  // Desk work stops while one more worst-case job could pass the hard stop.
+  const atStop = b.hardStopUsd > 0 && month + marginUsd >= b.hardStopUsd;
   const percent = deskDaily > 0 ? Math.round(clamp(allowanceLeft / deskDaily, 0, 1) * 100) : 0;
   return {
     canWork: allowanceLeft > 0 && !atStop,
@@ -145,6 +168,29 @@ export function recordSpend(db: DB, opts: { bucket: Bucket; kind: SpendKind; mod
     opts.usage.output_tokens ?? 0,
   );
   return usd;
+}
+
+/**
+ * Before a call: books its worst-case cost straight away, so calls running at the same time (and
+ * the energy bar) already count it. Returns the row to settle afterwards.
+ */
+export function reserveSpend(db: DB, opts: { bucket: Bucket; kind: SpendKind; model: string; usd: number; ts?: number }): number {
+  const res = run(db, "INSERT INTO spend(ts, usd, bucket, kind, model, input_tokens, output_tokens) VALUES (?,?,?,?,?,0,0)",
+    opts.ts ?? Date.now(), opts.usd, opts.bucket, opts.kind, opts.model);
+  return Number(res.lastInsertRowid);
+}
+
+/** After a call: the real cost (from the usage Claude reported) replaces the reservation. */
+export function settleSpend(db: DB, id: number, model: string, usage: UsageLike): number {
+  const usd = costUsd(model, usage);
+  run(db, "UPDATE spend SET usd = ?, input_tokens = ?, output_tokens = ? WHERE id = ?", usd,
+    (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0), usage.output_tokens ?? 0, id);
+  return usd;
+}
+
+/** A call that was refused before it ran (not billed): the reservation goes. */
+export function cancelSpend(db: DB, id: number) {
+  run(db, "DELETE FROM spend WHERE id = ?", id);
 }
 
 export function spendRows(db: DB, since: number): SpendRow[] {

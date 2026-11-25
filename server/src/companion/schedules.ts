@@ -36,13 +36,18 @@ export function parseLocal(when: string, tz: string): number {
   return zonedTime(y, m, day, h, min, tz);
 }
 
-/** The next time after `from` for a repeating schedule at local `time`. Pure. */
-export function nextRun(prev: number, repeat: Repeat, tz: string): number | null {
+/**
+ * The next time after `prev` for a repeating schedule, at the local `time` it was set for ("HH:MM").
+ * The stored time is used, not `prev`'s clock time, so a run moved by a clock change (01:30 doesn't
+ * exist on the day the clocks go forward) goes back to 01:30 the next day. Pure.
+ */
+export function nextRun(prev: number, repeat: Repeat, tz: string, time?: string): number | null {
   if (repeat === "none") return null;
   const p = localParts(prev, tz);
+  const [hour, minute] = time && /^\d{2}:\d{2}$/.test(time) ? time.split(":").map(Number) : [p.hour, p.minute];
   for (let add = 1; add <= 7; add++) {
     const d = new Date(Date.UTC(p.year, p.month - 1, p.day + add));
-    const ts = zonedTime(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), p.hour, p.minute, tz);
+    const ts = zonedTime(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), hour, minute, tz);
     const wd = localParts(ts, tz).weekday;
     if (repeat === "daily") return ts;
     if (repeat === "weekdays" && wd >= 1 && wd <= 5) return ts;
@@ -60,7 +65,7 @@ export function addSchedule(db: DB, input: unknown, tz: string, now = Date.now()
   let at = parseLocal(s.when, tz);
   if (at <= now) {
     if (s.repeat === "none") return { ok: false, error: "That time has already passed." };
-    while (at <= now) at = nextRun(at, s.repeat, tz) ?? Infinity;
+    while (at <= now) at = nextRun(at, s.repeat, tz, s.when.slice(11)) ?? Infinity;
   }
   if (s.kind === "make" && !s.make) return { ok: false, error: "What should I make?" };
   const res = run(db, "INSERT INTO schedules(created, title, kind, payload, at, repeat, time, active) VALUES (?,?,?,?,?,?,?,1)",
@@ -88,8 +93,8 @@ export function dueSchedules(list: Schedule[], now: number, tz: string, quiet: {
 
 /** After running: move a repeating schedule on, or switch a one-off off. */
 export function markRan(db: DB, s: Schedule, now: number, tz: string) {
-  let next = nextRun(s.at, s.repeat, tz);
-  while (next !== null && next <= now) next = nextRun(next, s.repeat, tz);
+  let next = nextRun(s.at, s.repeat, tz, s.time);
+  while (next !== null && next <= now) next = nextRun(next, s.repeat, tz, s.time);
   if (next === null) run(db, "UPDATE schedules SET active = 0, last_run = ? WHERE id = ?", now, s.id);
   else run(db, "UPDATE schedules SET at = ?, last_run = ? WHERE id = ?", next, now, s.id);
 }
