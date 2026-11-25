@@ -58,12 +58,15 @@ describe("signing in from an installed app", () => {
   it("starts a handoff on the server and keeps its secret in memory", async () => {
     const { startHandoff } = await import("../src/lib/signin");
     const calls: Call[] = [];
-    const f = (async (url: string, init?: RequestInit) => { calls.push({ url, init }); return json(200, { id: ID, secret: SECRET, expiresIn: 900 }); }) as unknown as typeof fetch;
-    const h = await startHandoff("child", f, 1000);
-    expect(h).toEqual({ id: ID, secret: SECRET, at: 1000, expiresAt: 1000 + 900_000 });
+    const f = (async (url: string, init?: RequestInit) => { calls.push({ url, init }); return json(200, { id: ID, secret: SECRET, code: "4821", expiresIn: 900 }); }) as unknown as typeof fetch;
+    const h = await startHandoff("child", f, 1000, "homescreen");
+    expect(h).toEqual({ id: ID, secret: SECRET, code: "4821", at: 1000, expiresAt: 1000 + 900_000 });
     expect(calls[0].url).toBe("/auth/handoff/start");
     expect(calls[0].init?.method).toBe("POST");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ app: "child" });
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ app: "child", device: "homescreen" });
+    // An older server has no code (and no confirm step).
+    const old = (async () => json(200, { id: ID, secret: SECRET })) as unknown as typeof fetch;
+    expect((await startHandoff(null, old))?.code).toBe("");
     const bad = (async () => json(200, { id: "short", secret: SECRET })) as unknown as typeof fetch;
     expect(await startHandoff(null, bad)).toBeNull();
     const limited = (async () => json(429, { error: "slow down" })) as unknown as typeof fetch;
@@ -107,6 +110,7 @@ describe("signing in from an installed app", () => {
     expect(handoffWords("expired", wrongAppWords)).toBe("Sign-in timed out. Try again?");
     expect(handoffWords("not-allowed", wrongAppWords)).toMatch(/isn’t set up for Kith/);
     expect(handoffWords("use-parent-app", wrongAppWords)).toMatch(/Kith Parent/);
+    expect(handoffWords("cancelled", wrongAppWords)).toMatch(/^Sign-in was cancelled/);
     expect(handoffWords("bad handoff secret", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
     expect(handoffWords("failed", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
   });

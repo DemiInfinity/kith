@@ -19,23 +19,32 @@ export function isInstalledApp(): boolean {
 
 /** A handoff the server started: the id goes in the sign-in URL; the secret stays in memory only
  *  (never in storage or a URL) and goes in a header on each poll, so knowing the id isn't enough. */
-export type Handoff = { id: string; secret: string; at: number; expiresAt: number };
+export type Handoff = { id: string; secret: string; code: string; at: number; expiresAt: number };
+
+/** Which kind of app is signing in, so the browser's "Finish signing in?" page can say so. */
+export type HandoffDevice = "mac" | "homescreen";
+export function handoffDevice(): HandoffDevice {
+  const native = (globalThis as { __KITH_APP__?: unknown }).__KITH_APP__;
+  return native === "child" || native === "parent" ? "mac" : "homescreen";
+}
 
 const B64URL = /^[A-Za-z0-9_-]{43}$/;
 
 /** POST /auth/handoff/start. `null` if the server can't (offline, rate-limited, or an older server). */
-export async function startHandoff(app: string | null, fetchImpl: typeof fetch = fetch, now = Date.now()): Promise<Handoff | null> {
+export async function startHandoff(app: string | null, fetchImpl: typeof fetch = fetch, now = Date.now(), device: HandoffDevice | null = null): Promise<Handoff | null> {
   try {
     const r = await fetchImpl("/auth/handoff/start", {
       method: "POST", credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json", "X-Kith": "1" },
-      body: JSON.stringify(app ? { app } : {}),
+      body: JSON.stringify({ ...(app ? { app } : {}), ...(device ? { device } : {}) }),
     });
     if (!r.ok) return null;
-    const j = (await r.json()) as { id?: unknown; secret?: unknown; expiresIn?: unknown };
+    const j = (await r.json()) as { id?: unknown; secret?: unknown; code?: unknown; expiresIn?: unknown };
     if (typeof j.id !== "string" || typeof j.secret !== "string" || !B64URL.test(j.id) || !B64URL.test(j.secret)) return null;
+    // The code the browser's confirm page shows too (an older server has none: then there's no confirm step).
+    const code = typeof j.code === "string" && /^\d{4}$/.test(j.code) ? j.code : "";
     const life = typeof j.expiresIn === "number" && j.expiresIn > 0 ? Math.min(j.expiresIn, 900) : 900;
-    return { id: j.id, secret: j.secret, at: now, expiresAt: now + life * 1000 };
+    return { id: j.id, secret: j.secret, code, at: now, expiresAt: now + life * 1000 };
   } catch {
     return null;
   }
@@ -61,12 +70,14 @@ export async function waitForHandoff(h: Pick<Handoff, "id" | "secret" | "expires
       /* offline for a moment: keep trying */
     }
   }
-  return { ok: false, error: signal.aborted ? "cancelled" : "expired" };
+  // "stopped" is this app's own Cancel; "cancelled" is the server's word for No on the confirm page.
+  return { ok: false, error: signal.aborted ? "stopped" : "expired" };
 }
 
 /** What to tell someone when a handoff didn't finish. */
 export function handoffWords(error: string, wrongApp: (code: string) => string | null): string {
   if (error === "expired" || error === "unknown handoff") return "Sign-in timed out. Try again?";
+  if (error === "cancelled") return "Sign-in was cancelled in the browser. That’s fine: if it was you, try again and check the code matches.";
   if (error === "not-allowed") return "That account isn’t set up for Kith. Ask the grown-up who runs it.";
   const wrong = wrongApp(error);
   if (wrong) return wrong;
@@ -86,7 +97,7 @@ export type PreparedSignIn = Handoff & { url: string };
  */
 export async function prepareSignIn(fetchImpl: typeof fetch = fetch): Promise<PreparedSignIn | null> {
   const app = appHint();
-  const h = await startHandoff(app, fetchImpl);
+  const h = await startHandoff(app, fetchImpl, Date.now(), handoffDevice());
   if (!h) return null;
   try {
     const r = await fetchImpl(withApp(`/auth/login?handoff=${h.id}&json=1`), { credentials: "same-origin", cache: "no-store" });

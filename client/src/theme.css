@@ -853,3 +853,5 @@ dialog.sheet h3:focus { outline: none; }
 .toastwrap { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-bottom)); z-index: 60; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
 .toast { pointer-events: auto; display: flex; align-items: center; gap: 8px; max-width: 520px; padding: 10px 8px 10px 16px; border-radius: 16px; background: var(--card-hi); border: 1.5px solid var(--ember); color: var(--text); font-size: 0.875rem; box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: fade 0.2s; }
 .toast .x { width: 32px; height: 32px; color: var(--text-3); }
+/* The sign-in code an installed app shows while the browser asks "Finish signing in?" */
+.signin-code { font-family: var(--serif); font-size: 3rem; font-weight: 700; letter-spacing: 0.3em; padding: 6px 4px 6px 0.3em; border-radius: 16px; background: var(--card); border: 1.5px solid var(--field-line); color: var(--text); font-variant-numeric: tabular-nums; }

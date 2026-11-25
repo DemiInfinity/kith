@@ -1,5 +1,5 @@
 import { appHint, withApp, wrongAppWords } from "./lib/appHint";
-import { handoffWords, isInstalledApp, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
+import { handoffDevice, handoffWords, isInstalledApp, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
@@ -95,6 +95,8 @@ function WrongApp({ text }: { text: string }) {
 function SignIn() {
   const [info, setInfo] = useState<{ oidc: boolean; label: string; dev: boolean } | null>(null);
   const [waiting, setWaiting] = useState<AbortController | null>(null);
+  // The 4-digit code the browser's "Finish signing in?" page shows too.
+  const [code, setCode] = useState("");
   const [handoffErr, setHandoffErr] = useState("");
   const reason = new URLSearchParams(location.search).get("signin");
   // In an installed app, sign-in happens in the browser (passkeys work there) and the session is
@@ -117,22 +119,24 @@ function SignIn() {
     const ctrl = new AbortController();
     setWaiting(ctrl);
     let h: Handoff;
-    if (p) { h = p; window.open(p.url, "_blank"); }
+    if (p) { h = p; setCode(p.code); window.open(p.url, "_blank"); }
     else {
       // Nothing ready (it failed earlier, or went stale): open the window now, inside the tap so
       // Safari allows it, then start a handoff and send the window to it.
       const w = window.open("", "kith-signin", "popup,width=520,height=760");
-      const started = await startHandoff(appHint());
+      const started = await startHandoff(appHint(), fetch, Date.now(), handoffDevice());
       if (!started) { w?.close(); setWaiting(null); setHandoffErr("Can’t reach home right now. Try again in a moment."); return; }
       h = started;
+      setCode(started.code);
       const url = withApp(`/auth/login?handoff=${h.id}`);
       if (w) w.location.href = url; else window.open(url, "kith-signin", "popup,width=520,height=760");
     }
     void prepareSignIn().then((x) => { prepared.current = x; }); // ready for another try
     const r = await waitForHandoff(h, ctrl.signal);
     setWaiting(null);
+    setCode("");
     if (r.ok) { location.href = r.redirect; return; }
-    if (r.error !== "cancelled") setHandoffErr(handoffWords(r.error, wrongAppWords));
+    if (r.error !== "stopped") setHandoffErr(handoffWords(r.error, wrongAppWords));
   };
   useEffect(() => { api<{ oidc: boolean; label: string; dev: boolean }>("/api/public/signin").then(setInfo).catch(() => undefined); }, []);
   return (
@@ -149,7 +153,11 @@ function SignIn() {
         {waiting && (
           <div className="stack" style={{ alignItems: "center" }}>
             <span className="typing" aria-hidden><i /><i /><i /></span>
-            <span>Finish signing in in your browser, then come back here.</span>
+            {code ? <>
+              <span>Finish signing in in your browser. Check it shows this code, then tap <b>Yes</b>:</span>
+              <span className="signin-code" aria-label={`Code ${code.split("").join(" ")}`}>{code}</span>
+              <span className="small">If the browser shows a different code, tap No.</span>
+            </> : <span>Finish signing in in your browser, then come back here.</span>}
             <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
           </div>
         )}
