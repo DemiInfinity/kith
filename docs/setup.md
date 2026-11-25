@@ -232,6 +232,34 @@ docker compose logs -f kith
   - Microphone access needs https.
   - Turn on WebSocket support in the proxy (in Nginx Proxy Manager: "Websockets support"). Calls and live updates
     use it.
+  - **A friendly page while Kith is down.** When Kith is restarting or stopped, the proxy can show "Kith is having a
+    nap" (with Pip asleep) instead of its own "502 Bad Gateway". The page is one self-contained file with nothing
+    else to load: `client/public/errors/kith-down.html` (also in the built client as `errors/kith-down.html`).
+    1. Copy it somewhere Nginx Proxy Manager can read. NPM keeps its files under `/data` inside its container, so:
+
+       ```bash
+       docker exec <npm-container> mkdir -p /data/kith-errors
+       docker cp client/public/errors/kith-down.html <npm-container>:/data/kith-errors/kith-down.html
+       ```
+
+       (Or put it in the folder you mount as NPM's `/data`, under `kith-errors/`.)
+    2. In NPM, edit Kith's proxy host › **Advanced** › Custom Nginx Configuration, and paste:
+
+       ```nginx
+       # Kith is down or restarting: show the nap page instead of Nginx's own error.
+       error_page 502 503 504 /kith-down.html;
+       location = /kith-down.html {
+           root /data/kith-errors;
+           internal;
+           add_header Cache-Control "no-store" always;
+           add_header X-Robots-Tag "noindex, nofollow" always;
+       }
+       ```
+
+    This covers the errors Nginx makes itself when it can't reach Kith (502 and 504). Leave `proxy_intercept_errors`
+    off: with it on, Nginx would also swap Kith's own answers for this page, including the JSON 503s the app uses
+    (for example "the safety check can't run right now"), and the app would show the wrong thing. Kith serves its
+    own friendly 404, 403 and 500 pages when it's running.
 - **Data** lives in two volumes:
   - `kith-data`: the SQLite database and the chat archive.
   - `desk-data`: everything on the desk.
