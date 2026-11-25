@@ -194,7 +194,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                 ))}
               </div>
               <div className="pbuddy">
-                <AvatarSvg look={me.profile.look} mood={working ? "thinking" : power?.mode === "low" ? "sleepy" : "happy"} size={96} />
+                <AvatarSvg look={me.profile.look} mood={power?.mode === "low" ? "sleepy" : "happy"} laptop={!!working} size={110} />
                 <span className="hand" style={{ fontSize: 22 }}>{working ? "concentrating…" : "free for now"}</span>
               </div>
             </div>

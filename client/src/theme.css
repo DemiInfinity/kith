@@ -369,3 +369,27 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   .pfolders { max-width: 100%; scrollbar-width: none; }
   .pfolders::-webkit-scrollbar { display: none; }
 }
+
+/* Looking around, and working on its laptop */
+.avatar .face { transition: transform 0.5s ease; transform-origin: 100px 110px; }
+.avatar .face.glance { animation: glance 11s ease-in-out infinite; }
+.avatar .face.at-screen { animation: peek 9s ease-in-out infinite; }
+.avatar .screen-light { opacity: 0.14; animation: screenlight 2.4s ease-in-out infinite; mix-blend-mode: screen; }
+.avatar .paw-l { animation: type 0.42s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.avatar .paw-r { animation: type 0.42s ease-in-out 0.21s infinite; transform-box: fill-box; transform-origin: center; }
+.avatar .lid-glow { animation: lidglow 3s ease-in-out infinite; }
+@keyframes glance {
+  0%, 30%, 100% { transform: translate(0, 0); }
+  36%, 46% { transform: translate(-7px, 0) rotate(-2deg); }
+  52%, 62% { transform: translate(0, 0); }
+  68%, 78% { transform: translate(7px, 0) rotate(2deg); }
+  84% { transform: translate(0, 0); }
+}
+@keyframes peek {
+  0%, 70%, 100% { transform: translate(6px, 4px) rotate(3deg); }
+  76%, 86% { transform: translate(-2px, 0) rotate(0deg); }
+  92% { transform: translate(6px, 4px) rotate(3deg); }
+}
+@keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2.5px); } }
+@keyframes screenlight { 0%, 100% { opacity: 0.1; } 40% { opacity: 0.2; } 60% { opacity: 0.13; } }
+@keyframes lidglow { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }

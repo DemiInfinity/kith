@@ -22,6 +22,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
   const [saving, setSaving] = useState<"" | "saving" | "saved" | "error">("");
   const [mouth, setMouth] = useState(0);
   const [playing, setPlaying] = useState("");
+  const [pose, setPose] = useState<"around" | "laptop" | "thinking" | "sleepy">("around");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const first = useRef(true);
 
@@ -68,7 +69,12 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
       <div className="spread"><h2 className="screen-title">Personality</h2><span className="small" aria-live="polite">{saving === "saving" ? "saving…" : saving === "saved" ? "saved ✓" : saving === "error" ? "couldn’t save" : ""}</span></div>
 
       <div className="card" style={{ alignItems: "center", gap: 10 }}>
-        <Avatar look={p.look} size={110} variant="ring" mouth={mouth} />
+        <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} />
+        <div className="chips" style={{ justifyContent: "center" }}>
+          {([["around", "👀 Looking around"], ["laptop", "💻 At its laptop"], ["thinking", "🤔 Thinking"], ["sleepy", "😴 Low power"]] as const).map(([k, l]) => (
+            <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: 13 }} onClick={() => setPose(k)}>{l}</button>
+          ))}
+        </div>
         <input className="input" aria-label="Name" value={p.name} maxLength={24} onChange={(e) => set({ name: e.target.value })}
           style={{ textAlign: "center", fontFamily: "var(--serif)", fontSize: 22, fontWeight: 600, maxWidth: 220 }} />
         <span className="small">tap to rename</span>

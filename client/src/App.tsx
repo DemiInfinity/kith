@@ -118,7 +118,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     <div className="app">
       <nav className="sidebar" aria-label="Sections">
         <button className="me" onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
-          <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" />
+          <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" laptop={!!working} />
           <span><b>{name}</b><span>{moodText}</span></span>
         </button>
         {NAV.map((n) => {
@@ -138,7 +138,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       <div className="main">
         {path !== "/talk" && (
           <header className="topbar mobile-only">
-            <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" /></button>
+            <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" laptop={!!working} /></button>
             <span className="who" onClick={() => go("/pip")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
             <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}>📞 Call</button>
           </header>

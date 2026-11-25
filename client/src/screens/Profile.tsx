@@ -71,7 +71,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
   return (
     <div className="screen" style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
       <div className="profilehead">
-        <Avatar look={me.profile.look} mood={mood} size={104} variant="ring" />
+        <Avatar look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <h2 style={{ fontSize: 32 }}>{name}</h2>
           <span style={{ fontSize: 14, fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
