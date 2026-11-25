@@ -14,6 +14,7 @@ import { OC } from "./screens/OC";
 import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
 import { Google } from "./screens/Google";
+import { AvatarLab } from "./screens/AvatarLab";
 import { Study } from "./screens/Study";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
@@ -112,6 +113,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
+  else if (path === "/lab") screen = <AvatarLab />;
   else screen = <Chat me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
 
   return (

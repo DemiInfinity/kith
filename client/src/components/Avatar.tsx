@@ -211,34 +211,46 @@ const PAW: Record<Look, string> = {
 };
 
 /**
- * Its own little laptop, seen from where we are: in front of it, so we see the BACK of the lid (with
- * the Kith glow) and the screen faces the companion (it lights up its face). The laptop is turned at
- * an angle, so part of the keyboard shows beside the lid, with its paws on the keys.
- * Shapes from Microsoft's Fluent Emoji "Laptop" (MIT licence, see THIRD_PARTY_NOTICES.md), in the
- * laptop's own 32×32 units.
+ * Its own little laptop, drawn in the Fluent Emoji style and colours. We're in front of the
+ * companion, so we see the BACK of the lid (with the Kith face on it); the laptop is turned so its
+ * keyboard shows on the left, with the companion's paws on the keys.
+ * Geometry: the hinge runs from H1 (124,170) to H2 (170,156); the deck goes back towards the
+ * companion along V = (-62,-8); the lid rises from the hinge along L = (6,-58).
  */
 function Laptop({ look }: { look: Look }) {
   const paw = PAW[look];
+  const keys: React.ReactNode[] = [];
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 7; c++) {
+      keys.push(<rect key={`${r}-${c}`} x={0.08 + c * 0.122} y={0.1 + r * 0.13} width={0.1} height={0.1} rx={0.025} fill="#9B9B9B" />);
+    }
+  }
   return (
-    <g className="laptop" transform="translate(40 108) scale(3.2)">
-      {/* the keyboard, behind the lid and turned towards the companion; its left end shows */}
-      <g transform="translate(-4 -7) skewY(-12)">
-          <path d="M27.9999 20L15.9999 19L3.99992 20L2.01992 28.8911C1.9104 29.657 2.99521 29.5 3.49992 29.5H28.4999C29.0046 29.5 30.0894 29.657 29.9799 28.8911L27.9999 20Z" fill="#D3D3D3" />
-          <path fillRule="evenodd" clipRule="evenodd" d="M27.27 21.28L27.99 24.53C28.04 24.77 27.86 24.99 27.62 24.99H4.37997C4.13997 24.99 3.95997 24.76 4.00997 24.53L4.72997 21.28C4.76997 21.11 4.91997 20.99 5.09997 20.99H26.9C27.08 20.99 27.23 21.11 27.27 21.28ZM8.18555 24.5H6.75344L6.87845 23.75H8.2793L8.18555 24.5ZM10.1241 24.5H8.68944L8.7832 23.75H10.1866L10.1241 24.5ZM11.9623 24.5H10.6259L10.6884 23.75H11.9936L11.9623 24.5ZM13.8123 24.5H12.4627L12.494 23.75H13.8435L13.8123 24.5ZM15.75 24.5H14.3127L14.344 23.75H15.75V24.5ZM17.6873 24.5H16.25V23.75H17.656L17.6873 24.5ZM19.5373 24.5H18.1877L18.1565 23.75H19.506L19.5373 24.5ZM21.3741 24.5H20.0377L20.0064 23.75H21.3116L21.3741 24.5ZM23.3106 24.5H21.8759L21.8134 23.75H23.2168L23.3106 24.5ZM25.2466 24.5H23.8145L23.7207 23.75H25.1216L25.2466 24.5ZM27 24.5H25.7535L25.6284 23.75H26.875L27 24.5ZM26.6667 22.5L26.7917 23.25H25.5451L25.4201 22.5H26.6667ZM26.5 21.5L26.5833 22H25.3368L25.2535 21.5H26.5ZM23.4395 21.5H24.7466L24.8299 22H23.5019L23.4395 21.5ZM21.6259 21.5H22.9356L22.9981 22H21.6675L21.6259 21.5ZM19.9127 21.5H21.1241L21.1658 22H19.9335L19.9127 21.5ZM18.0627 21.5H19.4123L19.4331 22H18.0835L18.0627 21.5ZM16.25 21.5H17.5623L17.5831 22H16.25V21.5ZM14.4377 21.5H15.75V22H14.4169L14.4377 21.5ZM12.5877 21.5H13.9373L13.9164 22H12.5669L12.5877 21.5ZM10.8759 21.5H12.0873L12.0665 22H10.8342L10.8759 21.5ZM9.06444 21.5H10.3741L10.3325 22H9.00195L9.06444 21.5ZM7.25344 21.5H8.56055L8.49805 22H7.17012L7.25344 21.5ZM5.5 21.5H6.74655L6.66322 22H5.41667L5.5 21.5ZM5.20834 23.25L5.33334 22.5H6.57989L6.45489 23.25H5.20834ZM5 24.5L5.12501 23.75H6.37155L6.24655 24.5H5ZM25.0382 23.25L24.9132 22.5H23.5644L23.6582 23.25H25.0382ZM23.1543 23.25L23.0606 22.5H21.7092L21.7717 23.25H23.1543ZM21.27 23.25L21.2075 22.5H19.9544L19.9856 23.25H21.27ZM19.4852 23.25L19.4539 22.5H18.1044L18.1356 23.25H19.4852ZM17.6352 23.25L17.6039 22.5H16.25V23.25H17.6352ZM7.08678 22.5L6.96178 23.25H8.3418L8.43555 22.5H7.08678ZM8.93945 22.5L8.8457 23.25H10.2283L10.2908 22.5H8.93945ZM10.7925 22.5L10.73 23.25H12.0144L12.0456 22.5H10.7925ZM12.5461 22.5L12.5148 23.25H13.8644L13.8956 22.5H12.5461ZM14.3961 22.5L14.3648 23.25H15.75V22.5H14.3961Z" fill="#9B9B9B" />
-          <path d="M29.09 29C29.44 29 29.74 28.8 29.89 28.51L29.98 28.89L29.9834 28.9133C29.9921 28.9736 30 29.0279 30 29.09C30 29.59 29.59 30 29.09 30H2.91C2.41 30 2 29.59 2 29.09C2 29.02 2.01 28.96 2.03 28.9L2.11 28.52C2.26 28.8 2.56 29 2.91 29H29.09Z" fill="#9B9B9B" />
-          <path d="M10.82 27.99H21.18C21.34 27.99 21.46 27.84 21.42 27.68L21.04 26.18C21.01 26.07 20.91 25.99 20.8 25.99H11.2C11.09 25.99 10.99 26.07 10.96 26.18L10.58 27.68C10.54 27.84 10.66 27.99 10.82 27.99Z" fill="#9B9B9B" />
+    <g className="laptop" transform="translate(8 0)">
+      <ellipse cx="114" cy="178" rx="68" ry="7" fill="#000" opacity="0.18" />
+      {/* the base: its left side edge, then the deck with keys and trackpad */}
+      <polygon points="62,162 124,170 124,176 62,168" fill="#A9A9A9" />
+      <polygon points="124,170 170,156 108,148 62,162" fill="#D3D3D3" stroke="#BDBDBD" strokeWidth="1" strokeLinejoin="round" />
+      <g transform="matrix(46 -14 -62 -8 124 170)">
+        {keys}
+        <rect x={0.34} y={0.68} width={0.32} height={0.22} rx={0.05} fill="#BDBDBD" />
       </g>
-      {/* arm reaching to the keys we can see; the other paw is on the keys behind the lid */}
-      <path d="M3 4 Q0 9 3.2 14.6" stroke={paw} strokeWidth="3.4" strokeLinecap="round" fill="none" />
-      <g fill={paw} stroke="rgba(0,0,0,0.2)" strokeWidth="0.3">
-        <ellipse className="paw-l" cx="3.4" cy="14.8" rx="2.7" ry="1.7" />
-        <ellipse className="paw-r" cx="8.6" cy="13.6" rx="2.6" ry="1.6" />
+      {/* arms, and paws on the keys (the right paw goes behind the lid) */}
+      <g stroke={paw} strokeWidth="10" strokeLinecap="round" fill="none">
+        <path d="M56 166 Q80 170 104 161" />
+        <path d="M84 164 Q112 166 129 156" />
       </g>
-      {/* the back of the lid, angled */}
-      <g transform="translate(8 1) skewY(-12) scale(0.85 1)">
-          <path d="M27 2H5C4.45 2 4 2.45 4 3V19.99H28V3C28 2.45 27.55 2 27 2Z" fill="#7167A4" />
-        <circle className="lid-glow" cx="16" cy="11" r="2.6" fill="#D9A3E0" />
-        <circle cx="15" cy="10.6" r="0.45" fill="#2A1C27" /><circle cx="17" cy="10.6" r="0.45" fill="#2A1C27" />
+      <g fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1">
+        <ellipse className="paw-l" cx="106" cy="160" rx="8" ry="5.5" />
+        <ellipse className="paw-r" cx="130" cy="155" rx="7.5" ry="5" />
+      </g>
+      {/* the lid: its near edge (thickness), then the back of the lid with the Kith face */}
+      <polygon points="124,170 130,112 126,113 120,171" fill="#5B528A" />
+      <polygon points="124,170 170,156 176,98 130,112" fill="#7167A4" stroke="#857BB8" strokeWidth="1.5" strokeLinejoin="round" />
+      <g transform="matrix(1 -0.304 0 1 0 0)">
+        <ellipse className="lid-glow" cx="152" cy="180" rx="8" ry="7.5" fill="#E7B4EE" />
+        <ellipse cx="149.2" cy="179.4" rx="1.2" ry="1.8" fill="#2A1C27" />
+        <ellipse cx="154.8" cy="179.4" rx="1.2" ry="1.8" fill="#2A1C27" />
       </g>
     </g>
   );
@@ -258,8 +270,10 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop 
   return (
     <svg className={`avatar ${mood}${laptop ? " working" : ""}`} width={size} height={size} viewBox="0 0 200 200" role="img"
       aria-label={`${look}, ${laptop ? "working on its laptop" : mood}`}>
+      {/* At the laptop, the companion sits to the left, turned towards it. */}
+      <g transform={laptop ? "translate(-28 6)" : undefined}>
       <g className="breathe">
-        <g className={laptop ? "ears at-screen-ears" : idle ? "ears glance-ears" : "ears"}>{rig.ears}</g>
+        <g className={laptop ? "ears at-screen-head" : idle ? "ears glance-head" : "ears"}>{rig.ears}</g>
         <g className={laptop ? "head at-screen-head" : idle ? "head glance-head" : "head"}>
           {typeof rig.back === "function" ? rig.back(gid) : rig.back}
         </g>
@@ -283,7 +297,7 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop 
           {rig.front}
           <Mouth rig={rig} mood={mood} open={mouth} look={look} />
         </g>
-        {laptop && <ellipse className="screen-light" cx="100" cy="104" rx="52" ry="30" fill="#9CF0D0" />}
+      </g>
       </g>
       {laptop && <Laptop look={look} />}
       {(mood === "sleepy" || mood === "resting") && !laptop && (
