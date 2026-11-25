@@ -48,13 +48,19 @@ export function recordNative(db: DB, payload: { title: string; body: string; url
   run(db, "DELETE FROM native_inbox WHERE created < ?", now - 2 * DAY);
 }
 
+/** How many notifications one poll returns; `more` says there are others waiting. */
+export const INBOX_PAGE = 10;
+
 export function inboxAfter(db: DB, after: number | null) {
   nativeSchema(db);
-  const last = get<{ id: number | null }>(db, "SELECT MAX(id) AS id FROM native_inbox")?.id ?? 0;
   // The first poll only learns where the inbox is up to, so old notifications aren't replayed.
-  if (after === null) return { items: [], last };
-  const items = all<{ id: number; title: string; body: string; url: string | null }>(db, "SELECT id, title, body, url FROM native_inbox WHERE id > ? ORDER BY id LIMIT 10", after);
-  return { items, last: Math.max(last, after) };
+  const newest = get<{ id: number | null }>(db, "SELECT MAX(id) AS id FROM native_inbox")?.id ?? 0;
+  // A cursor past the newest id (the database was reset) would wait forever: start again from now.
+  if (after === null || after > newest) return { items: [], last: newest, more: false };
+  const rows = all<{ id: number; title: string; body: string; url: string | null }>(db, "SELECT id, title, body, url FROM native_inbox WHERE id > ? ORDER BY id LIMIT ?", after, INBOX_PAGE + 1);
+  const items = rows.slice(0, INBOX_PAGE);
+  // `last` is the last item handed over, never the newest id: anything past this page comes next time.
+  return { items, last: items.length ? items[items.length - 1].id : after, more: rows.length > INBOX_PAGE };
 }
 
 // ── Shared Calendar & Reminders ─────────────────────────────────────────────────────────────

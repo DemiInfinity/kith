@@ -37,10 +37,12 @@ pub fn read_document(path: &Path) -> Result<SharedFile, String> {
     let text = match ext.as_str() {
         "txt" | "md" | "markdown" | "csv" => String::from_utf8_lossy(&std::fs::read(path).map_err(|e| e.to_string())?).to_string(),
         "pdf" => pdf_text(path)?,
-        // rtf, doc, docx, odt, html: macOS's own converter.
+        // rtf, doc, docx, odt, html: macOS's own converter. -noload: never fetch what a document
+        // points to (an HTML page's images or styles, on the web or elsewhere on this Mac), which
+        // would tell a stranger's server she opened it; -nostore: never write those out either.
         _ => {
             let out = std::process::Command::new("/usr/bin/textutil")
-                .args(["-convert", "txt", "-stdout"])
+                .args(["-noload", "-nostore", "-convert", "txt", "-stdout"])
                 .arg(path)
                 .output()
                 .map_err(|e| e.to_string())?;

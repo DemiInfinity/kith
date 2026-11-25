@@ -6,17 +6,21 @@
 // server's one-time handoff (server/src/auth.ts):
 //
 // 1. "Sign in" in the window (a navigation to <server>/auth/login) is stopped here.
-// 2. The app asks <server>/auth/login?handoff=<random id> where sign-in starts, and opens that
-//    provider page in her browser.
-// 3. The Kith page polls <server>/auth/handoff/<id> (a small script added to the page). When she's
-//    signed in, the server hands the session over once, the page moves on and Kith comes back
-//    to the front.
+// 2. The app starts a handoff: POST <server>/auth/handoff/start {app} → {id, secret}. The id goes
+//    in URLs; the secret never does (only in a header), so an id seen in a log or the browser's
+//    history isn't enough to collect the session.
+// 3. <server>/auth/login?handoff=<id>&app=<hint> opens in her browser (once, within 15 minutes),
+//    which sends her on to the provider. After her passkey the browser asks "Finish signing in?"
+//    with a 4-digit code; the window shows the same code, big, and nothing is handed over until
+//    she taps Yes. No → the poll answers 403 "cancelled", and the window offers Try again.
+// 4. The Kith page polls <server>/auth/handoff/<id> with the X-Kith-Handoff-Secret header (a small
+//    script added to the page, only while the window shows the server itself). When she's signed
+//    in, the server hands the session over once, the page moves on and Kith comes back to the front.
 //
-// The id is 32 random bytes, kept in memory; the server stores only its hash and lets it lapse
-// after two minutes.
+// A server from before step 2 (it answers 404 there) gets the older handoff: the app's own random
+// id, GET /auth/login?handoff=<id>&app=<hint>, and polling without a secret.
 
 use std::io::Read;
-use std::time::Duration;
 use tauri::{AppHandle, Manager, Url};
 use tauri_plugin_opener::OpenerExt;
 
@@ -39,84 +43,252 @@ fn base64url(bytes: &[u8]) -> String {
     out
 }
 
-/// Where the provider's sign-in page is for this handoff (the server's redirect), without following it.
-fn provider_url(server: &str, id: &str, hint: &str) -> Option<String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .max_redirects(0)
-        .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(15)))
-        .build()
-        .into();
-    // app= tells the server which person this app is for; it refuses the other one.
-    let login = format!("{server}/auth/login?handoff={id}&app={hint}");
-    let resp = agent.get(&login).call().ok()?;
-    if !resp.status().is_redirection() {
-        return None;
+/// A handoff the server has started: its id, and the secret that goes with every poll (`None` for a
+/// server from before secrets).
+struct Handoff {
+    id: String,
+    secret: Option<String>,
+    /// A short code the sign-in page may ask her to match, if the server gives one.
+    code: Option<String>,
+}
+
+enum Started {
+    Handoff(Handoff),
+    /// The server has no /auth/handoff/start yet.
+    Old,
+    /// Couldn't be started (offline, sign-in not set up): the server's words, if any.
+    Failed(Option<String>),
+}
+
+fn error_of(body: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct E {
+        error: Option<String>,
     }
-    let loc = resp.headers().get("location")?.to_str().ok()?;
-    let url = Url::parse(&login).ok()?.join(loc).ok()?;
-    matches!(url.scheme(), "https" | "http").then(|| url.to_string())
+    serde_json::from_str::<E>(body).ok().and_then(|e| e.error).map(|e| crate::eventkit::clip(&e, 200))
+}
+
+fn start_handoff(agent: &ureq::Agent, server: &str, hint: &str) -> Started {
+    #[derive(serde::Deserialize)]
+    struct Out {
+        id: String,
+        secret: String,
+        #[serde(default)]
+        code: Option<String>,
+    }
+    // device: the browser's "Finish signing in?" page says "your Mac app".
+    let body = serde_json::json!({ "app": hint, "device": "mac" }).to_string();
+    let resp = agent.post(&format!("{server}/auth/handoff/start")).header("X-Kith", "1").header("Content-Type", "application/json").send(&body);
+    let Ok(mut r) = resp else { return Started::Failed(None) };
+    let status = r.status().as_u16();
+    let text = r.body_mut().read_to_string().unwrap_or_default();
+    match status {
+        200 => match serde_json::from_str::<Out>(&text) {
+            Ok(o) if is_id(&o.id) && !o.secret.is_empty() => {
+                // Shown on the page as text: keep it short and plain.
+                let code = o.code.map(|c| crate::eventkit::clip(c.trim(), 16)).filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == ' '));
+                Started::Handoff(Handoff { id: o.id, secret: Some(o.secret), code })
+            }
+            _ => Started::Failed(None),
+        },
+        404 => Started::Old,
+        _ => Started::Failed(error_of(&text)),
+    }
+}
+
+/// The handoff ids the server accepts: 32 random bytes, base64url.
+fn is_id(id: &str) -> bool {
+    id.len() == 43 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Where the provider's sign-in page is for an older server's handoff: its redirect (or `{url}`),
+/// without following it. `Err` carries the server's words, if any.
+fn provider_url(agent: &ureq::Agent, server: &str, login: &str) -> Result<String, Option<String>> {
+    let mut resp = agent.get(login).call().map_err(|_| None)?;
+    let status = resp.status();
+    let loc = if status.is_redirection() {
+        resp.headers().get("location").and_then(|l| l.to_str().ok()).map(String::from)
+    } else {
+        let text = resp.body_mut().read_to_string().unwrap_or_default();
+        if !status.is_success() {
+            return Err(error_of(&text));
+        }
+        #[derive(serde::Deserialize)]
+        struct Out {
+            url: String,
+        }
+        serde_json::from_str::<Out>(&text).ok().map(|o| o.url)
+    };
+    let url = Url::parse(server).ok().and_then(|base| base.join(&loc?).ok()).ok_or(None)?;
+    if matches!(url.scheme(), "https" | "http") { Ok(url.to_string()) } else { Err(None) }
 }
 
 /// The script added to the Kith page: a note on top, and the polling.
-fn page_script(id: &str) -> String {
+fn page_script(h: &Handoff) -> String {
+    let id = &h.id;
+    // JSON strings are valid JavaScript strings.
+    let headers = match &h.secret {
+        Some(secret) => format!("{{ \"X-Kith-Handoff-Secret\": {} }}", serde_json::to_string(secret).unwrap_or_default()),
+        None => "{}".to_string(),
+    };
+    let code = serde_json::to_string(&h.code).unwrap_or_else(|_| "null".into());
     format!(
         r#"(() => {{
   const id = {id:?};
+  const headers = {headers};
+  const code = {code};
   if (window.__kithSignin) window.__kithSignin.stop = true;
   const run = {{ stop: false }};
   window.__kithSignin = run;
   document.getElementById("kith-signin")?.remove();
-  const box = document.createElement("div");
+  const el = (tag, css, text) => {{ const e = document.createElement(tag); if (css) e.style.cssText = css; if (text) e.textContent = text; return e; }};
+  const button = (text, primary) => el("button", "font:inherit;font-weight:800;padding:10px 20px;border-radius:999px;cursor:pointer;" + (primary ? "border:none;background:#f59646;color:#2a170c" : "border:1px solid #4a3046;background:transparent;color:#e4b8ec"), text);
+  const box = el("div", "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.94);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center");
   box.id = "kith-signin";
   box.setAttribute("role", "status");
-  box.style.cssText = "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.92);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center";
-  box.innerHTML = '<div style="max-width:420px;display:flex;flex-direction:column;gap:12px;align-items:center"><b style="font:600 26px/1.15 Fraunces,Georgia,serif">Finish signing in in your browser</b><span id="kith-signin-msg" style="color:#c9a9d1">Use your passkey there. Kith will carry on here by itself.</span><button id="kith-signin-cancel" style="font:inherit;font-weight:700;padding:9px 18px;border-radius:999px;border:1px solid #4a3046;background:transparent;color:#e4b8ec;cursor:pointer">Cancel</button></div>';
+  const inner = el("div", "max-width:440px;display:flex;flex-direction:column;gap:12px;align-items:center;padding:0 16px");
+  const title = el("b", "font:600 26px/1.15 Fraunces,Georgia,serif", "Finish signing in in your browser");
+  const big = el("div", "font:800 52px/1.1 ui-rounded,system-ui,sans-serif;letter-spacing:.18em;padding:6px 18px 6px calc(18px + .18em);border-radius:16px;background:#2a1c27;border:2px solid #4a3046;color:#fbeaf6", code || "");
+  big.setAttribute("aria-label", code ? "Code " + code.split("").join(" ") : "");
+  const words = el("span", "color:#c9a9d1", code ? "Use your passkey there. Then check your browser shows " + code + ", and tap Yes." : "Use your passkey there. Kith will carry on here by itself.");
+  const buttons = el("div", "display:flex;gap:10px;flex-wrap:wrap;justify-content:center");
+  const again = button("Try again", true);
+  const close = button("Cancel", false);
+  again.hidden = true;
+  buttons.append(again, close);
+  inner.append(title);
+  if (code) inner.append(big);
+  inner.append(words, buttons);
+  box.append(inner);
   document.body.appendChild(box);
-  const msg = (t) => {{ const m = document.getElementById("kith-signin-msg"); if (m) m.textContent = t; }};
-  document.getElementById("kith-signin-cancel").onclick = () => {{ run.stop = true; box.remove(); }};
-  const until = Date.now() + 150000;
+  // Something went wrong: say so kindly and offer to start again (the app catches /auth/login and
+  // starts a fresh handoff in the browser).
+  const stopped = (heading, text) => {{
+    title.textContent = heading;
+    words.textContent = text;
+    big.remove();
+    box.setAttribute("role", "alert");
+    again.hidden = false;
+    close.textContent = "Close";
+  }};
+  again.onclick = () => {{ run.stop = true; box.remove(); location.href = "/auth/login"; }};
+  close.onclick = () => {{ run.stop = true; box.remove(); }};
+  // The browser waits for her passkey and then her Yes, so give it as long as the handoff lasts.
+  const until = Date.now() + 10 * 60000;
   (async () => {{
     while (Date.now() < until && !run.stop) {{
       await new Promise((r) => setTimeout(r, 1500));
       if (run.stop) return;
       try {{
-        const r = await fetch("/auth/handoff/" + id, {{ credentials: "same-origin", cache: "no-store" }});
+        const r = await fetch("/auth/handoff/" + id, {{ credentials: "same-origin", cache: "no-store", headers }});
         const j = await r.json().catch(() => ({{}}));
         if (r.ok && j.ok) {{ location.href = j.redirect || "/"; return; }}
         if ((r.ok && j.pending) || r.status === 429) continue;
-        msg(j.error === "not-allowed" ? "That account isn't set up for Kith. Ask the grown-up who runs it." : "Sign-in didn't finish. Close this and try again.");
+        if (j.error === "cancelled") stopped("Sign-in cancelled", "No problem: \u201cNo\u201d was pressed in the browser, so nothing happened. If that was you and you meant Yes, try again.");
+        else if (j.error === "not-allowed") stopped("Not set up for Kith", "That account isn't set up for Kith. Ask the grown-up who runs it.");
+        else if (r.status === 410) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
+        else stopped("Sign-in didn't finish", "Something went wrong on the way back. Try again in a moment.");
         return;
       }} catch (e) {{ /* offline for a moment */ }}
     }}
-    if (!run.stop) msg("That took too long. Close this and try again.");
+    if (!run.stop) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
   }})();
 }})();"#
     )
+}
+
+/// A short note on Kith's page when sign-in can't start (in the server's words where it gave some).
+fn failure_script(words: Option<&str>) -> String {
+    let text = words.unwrap_or("Couldn't start signing in. Check you're online, then try again.");
+    let text = serde_json::to_string(text).unwrap_or_default();
+    format!(
+        r#"(() => {{
+  document.getElementById("kith-signin")?.remove();
+  const box = document.createElement("div");
+  box.id = "kith-signin";
+  box.setAttribute("role", "alert");
+  box.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;max-width:420px;padding:12px 18px;border-radius:14px;background:#2a1c27;border:1px solid #4a3046;color:#fbeaf6;font:15px/1.4 Nunito,system-ui,sans-serif;text-align:center";
+  box.textContent = {text};
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 8000);
+}})();"#
+    )
+}
+
+/// Adds `script` to the window, but only while it's showing Kith's own page: never to a page from
+/// somewhere else (the script can carry the handoff secret).
+fn eval_on_server(app: &AppHandle, server: &str, script: &str) -> bool {
+    let Some(w) = app.get_webview_window(crate::MAIN) else { return false };
+    if !w.url().is_ok_and(|u| crate::same_origin(&u, server)) {
+        return false;
+    }
+    w.eval(script).is_ok()
 }
 
 /// Starts a sign-in in the browser. Called instead of loading <server>/auth/login in the window.
 pub fn start(app: &AppHandle, server: String) {
     let app = app.clone();
     std::thread::spawn(move || {
-        let Some(id) = random_id() else { return };
-        let Some(provider) = provider_url(&server, &id, crate::who::hint(&app)) else {
-            // Sign-in isn't set up on this server (or it can't be reached): show its own answer.
-            if let (Some(w), Ok(u)) = (app.get_webview_window(crate::MAIN), Url::parse(&format!("{server}/auth/login?handoff={id}&app={}", crate::who::hint(&app)))) {
-                let _ = w.navigate(u);
+        let hint = crate::who::hint(&app);
+        let agent = crate::net::agent();
+        let (handoff, open) = match start_handoff(&agent, &server, hint) {
+            // The browser goes to Kith's own sign-in address, which sends it on to the provider
+            // (and shows the server's words there if sign-in can't start).
+            Started::Handoff(h) => {
+                let open = format!("{server}/auth/login?handoff={}&app={hint}", h.id);
+                (h, open)
             }
-            return;
+            Started::Old => {
+                let Some(id) = random_id() else { return };
+                let login = format!("{server}/auth/login?handoff={id}&app={hint}");
+                match provider_url(&agent, &server, &login) {
+                    Ok(p) => (Handoff { id, secret: None, code: None }, p),
+                    Err(words) => {
+                        // Sign-in isn't set up on this server, or it can't be reached.
+                        eval_on_server(&app, &server, &failure_script(words.as_deref()));
+                        return;
+                    }
+                }
+            }
+            Started::Failed(words) => {
+                eval_on_server(&app, &server, &failure_script(words.as_deref()));
+                return;
+            }
         };
-        if let Some(w) = app.get_webview_window(crate::MAIN) {
-            let _ = w.eval(page_script(&id));
+        // If the window has moved on somewhere else meanwhile, don't open the browser either: the
+        // handoff would have nothing to come back to.
+        if !eval_on_server(&app, &server, &page_script(&handoff)) {
+            return;
         }
         crate::mark_handoff(&app);
-        let _ = app.opener().open_url(provider, None::<&str>);
+        let _ = app.opener().open_url(open, None::<&str>);
     });
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn the_secret_goes_in_a_header_and_is_quoted_safely() {
+        let h = Handoff { id: "a".repeat(43), secret: Some("s\"; alert(1); //".into()), code: Some("AB-12".into()) };
+        let js = page_script(&h);
+        assert!(js.contains(r#"const headers = { "X-Kith-Handoff-Secret": "s\"; alert(1); //" };"#), "{js}");
+        assert!(!js.contains("/auth/handoff/\" + id + \"?"), "the secret never goes in the URL");
+        let old = page_script(&Handoff { id: "a".repeat(43), secret: None, code: None });
+        assert!(old.contains("const headers = {};"));
+        assert!(js.contains(r#"const code = "AB-12";"#));
+        assert!(js.contains(r#"j.error === "cancelled""#) && js.contains("Try again"));
+        assert!(old.contains("const code = null;"));
+    }
+
+    #[test]
+    fn handoff_ids_are_43_base64url_characters() {
+        assert!(is_id(&"A-_z".repeat(11)[..43]));
+        assert!(!is_id("short"));
+        assert!(!is_id(&"a/".repeat(22)[..43]));
+    }
+
     #[test]
     fn base64url_matches_the_standard() {
         assert_eq!(super::base64url(b"f"), "Zg");

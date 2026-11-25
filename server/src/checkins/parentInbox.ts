@@ -25,15 +25,21 @@ export function recordParentNative(db: DB, p: { title: string; body: string; url
   run(db, "DELETE FROM native_parent_inbox WHERE created < ?", now - 2 * DAY);
 }
 
-/** Like the child's inbox: the first poll (no `after`) only learns where it's up to. */
+const PAGE = 10;
+
+/** Like the child's inbox: the first poll (no `after`) only learns where it's up to. `last` is the
+ *  last item returned (not the newest id), so a burst of more than a page isn't skipped; `more` says
+ *  there's another page waiting. */
 export function parentInboxAfter(db: DB, after: number | null) {
   schema(db);
-  const last = get<{ id: number | null }>(db, "SELECT MAX(id) AS id FROM native_parent_inbox")?.id ?? 0;
-  if (after === null) return { items: [], last };
-  const items = all<{ id: number; title: string; body: string; url: string | null; kind: string; urgent: number }>(db,
-    "SELECT id, title, body, url, kind, urgent FROM native_parent_inbox WHERE id > ? ORDER BY id LIMIT 10", after)
+  const newest = get<{ id: number | null }>(db, "SELECT MAX(id) AS id FROM native_parent_inbox")?.id ?? 0;
+  // A cursor past the newest id (the database was reset) would wait forever: start again from now.
+  if (after === null || after > newest) return { items: [], last: newest, more: false };
+  const rows = all<{ id: number; title: string; body: string; url: string | null; kind: string; urgent: number }>(db,
+    "SELECT id, title, body, url, kind, urgent FROM native_parent_inbox WHERE id > ? ORDER BY id LIMIT ?", after, PAGE + 1)
     .map((r) => ({ ...r, urgent: r.urgent === 1 }));
-  return { items, last: Math.max(last, after) };
+  const items = rows.slice(0, PAGE);
+  return { items, last: items.length ? items[items.length - 1].id : after, more: rows.length > PAGE };
 }
 
 /** When Kith Parent on a Mac last checked in: it counts as one of the parent's devices. */

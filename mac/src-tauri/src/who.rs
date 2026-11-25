@@ -7,12 +7,13 @@
 // - for the parent, /api/native/parent-inbox: the notifications the server would send the parent
 //   by web push. The server applies the parent's choices (which report levels, quiet hours with
 //   urgent ones allowed, generic lock-screen text unless summaries are on) and never includes the
-//   child's chat; the app just shows what it's given. Until the server has that route it answers
-//   404 and the app stays quiet.
+//   child's chat; the app just shows what it's given, page after page until the inbox is empty
+//   (a burst is gathered into one "N more" notification, notify.rs). Until the server has that
+//   route it answers 404 and the app stays quiet.
 //
 // The child's notifications stay with the page (client/src/lib/native.ts).
 
-use crate::State;
+use crate::{net, LockExt, State};
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -24,7 +25,6 @@ pub fn nudge() {
     NUDGED.store(true, Ordering::Relaxed);
 }
 use tauri::{AppHandle, Manager, Url};
-use tauri_plugin_notification::NotificationExt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Role {
@@ -67,14 +67,6 @@ pub fn name_for(app: &AppHandle, role: Role) -> &'static str {
     }
 }
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(15)))
-        .build()
-        .into()
-}
-
 pub fn session_cookie(app: &AppHandle, server: &str) -> Option<String> {
     let w = app.get_webview_window(crate::MAIN)?;
     let cookies = w.cookies_for_url(Url::parse(server).ok()?).ok()?;
@@ -89,9 +81,9 @@ enum Seen {
 
 /// `None` if the server couldn't be asked (offline): keep what we had.
 fn fetch_role(server: &str, sid: &str, hint: &str) -> Option<Seen> {
-    let mut r = agent()
+    let mut r = net::agent()
         .get(&format!("{server}/api/me"))
-        .header("Cookie", &format!("kith_sid={sid}"))
+        .header("Cookie", &net::session(sid))
         .header("X-Kith-App", hint)
         .call()
         .ok()?;
@@ -120,6 +112,9 @@ fn fetch_role(server: &str, sid: &str, hint: &str) -> Option<Seen> {
 struct Inbox {
     items: Vec<Item>,
     last: i64,
+    /// Another page is waiting (servers before this field: never).
+    #[serde(default)]
+    more: bool,
 }
 
 #[derive(Deserialize)]
@@ -130,28 +125,35 @@ struct Item {
     urgent: bool,
 }
 
-/// Shows anything new for the parent. Returns where the inbox is up to.
-fn parent_inbox(app: &AppHandle, server: &str, sid: &str, after: Option<i64>) -> Option<i64> {
-    let url = match after {
-        Some(a) => format!("{server}/api/native/parent-inbox?after={a}"),
-        None => format!("{server}/api/native/parent-inbox"),
-    };
-    let mut r = agent().get(&url).header("Cookie", &format!("kith_sid={sid}")).header("X-Kith-App", "parent").call().ok()?;
-    if r.status().as_u16() != 200 {
-        if std::env::var_os("KITH_DEBUG").is_some() {
-            eprintln!("[kith] parent inbox: {}", r.status());
+/// At most this many pages a round (100 notifications); the rest come 30 seconds later.
+const MAX_PAGES: usize = 10;
+
+/// Shows anything new for the parent, page after page until the inbox is empty. Returns where
+/// the inbox is up to: the last item shown, so nothing past a page is skipped.
+fn parent_inbox(app: &AppHandle, server: &str, sid: &str, mut after: Option<i64>) -> Option<i64> {
+    let agent = net::agent();
+    for _ in 0..MAX_PAGES {
+        let url = match after {
+            Some(a) => format!("{server}/api/native/parent-inbox?after={a}"),
+            None => format!("{server}/api/native/parent-inbox"),
+        };
+        let Ok(mut r) = agent.get(&url).header("Cookie", &net::session(sid)).header("X-Kith-App", "parent").call() else { return after };
+        if r.status().as_u16() != 200 {
+            if std::env::var_os("KITH_DEBUG").is_some() {
+                eprintln!("[kith] parent inbox: {}", r.status());
+            }
+            return after; // not on this server yet (404), or not right now
         }
-        return after; // not on this server yet (404), or not right now
-    }
-    let inbox: Inbox = serde_json::from_str(&r.body_mut().read_to_string().ok()?).ok()?;
-    for n in inbox.items.iter().take(10) {
-        let mut b = app.notification().builder().title(crate::eventkit::clip(&n.title, 80)).body(crate::eventkit::clip(&n.body, 300));
-        if n.urgent {
-            b = b.sound("Glass");
+        let Some(inbox) = r.body_mut().read_to_string().ok().and_then(|b| serde_json::from_str::<Inbox>(&b).ok()) else { return after };
+        for n in &inbox.items {
+            crate::notify::show(app, &n.title, &n.body, n.urgent);
         }
-        let _ = b.show();
+        after = Some(inbox.last);
+        if !inbox.more || inbox.items.is_empty() {
+            break;
+        }
     }
-    Some(inbox.last)
+    after
 }
 
 pub fn start(app: AppHandle, state: State) {
@@ -160,7 +162,7 @@ pub fn start(app: AppHandle, state: State) {
         let mut after: Option<i64> = None;
         std::thread::sleep(Duration::from_secs(3));
         loop {
-            let server = state.lock().unwrap().config.server.clone();
+            let server = state.guard().config.server.clone();
             if let Some(server) = server {
                 let sid = session_cookie(&app, &server);
                 let seen = match &sid {
@@ -192,7 +194,7 @@ pub fn start(app: AppHandle, state: State) {
                 // Only Kith Parent.app ever asks for the parent's notifications.
                 if role == Role::Parent && parent_edition(&app) {
                     if let Some(sid) = &sid {
-                        after = parent_inbox(&app, &server, sid, after).or(after);
+                        after = parent_inbox(&app, &server, sid, after);
                     }
                 }
             }

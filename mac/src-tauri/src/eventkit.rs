@@ -1,8 +1,13 @@
 // Calendar and Reminders on this Mac, through Apple's EventKit.
 //
 // Only used when the child has switched on Kith › Share Calendar & Reminders with Pip. macOS asks
-// her the first time. Reading gives Pip a short summary of the coming week; adding always goes
-// through a native "Add / Not now" prompt first (see native.rs).
+// her the first time. Reading gives Pip a short summary of the coming week, from the calendars and
+// reminder lists she has ticked (Kith › Choose What Pip Sees); adding always goes through a native
+// "Add / Not now" prompt first (see native.rs).
+//
+// macOS 14 split calendar access into "full" and "write-only" with new request methods. The app
+// runs from macOS 12, so it asks with the new methods where they exist and the old one otherwise
+// (calling a method the OS doesn't have would crash).
 
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +56,23 @@ pub struct NewReminder {
     pub due: Option<i64>,
 }
 
+/// One of her calendars or reminder lists, for the choice of what Pip sees.
+#[derive(Clone, Debug)]
+pub struct Source {
+    pub id: String,
+    pub title: String,
+}
+
+/// Which calendars or lists she shares. `None`: everything (until she unticks one).
+pub type Chosen = Option<Vec<String>>;
+
+pub fn is_chosen(chosen: &Chosen, id: &str) -> bool {
+    chosen.as_ref().is_none_or(|ids| ids.iter().any(|c| c == id))
+}
+
 const MAX_ITEMS: usize = 60;
+/// Reminders due from the start of today until this far ahead (no undated ones).
+pub const REMINDER_DAYS: i64 = 7;
 
 pub fn clip(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
@@ -62,9 +83,9 @@ mod imp {
     use super::*;
     use block2::RcBlock;
     use objc2::rc::Retained;
-    use objc2::runtime::Bool;
-    use objc2::AllocAnyThread;
-    use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
+    use objc2::runtime::{Bool, NSObjectProtocol};
+    use objc2::{sel, AllocAnyThread};
+    use objc2_event_kit::{EKAuthorizationStatus, EKCalendar, EKEntityType, EKEvent, EKEventStore, EKReminder, EKSpan};
     use objc2_foundation::{NSArray, NSCalendar, NSCalendarUnit, NSDate, NSError, NSString};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -81,8 +102,13 @@ mod imp {
         (d.timeIntervalSince1970() * 1000.0) as i64
     }
 
+    fn status(kind: EKEntityType) -> EKAuthorizationStatus {
+        unsafe { EKEventStore::authorizationStatusForEntityType(kind) }
+    }
+
+    /// Whether Kith may read. (`Authorized` on macOS 12–13 is the same value as `FullAccess`.)
     pub fn access(kind: EKEntityType) -> Access {
-        let s = unsafe { EKEventStore::authorizationStatusForEntityType(kind) };
+        let s = status(kind);
         if s == EKAuthorizationStatus::FullAccess {
             Access::Allowed
         } else if s == EKAuthorizationStatus::NotDetermined {
@@ -90,6 +116,12 @@ mod imp {
         } else {
             Access::Denied
         }
+    }
+
+    /// Whether Kith may add (full access, or "add events only" on macOS 14+).
+    fn can_write(kind: EKEntityType) -> bool {
+        let s = status(kind);
+        s == EKAuthorizationStatus::FullAccess || s == EKAuthorizationStatus::WriteOnly
     }
 
     /// Shows macOS's own permission prompt (once). Waits up to two minutes for her answer.
@@ -105,10 +137,18 @@ mod imp {
         let st = store();
         unsafe {
             let ptr = &*block as *const block2::DynBlock<dyn Fn(Bool, *mut NSError)> as *mut _;
-            if kind == EKEntityType::Event {
-                st.requestFullAccessToEventsWithCompletion(ptr);
+            let full = if kind == EKEntityType::Event { sel!(requestFullAccessToEventsWithCompletion:) } else { sel!(requestFullAccessToRemindersWithCompletion:) };
+            if st.respondsToSelector(full) {
+                // macOS 14 and later.
+                if kind == EKEntityType::Event {
+                    st.requestFullAccessToEventsWithCompletion(ptr);
+                } else {
+                    st.requestFullAccessToRemindersWithCompletion(ptr);
+                }
             } else {
-                st.requestFullAccessToRemindersWithCompletion(ptr);
+                // macOS 12 and 13: the only way there is.
+                #[allow(deprecated)]
+                st.requestAccessToEntityType_completion(kind, ptr);
             }
         }
         match rx.recv_timeout(Duration::from_secs(120)) {
@@ -118,13 +158,38 @@ mod imp {
         }
     }
 
-    pub fn events(from: i64, to: i64) -> Vec<Event> {
+    /// Her calendars (or reminder lists), by name, for the menu. Empty without access.
+    pub fn sources(kind: EKEntityType) -> Vec<Source> {
+        if access(kind) != Access::Allowed {
+            return vec![];
+        }
+        let st = store();
+        let mut out: Vec<Source> = unsafe {
+            st.calendarsForEntityType(kind)
+                .iter()
+                .map(|c| Source { id: c.calendarIdentifier().to_string(), title: clip(&c.title().to_string(), 60) })
+                .collect()
+        };
+        out.sort_by_key(|a| a.title.to_lowercase());
+        out
+    }
+
+    /// The calendars she's chosen to share, or `None` if that's none of them (EventKit's "no
+    /// calendars" means all of them, so that case must not reach a query).
+    fn chosen_calendars(st: &EKEventStore, kind: EKEntityType, chosen: &Chosen) -> Option<Retained<NSArray<EKCalendar>>> {
+        let all = unsafe { st.calendarsForEntityType(kind) };
+        let picked: Vec<Retained<EKCalendar>> = all.iter().filter(|c| is_chosen(chosen, &unsafe { c.calendarIdentifier() }.to_string())).collect();
+        (!picked.is_empty()).then(|| NSArray::from_retained_slice(&picked))
+    }
+
+    pub fn events(from: i64, to: i64, chosen: &Chosen) -> Vec<Event> {
         if access(EKEntityType::Event) != Access::Allowed {
             return vec![];
         }
         let st = store();
+        let Some(cals) = chosen_calendars(&st, EKEntityType::Event, chosen) else { return vec![] };
         let mut out: Vec<Event> = unsafe {
-            let pred = st.predicateForEventsWithStartDate_endDate_calendars(&date(from), &date(to), None);
+            let pred = st.predicateForEventsWithStartDate_endDate_calendars(&date(from), &date(to), Some(&cals));
             let found: Retained<NSArray<EKEvent>> = st.eventsMatchingPredicate(&pred);
             found
                 .iter()
@@ -142,11 +207,13 @@ mod imp {
         out
     }
 
-    pub fn reminders() -> Vec<Reminder> {
+    /// Incomplete reminders due between `from` and `to`, from the lists she's chosen.
+    pub fn reminders(from: i64, to: i64, chosen: &Chosen) -> Vec<Reminder> {
         if access(EKEntityType::Reminder) != Access::Allowed {
             return vec![];
         }
         let st = store();
+        let Some(lists) = chosen_calendars(&st, EKEntityType::Reminder, chosen) else { return vec![] };
         let (tx, rx) = mpsc::channel::<Vec<Reminder>>();
         let tx = std::sync::Mutex::new(tx);
         let block = RcBlock::new(move |found: *mut NSArray<EKReminder>| {
@@ -167,7 +234,7 @@ mod imp {
             let _ = tx.lock().map(|t| t.send(out));
         });
         unsafe {
-            let pred = st.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(None, None, None);
+            let pred = st.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars(Some(&date(from)), Some(&date(to)), Some(&lists));
             let _ = st.fetchRemindersMatchingPredicate_completion(&pred, &block);
         }
         let mut out = rx.recv_timeout(Duration::from_secs(20)).unwrap_or_default();
@@ -177,7 +244,8 @@ mod imp {
     }
 
     pub fn add_event(e: &NewEvent) -> Result<(), String> {
-        if request(EKEntityType::Event) != Access::Allowed {
+        request(EKEntityType::Event);
+        if !can_write(EKEntityType::Event) {
             return Err("Kith isn't allowed to use Calendar. Turn it on in System Settings › Privacy & Security › Calendars.".into());
         }
         let st = store();
@@ -195,7 +263,8 @@ mod imp {
     }
 
     pub fn add_reminder(r: &NewReminder) -> Result<(), String> {
-        if request(EKEntityType::Reminder) != Access::Allowed {
+        request(EKEntityType::Reminder);
+        if !can_write(EKEntityType::Reminder) {
             return Err("Kith isn't allowed to use Reminders. Turn it on in System Settings › Privacy & Security › Reminders.".into());
         }
         let st = store();
@@ -220,3 +289,16 @@ mod imp {
 
 #[cfg(target_os = "macos")]
 pub use imp::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nothing_chosen_yet_means_everything_an_empty_choice_means_nothing() {
+        assert!(is_chosen(&None, "a"));
+        assert!(!is_chosen(&Some(vec![]), "a"));
+        assert!(is_chosen(&Some(vec!["a".into()]), "a"));
+        assert!(!is_chosen(&Some(vec!["a".into()]), "b"));
+    }
+}
