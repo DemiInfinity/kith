@@ -565,3 +565,9 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .profilepanel .pp-link { flex-direction: row; align-items: center; gap: 12px; }
 @media (max-width: 1099px) { .profilepanel { display: none; } }
 @media (prefers-reduced-motion: reduce) { .profilepanel { animation: none; } }
+/* The profile panel holds the phone profile. */
+.profilepanel { width: 480px; padding: 0; gap: 0; }
+.profilepanel > .screen { padding: 14px 18px 24px; }
+.profilepanel .deskpage { flex-direction: column; }
+.profilepanel .deskside { width: 100%; }
+.profilepanel .grid2 { grid-template-columns: 1fr; }
