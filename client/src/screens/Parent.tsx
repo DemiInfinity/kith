@@ -391,10 +391,53 @@ const KIND_ICON: Record<string, IconName> = { "home-assistant": "home", kin: "ca
 const ADDABLE: [Connection["kind"], string][] = [["mcp", "MCP server"], ["home-assistant", "Home Assistant"], ["kin", "Kin"], ["jellyfin", "Jellyfin"], ["web", "Allowed websites"]];
 const BUILT_IN = new Set(["room", "kin", "jellyfin", "calculator", "dictionary", "google", "web"]);
 
-function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip", publicKey = "" }: { initial: Settings; onSaved: () => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string }) {
+// What each budget box may hold. The server checks the same limits; an empty box is never 0.
+const BUDGET_LIMITS: Record<keyof Budgets, { min: number; max: number; label: string; step: number }> = {
+  weeklyUsd: { min: 0, max: 500, label: "Each week ($, up to 500)", step: 0.5 },
+  windowUsd: { min: 0, max: 100, label: "Full power per window ($, up to 100)", step: 0.5 },
+  windowHours: { min: 1, max: 24, label: "Window length (hours, 1 to 24)", step: 1 },
+  rolloverCapUsd: { min: 0, max: 50, label: "Max rollover per window ($, up to 50)", step: 0.5 },
+  hardStopUsd: { min: 1, max: 1000, label: "Hard stop for the month ($, 1 to 1000)", step: 1 },
+  lowPowerAtPercent: { min: 0, max: 100, label: "Low power below (%, 0 to 100)", step: 1 },
+  deskSharePercent: { min: 0, max: 50, label: "Desk share (%)", step: 1 },
+  weekResetDay: { min: 0, max: 6, label: "Energy tops up on", step: 1 },
+};
+const BUDGET_BOXES: (keyof Budgets)[] = ["weeklyUsd", "windowUsd", "windowHours", "rolloverCapUsd", "hardStopUsd", "lowPowerAtPercent"];
+
+/** Why a budget box can't be saved, or "" when it's fine. */
+export function budgetProblem(k: keyof Budgets, raw: string): string {
+  const lim = BUDGET_LIMITS[k];
+  if (raw.trim() === "") return "This can’t be empty.";
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "This needs a number.";
+  if (k === "hardStopUsd" && n <= 0) return "A hard stop of $0 would stop nothing. Use at least $1.";
+  if (n < lim.min || n > lim.max) return `Between ${lim.min} and ${lim.max}, please.`;
+  return "";
+}
+
+/** Why the Grown-up? numbers can't be saved, or "" when they're fine. 999 and at least one number always stay. */
+export function helplineProblem(lines: Helpline[]): string {
+  if (lines.length === 0) return "Keep at least one number.";
+  if (!lines.some((h) => h.number.replace(/\s+/g, "") === "999")) return "999 has to stay on the list.";
+  if (lines.some((h) => !h.name.trim() || !h.number.trim())) return "Each number needs a name and a number.";
+  return "";
+}
+
+/** The top-level settings that differ from what was loaded, so a save only touches what changed here. */
+export function changedSettings<T extends object>(before: T, after: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of Object.keys(after) as (keyof T)[]) {
+    if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) out[k] = after[k];
+  }
+  return out;
+}
+
+function SettingsForm({ initial, onSaved, onDirty, section = "settings", companion = "Pip", publicKey = "" }: { initial: Settings; onSaved: () => void; onDirty: (d: boolean) => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string }) {
   const [s, setS] = useState<Settings>(initial);
+  const [base, setBase] = useState<Settings>(initial);
   const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
   const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
   const [builtIn, setBuiltIn] = useState("");
   useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
   const docText = s.safeguardsDoc || builtIn;
@@ -402,21 +445,63 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   useEffect(() => { api<DiskUsage>("/api/parent/disk").then(setDisk).catch(() => undefined); }, []);
   const b = s.budgets;
-  const setB = (k: keyof Budgets, v: number) => setS({ ...s, budgets: { ...b, [k]: v } });
+  // The budget boxes as typed, so an empty box stays empty (and unsaveable) instead of becoming 0.
+  const [braw, setBraw] = useState<Record<string, string>>(() => Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(initial.budgets[k])])));
+  const setB = (k: keyof Budgets, v: number) => setS((x) => ({ ...x, budgets: { ...x.budgets, [k]: v } }));
   const setC = (i: number, patch: Partial<Connection>) => setS({ ...s, connections: s.connections.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
   const list = (v: string) => v.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  const changes = changedSettings(base, s);
+  const budgetBoxesChanged = BUDGET_BOXES.some((k) => braw[k] !== String(base.budgets[k]));
+  const dirty = Object.keys(changes).length > 0 || budgetBoxesChanged;
+  useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
+  useEffect(() => () => onDirty(false), [onDirty]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    addEventListener("beforeunload", warn);
+    return () => removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const budgetErrors = section === "settings" ? BUDGET_BOXES.map((k) => [k, budgetProblem(k, braw[k] ?? "")] as const).filter(([, e]) => e) : [];
+  const helpErr = section === "settings" ? helplineProblem(s.helplines) : "";
+  const blocked = budgetErrors.length > 0 ? "Fix the budget boxes marked above first." : helpErr ? `Grown-up? numbers: ${helpErr}` : "";
   const save = async () => {
+    if (blocked) { setMsg(blocked); return; }
+    // Only the parts changed here are sent: the server keeps everything else as it is, so the
+    // Settings and Connectors tabs (or two devices) can't overwrite each other's changes.
+    const body = changedSettings(base, s);
+    if (Object.keys(body).length === 0) { setBase(s); setBraw(Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(s.budgets[k])]))); setMsg("Nothing to save."); return; }
+    setSaving(true);
     try {
-      await api("/api/parent/settings", { method: "PUT", body: s });
+      await api("/api/parent/settings", { method: "PUT", body });
+      setBase(s);
+      setBraw(Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(s.budgets[k])])));
       setMsg("Saved.");
       onSaved();
     } catch (e) {
       setMsg((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
-  const num = (label: string, k: keyof Budgets, step = 0.5) => (
-    <label className="field">{label}<input className="input" type="number" step={step} min={0} value={b[k]} onChange={(e) => setB(k, Number(e.target.value))} /></label>
-  );
+  const num = (k: keyof Budgets) => {
+    const lim = BUDGET_LIMITS[k];
+    const err = budgetProblem(k, braw[k] ?? "");
+    const id = `budget-${k}`;
+    return (
+      <label className="field" key={k}>{lim.label}
+        <input className="input" id={id} type="number" inputMode="decimal" step={lim.step} min={lim.min} max={lim.max} required value={braw[k] ?? ""}
+          aria-invalid={err ? true : undefined} aria-describedby={err ? `${id}-err` : undefined}
+          onChange={(e) => { const v = e.target.value; setBraw((r) => ({ ...r, [k]: v })); if (!budgetProblem(k, v)) setB(k, Number(v)); }} />
+        {err && <span className="small field-err" id={`${id}-err`}>{err}</span>}
+      </label>
+    );
+  };
+  const removeHelpline = (i: number) => {
+    const h = s.helplines[i];
+    if (!confirm(`Remove ${h.name || "this number"}${h.number ? ` (${h.number})` : ""} from the Grown-up? sheet? Your child won’t see it any more once you save.`)) return;
+    setS((x) => ({ ...x, helplines: x.helplines.filter((_, j) => j !== i) }));
+  };
+  const nine99 = (h: Helpline) => h.number.replace(/\s+/g, "") === "999";
 
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
@@ -457,12 +542,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
           <input type="range" min={0} max={50} value={b.deskSharePercent} aria-label="Split between chat and the desk" style={{ ["--v" as string]: `${b.deskSharePercent * 2}%` }} onChange={(e) => setB("deskSharePercent", Number(e.target.value))} /></label>
         <span className="small">That’s ${(b.weeklyUsd * (1 - b.deskSharePercent / 100)).toFixed(2)} a week for chat and calls, and ${((b.weeklyUsd * b.deskSharePercent) / 100 / 7).toFixed(2)} a day for the desk (unused days roll on within the week).</span>
         <div className="grid2">
-          {num("Each week ($)", "weeklyUsd")}
-          {num("Full power per window ($)", "windowUsd")}
-          {num("Window length (hours)", "windowHours", 1)}
-          {num("Max rollover per window ($)", "rolloverCapUsd")}
-          {num("Hard stop for the month ($)", "hardStopUsd", 1)}
-          {num("Low power below (%)", "lowPowerAtPercent", 1)}
+          {BUDGET_BOXES.map(num)}
           <label className="field">Energy tops up on
             <select className="select" value={b.weekResetDay} onChange={(e) => setB("weekResetDay", Number(e.target.value))}>
               {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => <option key={d} value={i}>{d}</option>)}
@@ -537,10 +617,14 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
             <input className="input" aria-label="Line under it" value={h.sub} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, sub: e.target.value } : x)) })} />
             <span className="row">
               <select className="select" value={h.kind} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, kind: e.target.value as Helpline["kind"] } : x)) })}><option value="helpline">helpline</option><option value="emergency">emergency</option></select>
-              <button className="x" aria-label="Remove" onClick={() => setS({ ...s, helplines: s.helplines.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
+              <button type="button" className="x" aria-label={`Remove ${h.name || "this number"}`} disabled={nine99(h) || s.helplines.length <= 1}
+                title={nine99(h) ? "999 always stays" : s.helplines.length <= 1 ? "Keep at least one number" : undefined}
+                onClick={() => removeHelpline(i)}><Icon name="close" size={16} /></button>
             </span>
           </div>
         ))}
+        <span className="small">999 always stays, and there’s always at least one number.</span>
+        {helpErr && <span className="small field-err" role="alert">{helpErr}</span>}
         {s.helplines.length < 6 && <button className="btn ghost small" onClick={() => setS({ ...s, helplines: [...s.helplines, { name: "", number: "", sub: "", kind: "helpline" }] })}>+ number</button>}
       </section>
 
@@ -652,7 +736,10 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
         </div>
         </>}
       </div>
-      <div className="psave"><span className="small" aria-live="polite">{msg || "Changes are saved when you press Save."}</span><button className="btn primary" onClick={save}>{section === "connectors" ? "Save connectors" : "Save settings"}</button></div>
+      <div className={`psave ${dirty ? "dirty" : ""}`}>
+        <span className="small" role="status">{dirty ? <><b>Unsaved changes.</b> {blocked || (msg && msg !== "Saved." ? msg : "Press Save to keep them.")}</> : msg || "Changes are saved when you press Save."}</span>
+        <button className="btn primary" onClick={save} disabled={saving || !dirty || !!blocked}>{saving ? "Saving…" : section === "connectors" ? "Save connectors" : "Save settings"}</button>
+      </div>
     </div>
   );
 }
@@ -676,7 +763,16 @@ function Tile({ icon, label, value, cap, sub }: { icon: IconName; label: string;
 export function Parent({ me }: { me: Me }) {
   const [o, setO] = useState<Overview | null>(null);
   const [t, setT] = useState<Transparency | null>(null);
-  const [tab, setTab] = useState<PTab>("overview");
+  const [tab, setTabRaw] = useState<PTab>("overview");
+  // Settings and Connectors say when they have unsaved changes, so switching tab can ask first.
+  const dirty = useRef(false);
+  const onDirty = useCallback((d: boolean) => { dirty.current = d; }, []);
+  const setTab = (k: PTab) => {
+    if (k === tab) return;
+    if (dirty.current && !confirm("You have unsaved changes on this tab. Leave without saving them?")) return;
+    dirty.current = false;
+    setTabRaw(k);
+  };
   const [testMsg, setTestMsg] = useState("");
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   const load = useCallback(() => {
@@ -837,10 +933,10 @@ export function Parent({ me }: { me: Me }) {
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
-          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} publicKey={me.push.ready ? me.push.publicKey : ""} />}
+          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} onDirty={onDirty} companion={comp.name} publicKey={me.push.ready ? me.push.publicKey : ""} />}
           {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
-          {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}
+          {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} onDirty={onDirty} />}
         </div>
       </div>
     </div>
