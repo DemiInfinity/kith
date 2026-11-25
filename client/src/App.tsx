@@ -189,6 +189,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   });
   const [threadTitle, setThreadTitle] = useState("");
   const [threadLang, setThreadLang] = useState<"es" | "ja" | null>(null);
+  const narrow = typeof window !== "undefined" && window.innerWidth < 600;
   const pickThread = (id: number) => {
     setThread(id);
     try { sessionStorage.setItem("kith-thread", String(id)); } catch { /* fine */ }
@@ -205,12 +206,9 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   }, [thread]);
   // "Ask Pip" from Study, Art or the OC workshop opens the main chat with a context chip.
   const q = new URLSearchParams(location.search);
-  const qLang = q.get("lang");
   // A side chat in Spanish or Japanese is language practice all the way through.
   const chatContext: ChatContext | null = thread !== 1 && threadLang
     ? { mode: "language", ctx: { lang: threadLang }, label: threadLang === "es" ? "Español" : "日本語" }
-    : q.get("mode") === "language" && (qLang === "es" || qLang === "ja")
-    ? { mode: "language", ctx: { lang: qLang, topic: q.get("topic")?.slice(0, 120) || undefined }, label: q.get("label") || (qLang === "es" ? "Español" : "日本語") }
     : q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
     ? {
         mode: q.get("mode") as ChatContext["mode"],
@@ -257,12 +255,13 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     <>
       {thread !== 1 && (
         <div className="threadbar">
-          <Icon name="sidechats" size={18} /><b style={{ flex: 1 }}>{threadTitle || "Side chat"}</b>
+          <Icon name="sidechats" size={18} /><b>{threadTitle || "Side chat"}</b>
           <select className="select" style={{ width: "auto", minHeight: 32, padding: "0 10px" }} aria-label="Language for this side chat" value={threadLang ?? ""}
             onChange={async (e) => { const lang = (e.target.value || null) as "es" | "ja" | null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
-            <option value="">English</option><option value="es">Español</option><option value="ja">日本語</option>
+            {/* Short names on a phone, where the picture takes the middle of the bar. */}
+            <option value="">{narrow ? "Eng" : "English"}</option><option value="es">{narrow ? "Esp" : "Español"}</option><option value="ja">日本語</option>
           </select>
-          <button className="chip" style={{ minHeight: 32 }} onClick={() => pickThread(1)}>Back to main chat</button>
+          <button className="chip tb-back" style={{ minHeight: 32 }} onClick={() => pickThread(1)} aria-label="Back to main chat"><Icon name="back" size={16} /><span>Main chat</span></button>
         </div>
       )}
       <Chat key={thread} me={me} thread={thread} context={chatContext}

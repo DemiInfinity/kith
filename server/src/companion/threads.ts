@@ -40,8 +40,10 @@ export function updateThread(db: DB, id: number, patch: { title?: string; archiv
 }
 
 /** A plain chat turn in a Spanish or Japanese side chat becomes language practice in that language. */
-export function inThreadLanguage<M extends string, C extends { lang?: ThreadLang; topic?: string }>(db: DB, b: { thread?: number; mode: M; ctx: C }): { mode: M | "language"; ctx: C } {
-  const t = b.thread ? getThread(db, b.thread) : undefined;
+export function inThreadLanguage<M extends string, C extends { lang?: ThreadLang; topic?: string }>(db: DB, b: { thread?: number; mode: M; ctx: C }): { mode: M | "language" | "chat"; ctx: C } {
+  // The main chat is always English: language practice only happens in side chats.
+  if (!b.thread || b.thread === MAIN_THREAD) return b.mode === "language" ? { mode: "chat", ctx: { ...b.ctx, lang: undefined, topic: undefined } } : { mode: b.mode, ctx: b.ctx };
+  const t = getThread(db, b.thread);
   if (!t?.lang || b.mode !== "chat") return { mode: b.mode, ctx: b.ctx };
   return { mode: "language", ctx: { ...b.ctx, lang: t.lang, topic: b.ctx.topic ?? t.topic ?? undefined } };
 }
@@ -52,7 +54,7 @@ export function touchThread(db: DB, id: number) {
 
 /** What the companion is told about a side chat. */
 export function threadNote(db: DB, id: number): string {
-  if (id === MAIN_THREAD) return "";
+  if (id === MAIN_THREAD) return "This is the main chat, and it's always in English: reply in English even if they write in Spanish or Japanese (you can still explain a word or phrase they ask about). For real practice, suggest a Spanish or Japanese side chat (/es or /ja).";
   const t = getThread(db, id);
   if (!t) return "";
   return `This is a side chat ("${t.title}") that they split off from the main chat${t.from_text ? `, starting from this message: "${t.from_text}"` : ""}. Keep to what this side chat is about; the main chat carries on separately.`;

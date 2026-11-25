@@ -542,8 +542,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .topbar .tb-label b { margin-top: 0; }
 .main .messages { padding-top: calc(18px + var(--hang, 0px)); }
 .main > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang, 0px)); }
-.main > .threadbar:not(.desktop-only) { margin-top: var(--hang, 0px); }
-.main:has(> .threadbar:not(.desktop-only)) .messages { padding-top: 18px; }
+/* The side-chat bar sits straight under the header, with the picture floating over its middle;
+   its title and buttons keep to the sides so nothing hides under the picture. */
+.main > .threadbar:not(.desktop-only) { margin-top: 0; position: relative; z-index: 1; min-height: 46px; }
+.main > .threadbar:not(.desktop-only) > b { flex: 0 1 auto; max-width: calc(50% - 64px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: auto; }
+.main:has(> .threadbar:not(.desktop-only)) .messages { padding-top: calc(18px + var(--hang, 0px) - 46px); }
 .topbar .tb-logo { grid-column: 1; }
 .topbar .tb-right { grid-column: 3; }
 .topbar .tb-dp { padding: 2px; background: var(--hearth); border: 2.5px solid var(--lilac); box-shadow: 0 0 0 3px var(--hearth), 0 8px 18px rgba(0,0,0,0.4); }
@@ -802,3 +805,6 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .lesson .savechip { display: inline-flex; gap: 4px; align-items: center; margin: 6px 6px 0 0; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--lilac); background: none; color: var(--lilac); font-size: 13px; font-weight: 800; }
 .lesson .savechip:disabled { opacity: 0.75; }
 .langdot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 13px; font-weight: 900; background: rgba(217,163,224,0.16); color: var(--lilac); flex: none; }
+.threadbar .tb-back { display: inline-flex; align-items: center; gap: 4px; }
+/* On a phone the picture covers the middle, so the back button is just its arrow. */
+@media (max-width: 599px) { .threadbar .tb-back span { display: none; } .threadbar .tb-back { padding: 0 10px; } .threadbar { gap: 8px; padding: 8px 12px; } .threadbar .select { font-size: 13px; padding: 0 22px 0 8px !important; max-width: 84px; background-position: right 6px center; } }

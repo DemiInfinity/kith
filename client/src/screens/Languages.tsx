@@ -49,9 +49,7 @@ export function Languages({ me, go, openThread }: { me: Me; go: (to: string) => 
     try {
       const t = await api<{ id: number }>("/api/threads", { body: { lang: l.lang, topic: l.topic, title: `${NATIVE[l.lang].title} · ${l.topic}`.slice(0, 60) } });
       openThread(t.id);
-    } catch {
-      go(`/?${new URLSearchParams({ mode: "language", lang: l.lang, topic: l.topic, label: `${NATIVE[l.lang].title} · ${l.topic}` })}`);
-    }
+    } catch (e) { setErr((e as Error).message); }
   };
   const hira = rows("hiragana");
   const learned = new Set(v.kana.filter((k) => k.learned).map((k) => k.kana));

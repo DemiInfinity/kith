@@ -192,8 +192,12 @@ describe("side chats in a language", () => {
     expect(inThreadLanguage(db, { thread: plain.id, mode: "chat", ctx: {} }).ctx).toEqual({ lang: "ja", topic: undefined });
     updateThread(db, plain.id, { lang: null });
     expect(inThreadLanguage(db, { thread: plain.id, mode: "chat", ctx: {} }).mode).toBe("chat");
-    // The main chat always stays as it is.
+    // The main chat is always English, even if asked for language mode.
     expect(updateThread(db, 1, { lang: "es" })).toBe(false);
+    expect(inThreadLanguage(db, { thread: 1, mode: "language", ctx: { lang: "es" } }).mode).toBe("chat");
+    expect(inThreadLanguage(db, { mode: "language", ctx: { lang: "ja" } })).toEqual({ mode: "chat", ctx: { lang: undefined, topic: undefined } });
+    const { threadNote } = await import("../src/companion/threads.js");
+    expect(threadNote(db, 1)).toContain("always in English");
     expect(listThreads(db).find((x) => x.id === t.id)?.lang).toBe("es");
   });
 });
