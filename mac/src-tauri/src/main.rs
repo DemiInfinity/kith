@@ -315,7 +315,9 @@ fn main() {
             let handle = app.handle().clone();
             let state: State = Arc::new(Mutex::new(Shell { config: load_config(&handle), ..Default::default() }));
             app.manage(state.clone());
-            if let Some(server) = state.lock().unwrap().config.server.clone() {
+            // Bind first: a lock held in the `if let` would still be held inside grant_native.
+            let server = state.lock().unwrap().config.server.clone();
+            if let Some(server) = server {
                 grant_native(&handle, &state, &server);
             }
 
