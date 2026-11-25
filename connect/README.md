@@ -46,6 +46,8 @@ Google. The helper never sees it. It only ever lets Kith ask for `drive.file`, `
    - Vercel only builds the `connect` branch, and only when something in `connect/` changed (`ignoreCommand` in
      `vercel.json`). Pushes to `main` never deploy the helper.
    - To ship a change, bring it onto the `connect` branch: `git checkout connect && git merge main && git push`.
+   - Vercel only offers `connect` as the production branch once it has deployed from it once. A push to `connect`
+     that changes anything in `connect/` does that.
 3. **Add the environment variables** (Project › Settings › Environment Variables). Put the secret ones in yourself;
    never commit them.
 
