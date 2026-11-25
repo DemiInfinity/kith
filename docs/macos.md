@@ -119,11 +119,14 @@ Apple has approved for that site). So "Sign in with Pocket ID" in the app works 
 
 1. The app starts a one-time handoff with the server (`POST /auth/handoff/start {"app": "child"}`, or `"parent"` in
    Kith Parent → an id and a secret, in memory only and never logged) and opens `/auth/login?handoff=<id>&app=<app>`
-   in your browser, which goes on to Pocket ID. If the server gives a short code to match, the Kith window shows it.
+   in your browser, which goes on to Pocket ID.
 2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half,
    sending the secret in the `X-Kith-Handoff-Secret` header. The id can show up in URLs and logs; the secret never
    does, so the id alone can't collect the session.
-3. Once you've used your passkey, the browser shows "You're signed in". The server hands the session to the app once,
+3. After your passkey, the browser asks "Finish signing in?" with a 4-digit code. The Kith window shows the same code,
+   big ("check your browser shows 4821, and tap Yes"). Nothing is handed over until you tap Yes; No cancels it, and the
+   window says so kindly with a Try again button (as it does if the sign-in times out).
+4. After Yes, the browser shows "You're signed in". The server hands the session to the app once,
    and Kith comes back to the front.
 
 The handoff lapses after two minutes, and the server only stores hashes of the id and secret. (A server from before

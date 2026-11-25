@@ -10,8 +10,9 @@
 //    in URLs; the secret never does (only in a header), so an id seen in a log or the browser's
 //    history isn't enough to collect the session.
 // 3. <server>/auth/login?handoff=<id>&app=<hint> opens in her browser (once, within 15 minutes),
-//    which sends her on to the provider. If the start gave a short code to match, the note in
-//    the window shows it.
+//    which sends her on to the provider. After her passkey the browser asks "Finish signing in?"
+//    with a 4-digit code; the window shows the same code, big, and nothing is handed over until
+//    she taps Yes. No → the poll answers 403 "cancelled", and the window offers Try again.
 // 4. The Kith page polls <server>/auth/handoff/<id> with the X-Kith-Handoff-Secret header (a small
 //    script added to the page, only while the window shows the server itself). When she's signed
 //    in, the server hands the session over once, the page moves on and Kith comes back to the front.
@@ -75,7 +76,8 @@ fn start_handoff(agent: &ureq::Agent, server: &str, hint: &str) -> Started {
         #[serde(default)]
         code: Option<String>,
     }
-    let body = serde_json::json!({ "app": hint }).to_string();
+    // device: the browser's "Finish signing in?" page says "your Mac app".
+    let body = serde_json::json!({ "app": hint, "device": "mac" }).to_string();
     let resp = agent.post(&format!("{server}/auth/handoff/start")).header("X-Kith", "1").header("Content-Type", "application/json").send(&body);
     let Ok(mut r) = resp else { return Started::Failed(None) };
     let status = r.status().as_u16();
@@ -139,16 +141,40 @@ fn page_script(h: &Handoff) -> String {
   const run = {{ stop: false }};
   window.__kithSignin = run;
   document.getElementById("kith-signin")?.remove();
-  const box = document.createElement("div");
+  const el = (tag, css, text) => {{ const e = document.createElement(tag); if (css) e.style.cssText = css; if (text) e.textContent = text; return e; }};
+  const button = (text, primary) => el("button", "font:inherit;font-weight:800;padding:10px 20px;border-radius:999px;cursor:pointer;" + (primary ? "border:none;background:#f59646;color:#2a170c" : "border:1px solid #4a3046;background:transparent;color:#e4b8ec"), text);
+  const box = el("div", "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.94);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center");
   box.id = "kith-signin";
   box.setAttribute("role", "status");
-  box.style.cssText = "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.92);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center";
-  box.innerHTML = '<div style="max-width:420px;display:flex;flex-direction:column;gap:12px;align-items:center"><b style="font:600 26px/1.15 Fraunces,Georgia,serif">Finish signing in in your browser</b><span id="kith-signin-msg" style="color:#c9a9d1">Use your passkey there. Kith will carry on here by itself.</span><button id="kith-signin-cancel" style="font:inherit;font-weight:700;padding:9px 18px;border-radius:999px;border:1px solid #4a3046;background:transparent;color:#e4b8ec;cursor:pointer">Cancel</button></div>';
-  if (code) {{ const c = document.createElement("span"); c.textContent = "If it asks, check the code there is " + code + "."; c.style.cssText = "font-weight:800;color:#fbeaf6"; box.firstChild.insertBefore(c, box.querySelector("button")); }}
+  const inner = el("div", "max-width:440px;display:flex;flex-direction:column;gap:12px;align-items:center;padding:0 16px");
+  const title = el("b", "font:600 26px/1.15 Fraunces,Georgia,serif", "Finish signing in in your browser");
+  const big = el("div", "font:800 52px/1.1 ui-rounded,system-ui,sans-serif;letter-spacing:.18em;padding:6px 18px 6px calc(18px + .18em);border-radius:16px;background:#2a1c27;border:2px solid #4a3046;color:#fbeaf6", code || "");
+  big.setAttribute("aria-label", code ? "Code " + code.split("").join(" ") : "");
+  const words = el("span", "color:#c9a9d1", code ? "Use your passkey there. Then check your browser shows " + code + ", and tap Yes." : "Use your passkey there. Kith will carry on here by itself.");
+  const buttons = el("div", "display:flex;gap:10px;flex-wrap:wrap;justify-content:center");
+  const again = button("Try again", true);
+  const close = button("Cancel", false);
+  again.hidden = true;
+  buttons.append(again, close);
+  inner.append(title);
+  if (code) inner.append(big);
+  inner.append(words, buttons);
+  box.append(inner);
   document.body.appendChild(box);
-  const msg = (t) => {{ const m = document.getElementById("kith-signin-msg"); if (m) m.textContent = t; }};
-  document.getElementById("kith-signin-cancel").onclick = () => {{ run.stop = true; box.remove(); }};
-  const until = Date.now() + 150000;
+  // Something went wrong: say so kindly and offer to start again (the app catches /auth/login and
+  // starts a fresh handoff in the browser).
+  const stopped = (heading, text) => {{
+    title.textContent = heading;
+    words.textContent = text;
+    big.remove();
+    box.setAttribute("role", "alert");
+    again.hidden = false;
+    close.textContent = "Close";
+  }};
+  again.onclick = () => {{ run.stop = true; box.remove(); location.href = "/auth/login"; }};
+  close.onclick = () => {{ run.stop = true; box.remove(); }};
+  // The browser waits for her passkey and then her Yes, so give it as long as the handoff lasts.
+  const until = Date.now() + 10 * 60000;
   (async () => {{
     while (Date.now() < until && !run.stop) {{
       await new Promise((r) => setTimeout(r, 1500));
@@ -158,11 +184,14 @@ fn page_script(h: &Handoff) -> String {
         const j = await r.json().catch(() => ({{}}));
         if (r.ok && j.ok) {{ location.href = j.redirect || "/"; return; }}
         if ((r.ok && j.pending) || r.status === 429) continue;
-        msg(j.error === "not-allowed" ? "That account isn't set up for Kith. Ask the grown-up who runs it." : r.status === 410 ? "That took too long. Close this and try again." : "Sign-in didn't finish. Close this and try again.");
+        if (j.error === "cancelled") stopped("Sign-in cancelled", "No problem: \u201cNo\u201d was pressed in the browser, so nothing happened. If that was you and you meant Yes, try again.");
+        else if (j.error === "not-allowed") stopped("Not set up for Kith", "That account isn't set up for Kith. Ask the grown-up who runs it.");
+        else if (r.status === 410) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
+        else stopped("Sign-in didn't finish", "Something went wrong on the way back. Try again in a moment.");
         return;
       }} catch (e) {{ /* offline for a moment */ }}
     }}
-    if (!run.stop) msg("That took too long. Close this and try again.");
+    if (!run.stop) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
   }})();
 }})();"#
     )
@@ -249,6 +278,7 @@ mod tests {
         let old = page_script(&Handoff { id: "a".repeat(43), secret: None, code: None });
         assert!(old.contains("const headers = {};"));
         assert!(js.contains(r#"const code = "AB-12";"#));
+        assert!(js.contains(r#"j.error === "cancelled""#) && js.contains("Try again"));
         assert!(old.contains("const code = null;"));
     }
 
