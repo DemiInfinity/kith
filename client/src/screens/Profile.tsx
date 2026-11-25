@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
-import { Avatar } from "../components/Avatar";
+import { CompanionPic } from "../components/CompanionPic";
 import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
 import { action } from "../lib/action";
@@ -102,7 +102,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
     <div className="screen" style={panel ? { width: "100%" } : { maxWidth: 1400, margin: "0 auto", width: "100%" }}>
       {panel && <div className="spread"><span className="hand">{name}’s profile</span><button className="x" aria-label="Close profile" onClick={onClose}><Icon name="close" /></button></div>}
       <div className="profilehead">
-        <Avatar look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
+        <CompanionPic look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <h2 style={{ fontSize: "2rem" }}>{name}</h2>
           <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>

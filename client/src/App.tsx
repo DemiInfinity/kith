@@ -3,7 +3,8 @@ import { doneWords, handoffDevice, handoffWords, isInstalledApp, signinWords, pr
 import { checkNativeActions, startNative } from "./lib/native";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
-import { Avatar, LogoMark } from "./components/Avatar";
+import { LogoMark } from "./components/Avatar";
+import { CompanionPic, setPipPicture } from "./components/CompanionPic";
 import { doingText, HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
@@ -30,6 +31,7 @@ import { WorrySheet } from "./components/WorrySheet";
 const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
 const Languages = lazy(() => import("./screens/Languages").then((m) => ({ default: m.Languages })));
 const Study = lazy(() => import("./screens/Study").then((m) => ({ default: m.Study })));
+const MyPip = lazy(() => import("./screens/MyPip").then((m) => ({ default: m.MyPip })));
 // The avatar lab is a tool for working on Kith, so it isn't in the app people install.
 const AvatarLab = import.meta.env.DEV ? lazy(() => import("./screens/AvatarLab").then((m) => ({ default: m.AvatarLab }))) : null;
 
@@ -185,6 +187,8 @@ const NAV: { to: string; icon: IconName; label: string; sub?: boolean }[] = [
   { to: "/stories", icon: "stories", label: "Stories with a friend", sub: true },
   { to: "/art", icon: "art", label: "Art", sub: true },
   { to: "/oc", icon: "oc", label: "OC workshop", sub: true },
+  // The label says the companion's own name ("My Pip").
+  { to: "/my-pip", icon: "star", label: "My Pip", sub: true },
   { to: "/settings", icon: "settings", label: "Settings" },
 ];
 const TABS: { to: string; icon: IconName; label: string }[] = [
@@ -200,7 +204,7 @@ function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
     <div className="screen narrow dgrid">
       <span className="hand">make something</span>
       <h2 className="screen-title">Create</h2>
-      {[["/stories", "pencil", "Stories with a friend", "Write together; every part credited"], ["/art", "art", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "oc", "OC workshop", "Your characters and their world"], ["/pip", "desk", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
+      {[["/stories", "pencil", "Stories with a friend", "Write together; every part credited"], ["/art", "art", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "oc", "OC workshop", "Your characters and their world"], ["/my-pip", "star", `My ${me.profile.name}`, `Make ${me.profile.name} in 3D: there’s only one`], ["/pip", "desk", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
           <span style={{ display: "inline-flex", color: "var(--lilac)" }}><Icon name={ic as IconName} size={26} /></span><span><b>{t}</b><br /><span className="small">{d}</span></span>
         </button>
@@ -274,6 +278,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
   usePoll(load, 20_000);
+  // The 3D Pip's chat picture, when there is one, stands in for the 2D avatar in small places.
+  useEffect(() => { setPipPicture(state ? state.pipPicture : me.pipPicture); }, [me.pipPicture, state?.pipPicture]); // eslint-disable-line react-hooks/exhaustive-deps
   // In the Mac app: notifications, Calendar & Reminders, ⌃⌥Space to call, dropped documents.
   // Once: go only calls a stable setter.
   useEffect(() => startNative(go), []);
@@ -288,6 +294,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const working = state?.desk.working;
   const doing = doingText(state, baseMood);
   const onProfile = false;
+  // The 3D makers: the title sits right under the header (no room left for the hanging picture).
+  const makerPage = path === "/my-pip" || path === "/oc";
   const openHelp = () => setHelp(true);
   // A worry typed outside chat: its words are already in the main chat.
   const goToChat = () => { setProfileOpen(false); pickThread(1); go("/"); };
@@ -295,6 +303,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   let screen: React.ReactNode;
   if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
+  else if (path === "/my-pip") screen = <MyPip me={me} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
   else if (path === "/shared") screen = <Shared me={me} />;
@@ -343,7 +352,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
           return (
             <button key={n.to} className={`navbtn ${on ? "on" : ""} ${n.sub ? "sub" : ""}`} aria-current={on ? "page" : undefined} onClick={() => go(n.to)}>
-              <span className="ic"><Icon name={n.icon} on={on} size={n.sub ? 18 : 22} /></span>{n.label}
+              <span className="ic"><Icon name={n.icon} on={on} size={n.sub ? 18 : 22} /></span>{n.to === "/my-pip" ? `My ${name}` : n.label}
             </button>
           );
         })}
@@ -353,15 +362,16 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </div>
       </nav>
       {dock && path === "/" && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
-      <div className={`main ${!onProfile && path !== "/talk" ? "hang-m" : ""} ${path !== "/talk" && !onProfile ? "hang-d" : ""}`}>
+      <div className={`main ${!onProfile && path !== "/talk" && !makerPage ? "hang-m" : ""} ${path !== "/talk" && !onProfile && !makerPage ? "hang-d" : ""}`}>
         {path !== "/talk" && !onProfile && (
           <header className="topbar deskbar desktop-only">
             <span className="tb-left">{path === "/" && !dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>
-            <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
+            {/* My Pip shows Pip itself in 3D, so its picture isn't repeated up here. */}
+            {path !== "/my-pip" && <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
               aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-              <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
+              <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
               <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
-            </button>
+            </button>}
             <span className="tb-right">
               <button className="iconbtn call" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={21} /></button>
             </span>
@@ -370,9 +380,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         {path !== "/talk" && (
           <header className={`topbar mobile-only ${onProfile ? "slim" : ""}`}>
             <button className="tb-logo" onClick={() => go("/")} aria-label="Kith home"><img src="/icon-192.png" alt="" width={38} height={38} /></button>
-            {!onProfile && (
+            {/* On a phone the 3D makers need the room: no picture up here on My Pip or the OC workshop. */}
+            {!onProfile && !makerPage && (
               <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-                <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
+                <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
                 <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
               </button>
             )}
@@ -385,7 +396,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         <Suspense fallback={<Loading />}>{screen}</Suspense>
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
-            const on = t.to === path || (t.to === "/study" && path === "/languages") || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
+            const on = t.to === path || (t.to === "/study" && path === "/languages") || (t.to === "/create" && ["/stories", "/art", "/oc", "/my-pip"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><Icon name={t.icon} on={on} /><span>{t.label}</span></button>;
           })}
           <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Grown-up?</span></button>
@@ -427,7 +438,7 @@ function Root() {
   const loadMe = useCallback(() => {
     if (busy.current) return;
     busy.current = true;
-    api<Me>("/api/me").then((m) => { setErr(""); setMe(m); }).catch((e) => {
+    api<Me>("/api/me").then((m) => { setErr(""); setPipPicture(m.pipPicture); setMe(m); }).catch((e) => {
       if (e instanceof ApiError && e.status === 401) { setErr(""); setMe("signed-out"); }
       else if (e instanceof ApiError && e.code === "wrong-app") setWrongApp(e.message);
       else setErr((e as Error).message || OFFLINE_WORDS);

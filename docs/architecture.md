@@ -28,6 +28,8 @@
 | `server/src/budget/` | pricing, energy, time zones |
 | `server/src/connections/` | parent-approved connections |
 | `server/src/desk/` | the Studio, the OC workshop, the desk client |
+| `server/src/pip/` | the 3D look (checked lists), the saved Pip and its chat picture, describe-a-look |
+| `client/src/pip3d/` | the 3D engine (three.js, loaded only when a 3D stage is shown) and the maker parts |
 | `server/src/voice/` | the Wyoming protocol client |
 | `server/src/checkins/` | check-in rules and web push |
 | `server/src/reporting/` | reporters |
