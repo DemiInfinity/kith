@@ -530,3 +530,18 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .topbar .tb-who { margin-top: 18px; }
 .topbar .tb-dp { display: grid; border-radius: 50%; padding: 3px; background: var(--hearth); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
 .topbar.slim { padding-bottom: 0; min-height: calc(var(--safe-top) + 58px); }
+/* Phone header: the bar is short; Pip's picture, name and status hang below it, over the content,
+   and messages scroll up underneath them to the bar. */
+.main.hang { --hang: 92px; }
+.topbar { z-index: 5; min-height: calc(var(--safe-top) + 58px); padding-bottom: 0; }
+.main.hang .topbar .tb-who { position: absolute; left: 50%; top: calc(var(--safe-top) + 26px); transform: translateX(-50%); margin-top: 0; }
+.topbar .tb-label { display: flex; flex-direction: column; align-items: center; margin-top: 2px; padding: 3px 12px 4px; border-radius: 14px; background: rgba(36, 24, 32, 0.82); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line-soft); max-width: 100%; }
+.topbar .tb-label b { margin-top: 0; }
+.main.hang .messages { padding-top: calc(18px + var(--hang)); }
+.main.hang > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang)); }
+.main.hang > .threadbar:not(.desktop-only) { margin-top: var(--hang); }
+.main.hang:has(> .threadbar:not(.desktop-only)) .messages { padding-top: 18px; }
+@media (min-width: 1100px) { .main.hang { --hang: 0px; } }
+.topbar .tb-logo { grid-column: 1; }
+.topbar .tb-right { grid-column: 3; }
+.topbar .tb-dp { padding: 2px; background: var(--hearth); border: 2.5px solid var(--lilac); box-shadow: 0 0 0 3px var(--hearth), 0 8px 18px rgba(0,0,0,0.4); }
