@@ -16,7 +16,10 @@ import { addWorld, deleteCharacter, deleteWorld, listCharacters, listWorld, save
 import { createReport, deliverReport, listReports, type Reporter } from "./reporting/reporter.js";
 import { toolLog } from "./connections/connections.js";
 import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budget.js";
-import { startOfMonth, startOfWeek } from "./budget/time.js";
+import { startOfDay, startOfMonth, startOfWeek } from "./budget/time.js";
+import { activitySince } from "./desk/activity.js";
+import { companionFiles } from "./companion/files.js";
+import { localDate } from "./budget/time.js";
 import { pushReady, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
 import type { Energy } from "./budget/budget.js";
@@ -119,6 +122,51 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     } catch (err) {
       return reply.code(503).send({ error: (err as Error).message });
     }
+  });
+
+  // ── The desk's browser and today's work (child and parent both see these) ─────────────
+  app.get("/api/desk/browser", { preHandler: either }, async () => {
+    let live = null;
+    try { live = await studio.desk.live(); } catch { /* desk not reachable */ }
+    const s = loadParentSettings(db).browser;
+    return { enabled: s.enabled, sites: s.sites, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
+  });
+  app.get("/api/desk/today", { preHandler: either }, async () => {
+    const dayStart = startOfDay(Date.now(), config.timezone);
+    const byModel = all<{ model: string; usd: number }>(db, "SELECT model, SUM(usd) AS usd FROM spend WHERE bucket = 'desk' AND ts >= ? GROUP BY model", dayStart);
+    const desk = studio.deskEnergy();
+    return {
+      activity: activitySince(db, dayStart),
+      budget: {
+        slice: desk.usd.dailySlice, allowanceLeft: desk.usd.allowanceLeft, percent: desk.percent, canWork: desk.canWork,
+        full: byModel.filter((r) => r.model === config.anthropic.fullModel).reduce((t, r) => t + r.usd, 0),
+        low: byModel.filter((r) => r.model !== config.anthropic.fullModel).reduce((t, r) => t + r.usd, 0),
+      },
+      power: childEnergy(energyNow(db)),
+      google: Boolean(studio.storage?.google?.ready()),
+    };
+  });
+
+  // ── The companion's profile: its files and what's scheduled ───────────────────────────
+  app.get("/api/pip/files", { preHandler: either }, async () => companionFiles(db, childName(db)));
+  app.get("/api/pip/schedule", { preHandler: either }, async () => {
+    const s = loadParentSettings(db);
+    const p = loadProfile(db);
+    const today = localDate(Date.now(), config.timezone);
+    return {
+      jobs: studio.jobs(20),
+      checkins: {
+        toggles: p.checkins, quietHours: s.quietHours, maxPerDay: s.maxCheckinsPerDay,
+        upcoming: listMemories(db).filter((m) => m.about_date && m.about_date >= today && !m.asked).map((m) => ({ date: m.about_date, text: m.text, icon: m.icon })),
+        recent: all(db, "SELECT ts, kind, text FROM checkins ORDER BY ts DESC LIMIT 10"),
+      },
+      routines: [
+        { icon: "📔", what: "Write in its journal", when: "Evenings after 8pm, on days you chatted" },
+        { icon: "🗞️", what: "Weekly summary (you and " + config.people.parentLabel + " both see it)", when: "Sunday evenings" },
+        { icon: "🧹", what: "Delete chats older than " + s.retentionDays + " days", when: "Every few minutes" },
+        { icon: "🔁", what: "Retry any report that didn’t get through", when: "Every few minutes" },
+      ],
+    };
   });
 
   // ── Identity, personality, memory ──────────────────────────────────────────────────────

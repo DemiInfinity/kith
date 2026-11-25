@@ -1,0 +1,17 @@
+{
+  "name": "@kith/egress",
+  "private": true,
+  "type": "module",
+  "description": "The desk browser's only way out: an HTTP proxy that allows the family's safe list and nothing else.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  }
+}

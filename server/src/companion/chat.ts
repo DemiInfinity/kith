@@ -27,6 +27,7 @@ import { localParts } from "../budget/time.js";
 import { modeNote, prefersLowPower, type Mode, type ModeCtx } from "./modes.js";
 import { conversationContext } from "./context.js";
 import { getSubject } from "../study/study.js";
+import { logActivity } from "../desk/activity.js";
 import { get as dbGet } from "../db.js";
 export type { Mode } from "./modes.js";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
@@ -119,6 +120,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
       const last = dbGet<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'last_power'");
       const switchedToLow = energy.mode === "low" && (!last || JSON.parse(last.json) === "full");
       run(db, "INSERT INTO settings(key, json) VALUES('last_power', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(energy.mode));
+      if (switchedToLow) logActivity(db, "🔋", `Switched to Low power${energy.fullBackAt ? ` (Full power back ${whenText(energy.fullBackAt)})` : ""}`);
       replyText = await generateReply(deps, { clean, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
       if (report) mood = "concerned";
     } catch (err) {

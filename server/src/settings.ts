@@ -52,6 +52,22 @@ export const Connection = z.object({
 });
 export type Connection = z.infer<typeof Connection>;
 
+export const BrowserSettings = z.object({
+  // Pip's browser on the desk: reading only, safe-listed sites only, every page logged.
+  enabled: z.boolean().default(true),
+  sites: z.array(z.string().max(120)).max(60).default([
+    "en.wikipedia.org", "simple.wikipedia.org", "www.bbc.co.uk/bitesize", "www.thenational.academy",
+    "www.natgeokids.com", "www.nhm.ac.uk", "www.tate.org.uk", "www.metmuseum.org", "www.corbettmaths.com",
+  ]),
+  // Images and styles only (never scripts) may also come from these.
+  assetHosts: z.array(z.string().max(120)).max(60).default([
+    "upload.wikimedia.org", "static.files.bbci.co.uk", "ichef.bbci.co.uk", "media.tate.org.uk", "images.metmuseum.org",
+  ]),
+  // "wikipedia" needs no key. "brave" uses the Brave Search API with SafeSearch strict (KITH_BRAVE_API_KEY).
+  search: z.enum(["wikipedia", "brave"]).default("wikipedia"),
+});
+export type BrowserSettings = z.infer<typeof BrowserSettings>;
+
 export const ParentSettings = z.object({
   budgets: Budgets.default(Budgets.parse({})),
   quietHours: z
@@ -64,6 +80,7 @@ export const ParentSettings = z.object({
   ]),
   retentionDays: z.number().int().min(1).max(30).default(30),
   connections: z.array(Connection).max(20).default(defaultConnections()),
+  browser: BrowserSettings.default(BrowserSettings.parse({})),
 });
 export type ParentSettings = z.infer<typeof ParentSettings>;
 

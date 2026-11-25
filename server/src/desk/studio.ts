@@ -16,6 +16,8 @@ import { stripHtml } from "../connections/connections.js";
 import { DeskClient, DeskError, type ItemMeta } from "./deskClient.js";
 import { charactersForPrompt } from "./oc.js";
 import type { Storage } from "../storage/storage.js";
+import { Browser, untrusted, WEB_RULES } from "./browse.js";
+import { logActivity } from "./activity.js";
 
 export const KINDS = {
   story: { format: "md", icon: "📖", what: "a story in Markdown, with a title line and short paragraphs" },
@@ -86,7 +88,10 @@ export class Studio {
     private safety: SafetyChecker,
     readonly desk = new DeskClient(),
     readonly storage: Storage | null = null,
-  ) {}
+  ) {
+    this.browser = new Browser(db, desk, safety);
+  }
+  readonly browser: Browser;
 
   jobs(limit = 20): Job[] {
     return all<Job>(this.db, "SELECT id, ts, kind, title, status, progress, file_id, error, updated FROM desk_jobs ORDER BY ts DESC LIMIT ?", limit);
@@ -97,7 +102,7 @@ export class Studio {
   }
 
   /** Queue something new to make, or a change to something already made. */
-  enqueue(req: { kind: Kind | "edit"; title: string; brief: string; characterIds?: number[]; chapters?: number; fileId?: string }): { ok: true; job: Job } | { ok: false; error: string } {
+  enqueue(req: { kind: Kind | "edit"; title: string; brief: string; characterIds?: number[]; chapters?: number; fileId?: string; lookUp?: string }): { ok: true; job: Job } | { ok: false; error: string } {
     if (!this.llm.available) return { ok: false, error: "The desk can't make things until an API key is set." };
     const energy = this.deskEnergy();
     if (!energy.canWork) return { ok: false, error: "The desk's energy for today is used up. It tops up tomorrow." };
@@ -111,6 +116,7 @@ export class Studio {
       ts, req.kind, req.title.slice(0, 80), JSON.stringify(req), req.fileId ?? null, ts,
     );
     const id = Number(res.lastInsertRowid);
+    logActivity(this.db, "💬", req.kind === "edit" ? `Asked to change something: ${req.brief.slice(0, 80)}` : `Asked for ${req.title}`);
     this.queue.push(id);
     void this.pump();
     return { ok: true, job: this.job(id)! };
@@ -144,11 +150,13 @@ export class Studio {
           const req = JSON.parse(row.request);
           const fileId = req.kind === "edit" ? await this.edit(id, req) : await this.make(id, req);
           this.update(id, { status: "done", progress: 100, file_id: fileId });
+          logActivity(this.db, "✅", `${req.kind === "edit" ? "Changed" : "Made"} ${row.title}${this.deskEnergy().mode === "low" || LOW_POWER_KINDS.has(req.kind) ? " (Low power)" : ""}`);
         } catch (err) {
           const msg = err instanceof DeskError && err.problems.length
             ? `The desk didn't keep it because it ${err.problems.join(", ")}.`
             : (err as Error).message;
           this.update(id, { status: "failed", error: msg.slice(0, 300) });
+          logActivity(this.db, "⚠️", `Couldn't finish ${row.title}`);
         } finally {
           await this.desk.setStatus("", 0);
         }
@@ -204,9 +212,19 @@ export class Studio {
     return out;
   }
 
-  private async make(id: number, req: { kind: Kind; title: string; brief: string; characterIds?: number[]; chapters?: number }): Promise<string> {
+  private async make(id: number, req: { kind: Kind; title: string; brief: string; characterIds?: number[]; chapters?: number; lookUp?: string }): Promise<string> {
     const spec = KINDS[req.kind];
-    const system = `${RULES}\n\n${this.context(req.characterIds)}`;
+    let system = `${RULES}\n\n${this.context(req.characterIds)}`;
+    // Look things up first, if asked: safe-listed pages only, read-only, every page logged.
+    let sources = "";
+    if (req.lookUp && this.browser.settings().enabled) {
+      await this.desk.setStatus(`looking up ${req.lookUp}`, 8);
+      const pages = await this.browser.research(req.lookUp, req.title, id);
+      if (pages.length) {
+        sources = `\n\nWhat you read on safe-listed sites for this:\n${pages.map(untrusted).join("\n\n")}`;
+        system += `\n\n${WEB_RULES}`;
+      }
+    }
     const chapters = req.kind === "story" ? Math.max(1, Math.min(3, req.chapters ?? 1)) : 1;
     let meta: ItemMeta | null = null;
     let soFar = "";
@@ -218,7 +236,8 @@ export class Studio {
       const prompt = chapters > 1
         ? `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}\nThis is chapter ${ch} of ${chapters}.${soFar ? `\nThe story so far (keep it, then add chapter ${ch} at the end):\n${soFar}` : ""}\nReturn the whole story so far as content, and "chapter ${ch} of ${chapters}" as the summary.`
         : `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}`;
-      const out = await this.safeGenerate(system, prompt, req.brief, req.kind);
+      const withSources = prompt + sources;
+      const out = await this.safeGenerate(system, withSources, req.brief, req.kind);
       soFar = out.content;
       meta = meta
         ? await this.desk.update(meta.id, { title: out.title, summary: out.summary, content: out.content })

@@ -3,13 +3,20 @@
   "private": true,
   "version": "0.1.0",
   "description": "A self-hosted AI companion for a teenager, kept at home with a grown-up in the loop.",
-  "workspaces": ["server", "client", "desk"],
+  "workspaces": [
+    "server",
+    "client",
+    "desk",
+    "egress"
+  ],
   "scripts": {
     "dev": "npm run dev -w server & npm run dev -w client",
-    "build": "npm run build -w desk && npm run build -w server && npm run build -w client",
-    "test": "npm test -w server && npm test -w desk && npm test -w client",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w desk && npm run typecheck -w client",
+    "build": "npm run build -w desk && npm run build -w egress && npm run build -w server && npm run build -w client",
+    "test": "npm test -w server && npm test -w desk && npm test -w egress && npm test -w client",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w desk && npm run typecheck -w egress && npm run typecheck -w client",
     "vapid": "node scripts/vapid.mjs"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  }
 }

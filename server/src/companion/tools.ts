@@ -46,13 +46,14 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
         brief: { type: "string", description: "What to make, with the details they asked for" },
         chapters: { type: "integer", minimum: 1, maximum: 3, description: "Stories only" },
         character_ids: { type: "array", items: { type: "integer" }, description: "Their OCs to include, if any" },
+        look_up: { type: "string", description: "Optional: a search to look things up on the family's safe-listed websites first (for facts, revision notes, flashcards). Leave out for stories and games." },
       }, ["kind", "title", "brief"]),
       async (input) => {
         const v = z.object({
           kind: z.enum(KIND_NAMES as [string, ...string[]]), title: z.string().min(1), brief: z.string(),
-          chapters: z.number().int().optional(), character_ids: z.array(z.number().int()).optional(),
+          chapters: z.number().int().optional(), character_ids: z.array(z.number().int()).optional(), look_up: z.string().max(120).optional(),
         }).parse(input);
-        const job = studio.enqueue({ kind: v.kind as never, title: v.title, brief: v.brief, chapters: v.chapters, characterIds: v.character_ids });
+        const job = studio.enqueue({ kind: v.kind as never, title: v.title, brief: v.brief, chapters: v.chapters, characterIds: v.character_ids, lookUp: v.look_up });
         if (!job.ok) return job.error;
         effects.jobs.push({ id: job.job.id, title: job.job.title, kind: job.job.kind });
         return `Started on your desk (job ${job.job.id}). Tell them it'll appear on your desk when it's ready.`;

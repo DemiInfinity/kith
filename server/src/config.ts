@@ -112,6 +112,9 @@ export const config = {
     appId: env.KITH_GOOGLE_PROJECT_NUMBER ?? "",
   },
 
+  // Optional: Brave Search API key for the desk browser's search (always SafeSearch strict).
+  braveApiKey: env.KITH_BRAVE_API_KEY ?? "",
+
   // Disabled until a child-safety image detector (e.g. Thorn Safer / IWF hash matching) is wired in.
   drawingUploads: {
     detector: env.KITH_IMAGE_SAFETY_DETECTOR ?? "",

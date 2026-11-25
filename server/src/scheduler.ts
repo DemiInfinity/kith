@@ -16,6 +16,7 @@ import { isGuiltTrip, redactPersonal } from "./safety/rules.js";
 import type { SafetyChecker } from "./safety/check.js";
 import { deliverReport, failedReports, type Reporter } from "./reporting/reporter.js";
 import { loadRolling, saveRolling } from "./companion/context.js";
+import { logActivity } from "./desk/activity.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -45,6 +46,8 @@ export function retention(db: DB, now = Date.now()) {
   if (rolling && rolling.ts < cutoff) saveRolling(db, null);
   run(db, "DELETE FROM checkins WHERE ts < ?", cutoff);
   run(db, "DELETE FROM tool_log WHERE ts < ?", cutoff);
+  run(db, "DELETE FROM desk_activity WHERE ts < ?", cutoff);
+  run(db, "DELETE FROM browse_log WHERE ts < ?", cutoff);
   run(db, "DELETE FROM sessions WHERE expires < ?", now);
   run(db, "DELETE FROM oidc_state WHERE created < ?", now - 15 * MIN);
   // Reports, summaries and the journal are kept for a year so both can look back.
@@ -137,6 +140,7 @@ async function journal(deps: SchedulerDeps, now: number) {
     const text = textOf(msg);
     if (text && (await deps.safety.checkOutput(text, "")).ok) {
       run(db, "INSERT OR IGNORE INTO journal(day, text, created) VALUES (?,?,?)", day, text.slice(0, 500), now);
+      logActivity(db, "📔", "Wrote in its journal");
     }
   } catch (err) {
     console.warn("[journal]", (err as Error).message);

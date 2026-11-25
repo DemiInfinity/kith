@@ -14,20 +14,20 @@ export class DeskError extends Error {
 export class DeskClient {
   constructor(private base = config.desk.url, private token = config.desk.token) {}
 
-  private async req<T>(method: string, p: string, body?: unknown): Promise<T> {
+  private async req<T>(method: string, p: string, body?: unknown, timeout = 15_000): Promise<T> {
     let res: Response;
     try {
       res = await fetch(this.base + p, {
         method,
         headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch {
       throw new DeskError("The desk isn't reachable right now.");
     }
     const j = (await res.json().catch(() => ({}))) as { problems?: string[]; error?: string };
-    if (res.status === 422) throw new DeskError("The desk didn't keep it", j.problems ?? []);
+    if (res.status === 422) throw new DeskError(j.error ?? "The desk didn't keep it", j.problems ?? []);
     if (!res.ok) throw new DeskError(j.error ?? `Desk answered ${res.status}`);
     return j as T;
   }
@@ -44,6 +44,10 @@ export class DeskClient {
   }
   favourite(id: string, favourite: boolean) { return this.req<ItemMeta>("PUT", `/items/${encodeURIComponent(id)}/favourite`, { favourite }); }
   remove(id: string) { return this.req<{ ok: boolean }>("DELETE", `/items/${encodeURIComponent(id)}`); }
+  browse(url: string, why: string, jobId: number | null, sites: string[], assetHosts: string[]) {
+    return this.req<{ url: string; title: string; text: string }>("POST", "/browse", { url, why, jobId, sites, assetHosts }, 45_000);
+  }
+  live() { return this.req<{ busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string }>("GET", "/browser/live"); }
   status() { return this.req<{ activity: string; progress: number; updatedAt: number }>("GET", "/status"); }
   setStatus(activity: string, progress: number) { return this.req("PUT", "/status", { activity, progress }).catch(() => undefined); }
 }

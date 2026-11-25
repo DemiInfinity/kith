@@ -6,7 +6,8 @@ import type { DB } from "../db.js";
 import { all, run } from "../db.js";
 import { loadParentSettings } from "../settings.js";
 import { redactPersonal } from "../safety/rules.js";
-import { GoogleDrive, googleConfigured, loadGoogle, saveToDrive, type MirrorInput } from "./google.js";
+import { folderFor, GoogleDrive, googleConfigured, loadGoogle, saveToDrive, type MirrorInput } from "./google.js";
+import { logActivity } from "../desk/activity.js";
 
 export interface CloudBackend {
   readonly name: string;
@@ -57,6 +58,7 @@ export class Storage {
         const r = await b.save(item);
         run(this.db, "INSERT INTO cloud_links(ts, item_id, version, provider, url, extra) VALUES (?,?,?,?,?,?)", Date.now(), itemId, item.version, b.name, r.url, r.extra ?? null);
         links.push({ provider: b.name, ...r });
+        logActivity(this.db, "☁︎", `Saved “${item.title}”${item.version > 1 ? ` (v${item.version})` : ""} to Kith / ${folderFor(item.kind, item.characterIds)}`);
       } catch (err) {
         toolLogger(this.db, b.name === "google" ? "Google Drive" : b.name)("save", item.title, (err as Error).message, false);
       }

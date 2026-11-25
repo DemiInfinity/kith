@@ -5,6 +5,8 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
+import crypto from "node:crypto";
+import { loadParentSettings } from "./settings.js";
 import { config } from "./config.js";
 import { openDb } from "./db.js";
 import { AnthropicLLM } from "./llm.js";
@@ -73,6 +75,14 @@ async function main() {
   });
 
   app.get("/api/public/health", async () => ({ ok: true }));
+  // The egress proxy asks for the desk browser's safe list here (shared token; not a user API).
+  app.get("/internal/egress", async (req, reply) => {
+    const got = Buffer.from(req.headers.authorization ?? "");
+    const want = Buffer.from(`Bearer ${config.desk.token}`);
+    if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return reply.code(401).send({ error: "unauthorised" });
+    const b = loadParentSettings(db).browser;
+    return { enabled: b.enabled, hosts: [...b.sites, ...b.assetHosts] };
+  });
   app.get("/api/public/signin", async () => ({ oidc: Boolean(config.oidc.issuer), label: config.oidc.label, dev: config.devLogin }));
 
   registerAuth(app, db);

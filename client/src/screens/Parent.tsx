@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
-import { Desk } from "./Desk";
+import { DeskComputer } from "./DeskComputer";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
@@ -218,7 +218,7 @@ export function Parent({ me }: { me: Me }) {
             </div>
           </>
         )}
-        {tab === "desk" && <Desk me={meChild} canEdit={false} />}
+        {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
         {tab === "settings" && o && <SettingsForm initial={o.settings} onSaved={load} />}
       </div>
     </div>

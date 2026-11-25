@@ -1,24 +1,42 @@
-# Builds both images from one context:
-#   docker build --target kith -t kith .   (server + app)
-#   docker build --target desk -t kith-desk .   (the companion's offline desk)
+# Builds the images from one context:
+#   docker build --target kith -t kith .         (server + app)
+#   docker build --target desk -t kith-desk .    (the companion's offline desk, with its read-only browser)
+#   docker build --target egress -t kith-egress .  (the desk browser's only way out: the safe list)
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY client/package.json client/
 COPY desk/package.json desk/
+COPY egress/package.json egress/
 RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS desk
+# Playwright's image ships Chromium and Node; the version must match playwright-core in desk/package.json.
+FROM mcr.microsoft.com/playwright:v1.65.0-noble AS desk
 WORKDIR /app
-ENV NODE_ENV=production DESK_DIR=/desk DESK_PORT=8790
-COPY --from=build /app/desk/dist ./dist
-COPY desk/package.json ./
-RUN mkdir -p /desk && chown node:node /desk
-USER node
+ENV NODE_ENV=production DESK_DIR=/desk DESK_PORT=8790 PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY package.json package-lock.json ./
+COPY server/package.json server/
+COPY client/package.json client/
+COPY desk/package.json desk/
+COPY egress/package.json egress/
+RUN npm ci --omit=dev --workspace desk --no-audit --no-fund && npm cache clean --force
+COPY --from=build /app/desk/dist desk/dist
+RUN mkdir -p /desk && chown pwuser:pwuser /desk
+WORKDIR /app/desk
+USER pwuser
 EXPOSE 8790
+CMD ["node", "dist/index.js"]
+
+FROM node:22-alpine AS egress
+WORKDIR /app
+ENV NODE_ENV=production EGRESS_PORT=3128
+COPY --from=build /app/egress/dist ./dist
+COPY egress/package.json ./
+USER node
+EXPOSE 3128
 CMD ["node", "dist/index.js"]
 
 FROM node:22-alpine AS kith
@@ -28,6 +46,7 @@ COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY client/package.json client/
 COPY desk/package.json desk/
+COPY egress/package.json egress/
 RUN npm ci --omit=dev --workspace server --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/client/dist client/dist

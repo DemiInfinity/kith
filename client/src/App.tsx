@@ -6,7 +6,8 @@ import { Meet } from "./screens/Meet";
 import { Chat } from "./screens/Chat";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
-import { Desk, DeskAside } from "./screens/Desk";
+import { DeskAside } from "./screens/Desk";
+import { Profile as PipProfile, Settings } from "./screens/Profile";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
@@ -43,55 +44,33 @@ function SignIn() {
   );
 }
 
-const NAV = (name: string, parent: string) => [
+// Settings and the companion's profile hold the rest (personality, memories, What … sees, Google, the desk).
+const NAV = [
   { to: "/", icon: "💬", label: "Chat" },
-  { to: "/talk", icon: "🎙️", label: "Talk" },
-  { to: "/desk", icon: "🖥️", label: `${name}’s desk` },
   { to: "/study", icon: "📚", label: "Study" },
   { to: "/stories", icon: "✍️", label: "Stories with a friend" },
   { to: "/art", icon: "🎨", label: "Art" },
   { to: "/oc", icon: "⭐", label: "OC workshop" },
-  { to: "/memory", icon: "🧠", label: `What ${name} remembers` },
-  { to: "/me", icon: "✨", label: "Personality" },
-  { to: "/shared", icon: "👀", label: `What ${parent} sees` },
-  { to: "/google", icon: "☁️", label: "Google Drive" },
+  { to: "/settings", icon: "⚙️", label: "Settings" },
 ];
 const TABS = [
   { to: "/", icon: "💬", label: "Chat" },
-  { to: "/talk", icon: "🎙️", label: "Talk" },
   { to: "/study", icon: "📚", label: "Study" },
   { to: "/create", icon: "✨", label: "Create" },
-  { to: "/desk", icon: "🖥️", label: "Desk" },
+  { to: "/settings", icon: "⚙️", label: "Settings" },
 ];
+const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google"];
 
 function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
   return (
     <div className="screen narrow">
       <span className="hand">make something</span>
       <h2 className="screen-title">Create</h2>
-      {[["/stories", "✍️", "Stories with a friend", "Write together; every part credited"], ["/art", "🎨", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "⭐", "OC workshop", "Your characters and their world"], ["/desk", "🖥️", `Ask ${me.profile.name} to make something`, "Quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
+      {[["/stories", "✍️", "Stories with a friend", "Write together; every part credited"], ["/art", "🎨", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "⭐", "OC workshop", "Your characters and their world"], ["/pip", "🖥️", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
           <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
         </button>
       ))}
-    </div>
-  );
-}
-
-function YouMenu({ me, go }: { me: Me; go: (to: string) => void }) {
-  const name = me.profile.name;
-  const logout = async () => { await api("/auth/logout", { body: {} }).catch(() => undefined); location.href = "/"; };
-  return (
-    <div className="screen narrow">
-      <span className="hand">yours</span>
-      <h2 className="screen-title">You and {name}</h2>
-      {[["/me", "✨", "Personality", "Name, look, traits and voice"], ["/memory", "🧠", `What ${name} remembers`, "See and delete memories, check-ins"], ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"], ["/google", "☁️", "Google Drive", "Save what you make to your own Drive"]].map(([to, ic, t, d]) => (
-        <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
-          <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
-        </button>
-      ))}
-      <button className="btn ghost small" onClick={logout}>Sign out</button>
-      <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
     </div>
   );
 }
@@ -119,12 +98,15 @@ function ChildApp({ me: initialMe }: { me: Me }) {
 
   let screen: React.ReactNode;
   if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
-  else if (path === "/desk") screen = <Desk me={me} energy={energy} />;
+  else if (path === "/desk" || path.startsWith("/pip")) {
+    const t = (path.split("/")[2] ?? "desk") as "desk" | "scheduled" | "soul" | "personality" | "memory";
+    screen = <PipProfile me={me} state={state} mood={baseMood} go={go} initialTab={["scheduled", "soul", "personality", "memory"].includes(t) ? t : "desk"} />;
+  }
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
   else if (path === "/shared") screen = <Shared me={me} />;
-  else if (path === "/you") screen = <YouMenu me={me} go={go} />;
+  else if (path === "/settings" || path === "/you") screen = <Settings me={me} go={go} />;
   else if (path === "/google") screen = <Google me={me} />;
   else if (path === "/study") screen = <Study me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
@@ -135,35 +117,40 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   return (
     <div className="app">
       <nav className="sidebar" aria-label="Sections">
-        <div className="me">
+        <button className="me" onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
           <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" />
           <span><b>{name}</b><span>{moodText}</span></span>
-        </div>
+        </button>
         {energy && <div style={{ margin: "-4px 6px 12px" }}><EnergyCard energy={energy} compact /></div>}
-        {NAV(name, me.parentLabel).map((n) => (
-          <button key={n.to} className={`navbtn ${path === n.to ? "on" : ""}`} aria-current={path === n.to ? "page" : undefined} onClick={() => go(n.to)}>
-            <span className="ic" aria-hidden>{n.icon}</span>{n.label}
-          </button>
-        ))}
+        {NAV.map((n) => {
+          const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
+          return (
+            <button key={n.to} className={`navbtn ${on ? "on" : ""}`} aria-current={on ? "page" : undefined} onClick={() => go(n.to)}>
+              <span className="ic" aria-hidden>{n.icon}</span>{n.label}
+            </button>
+          );
+        })}
+        <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic" aria-hidden>🧡</span>Need a grown-up?</button>
         <div className="foot">
           <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
-          <button className="btn ember block" style={{ minHeight: 44, fontSize: 14 }} onClick={openHelp}>Need a grown-up?</button>
+          <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}>📞 Call {name}</button>
         </div>
       </nav>
       <div className="main">
         {path !== "/talk" && (
           <header className="topbar mobile-only">
-            <button onClick={() => go("/you")} aria-label="You and your companion" style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" /></button>
-            <span className="who" onClick={() => go("/you")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
-            <button className="grownup" onClick={openHelp}>Need a grown-up?</button>
+            <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" /></button>
+            <span className="who" onClick={() => go("/pip")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
+            <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}>📞 Call</button>
           </header>
         )}
         {screen}
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
-            const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path));
+            const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><span aria-hidden>{t.icon}</span><span>{t.label}</span></button>;
           })}
+          <button className="sos" onClick={openHelp}><span aria-hidden>🧡</span><span>Need a grown-up?</span></button>
         </nav>
       </div>
       {showAside && <DeskAside me={me} go={go} />}

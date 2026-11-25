@@ -5,6 +5,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
+import { browse, liveView } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
@@ -54,6 +55,16 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, status);
       }
     }
+    if (parts[0] === "browse" && req.method === "POST") {
+      const b = await readJson(req);
+      const rules = { sites: (b.sites as string[]) ?? [], assetHosts: (b.assetHosts as string[]) ?? [] };
+      try {
+        return send(res, 200, await browse(String(b.url), String(b.why ?? "").slice(0, 200), Number.isInteger(b.jobId) ? (b.jobId as number) : null, rules));
+      } catch (err) {
+        return send(res, 422, { error: (err as Error).message });
+      }
+    }
+    if (parts[0] === "browser" && parts[1] === "live" && req.method === "GET") return send(res, 200, liveView());
     if (parts[0] === "items") {
       const id = parts[1];
       if (!id && req.method === "GET") return send(res, 200, store.list());

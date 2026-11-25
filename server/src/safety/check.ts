@@ -83,7 +83,7 @@ family or Childline are all fine. When in doubt about something genuinely harmfu
 
 export interface SafetyChecker {
   checkInput(text: string, context: string[]): Promise<InputVerdict>;
-  checkOutput(reply: string, childText: string): Promise<OutputVerdict>;
+  checkOutput(reply: string, childText: string, bucket?: "chat" | "desk"): Promise<OutputVerdict>;
 }
 
 const STEER_DEFAULT: Partial<Record<InputCategory, string>> = {
@@ -138,7 +138,7 @@ export class Safety implements SafetyChecker {
     }
   }
 
-  async checkOutput(reply: string, childText: string): Promise<OutputVerdict> {
+  async checkOutput(reply: string, childText: string, bucket: "chat" | "desk" = "chat"): Promise<OutputVerdict> {
     const ruleCats = checkOutputRules(reply);
     if (ruleCats.length) return { ok: false, categories: ruleCats, reason: "Caught by the fixed safety rules." };
     if (!this.llm.available) return { ok: true, categories: [], reason: "Fixed rules only (no API key)." };
@@ -146,7 +146,7 @@ export class Safety implements SafetyChecker {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const v = await callJson(this.llm, {
-          bucket: "chat",
+          bucket,
           kind: "safety",
           params: {
             model: config.anthropic.safetyModel,

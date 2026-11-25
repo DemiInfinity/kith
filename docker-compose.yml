@@ -18,24 +18,42 @@ services:
     volumes:
       - kith-data:/data
     networks: [default, deskland]
-    depends_on: [desk]
+    depends_on: [desk, egress]
     restart: unless-stopped
 
   # The companion's desk: no internet (internal network), no API key, read-only filesystem.
+  # Its browser can only get out through the egress proxy, which allows the family's safe list.
   desk:
     build: { context: ., target: desk }
     image: kith-desk:local
     environment:
       KITH_DESK_TOKEN: ${KITH_DESK_TOKEN:?set KITH_DESK_TOKEN in .env}
+      DESK_EGRESS_PROXY: http://egress:3128
+      HOME: /tmp/home
     volumes:
       - desk-data:/desk
     networks: [deskland]
     read_only: true
     tmpfs: [/tmp]
+    shm_size: 512m
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 256m
-    pids_limit: 64
+    mem_limit: 1g
+    pids_limit: 256
+    restart: unless-stopped
+
+  # The desk browser's only way to the internet: HTTPS to safe-listed hosts, nothing else.
+  egress:
+    build: { context: ., target: egress }
+    image: kith-egress:local
+    environment:
+      KITH_DESK_TOKEN: ${KITH_DESK_TOKEN:?set KITH_DESK_TOKEN in .env}
+      KITH_INTERNAL_URL: http://kith:8787
+    networks: [default, deskland]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
     restart: unless-stopped
 
   # Local speech-to-text (Wyoming protocol). Audio is processed in memory and never stored.

@@ -145,12 +145,15 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
 
 function inline(s: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)/g;
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|(?<![\w])_[^_]+_(?![\w]))/g;
   let last = 0, m: RegExpExecArray | null, i = 0;
   while ((m = re.exec(s))) {
     if (m.index > last) out.push(s.slice(last, m.index));
     const t = m[0];
-    out.push(t.startsWith("**") ? <b key={`${key}-${i++}`}>{t.slice(2, -2)}</b> : <i key={`${key}-${i++}`}>{t.slice(1, -1)}</i>);
+    out.push(
+      t.startsWith("`") ? <code key={`${key}-${i++}`} style={{ fontSize: "0.9em", background: "rgba(217,163,224,0.15)", padding: "1px 5px", borderRadius: 5 }}>{t.slice(1, -1)}</code>
+        : t.startsWith("**") ? <b key={`${key}-${i++}`}>{t.slice(2, -2)}</b> : <i key={`${key}-${i++}`}>{t.slice(1, -1)}</i>,
+    );
     last = m.index + t.length;
   }
   if (last < s.length) out.push(s.slice(last));
