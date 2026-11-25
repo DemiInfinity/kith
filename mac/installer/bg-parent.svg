@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="420" viewBox="0 0 660 420">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF7FB"/><stop offset="1" stop-color="#F6E6EF"/></linearGradient>
+    <linearGradient id="a" gradientUnits="userSpaceOnUse" x1="262" y1="0" x2="404" y2="0"><stop offset="0" stop-color="#E7B4EE"/><stop offset="0.5" stop-color="#EFA6B8"/><stop offset="1" stop-color="#F7A055"/></linearGradient>
+  </defs>
+  <rect width="660" height="420" fill="url(#g)"/>
+  <text x="330" y="70" text-anchor="middle" font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial" font-size="26" font-weight="700" fill="#2A1C27">Drag Kith Parent into Applications</text>
+  <text x="330" y="100" text-anchor="middle" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Arial" font-size="14" fill="#6B5463">Then open it from Launchpad or your Dock.</text>
+  <path d="M262 215 H392" stroke="url(#a)" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M372 192 L404 215 L372 238" stroke="#F7A055" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="330" y="392" text-anchor="middle" font-family="-apple-system, 'Helvetica Neue', Arial" font-size="12" fill="#8A7382">Kith · a companion, kept at home</text>
+</svg>

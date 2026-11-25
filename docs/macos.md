@@ -168,12 +168,19 @@ mac/build-all.sh
 
 This puts all four files in `mac/dist/` (git-ignored):
 
-- `Kith.app` and `Kith_0.1.0_aarch64.dmg`;
-- `Kith Parent.app` and `Kith Parent_0.1.0_aarch64.dmg`.
+- `Kith.app` and `Kith.dmg`;
+- `Kith Parent.app` and `Kith Parent.dmg`.
 
 It runs `cargo tauri build` twice, the second time with `--config tauri.parent.conf.json` (the parent build's name, id
 and icon). It copies each result out, because Tauri empties its `dmg` folder on every build. `CI=true` skips the
 Finder window the `.dmg` step would otherwise open.
+
+The `.dmg` files are styled installers: a background saying "Drag Kith into Applications", the app on the left, an
+arrow, and Applications on the right. `mac/installer/make-dmgs.sh` makes them with
+[dmgbuild](https://pypi.org/project/dmgbuild/) (`pip install dmgbuild`, or set `DMGBUILD` to its path). dmgbuild
+writes the window layout directly instead of through Finder, so it looks the same whatever the building Mac's Finder
+settings are (for example "Use Groups"). Without dmgbuild, you get Tauri's plain `Kith_0.1.0_aarch64.dmg` files instead.
+The backgrounds are `mac/installer/bg-*.svg`, rendered to `bg-*.tiff` at 1x and 2x.
 
 To build just one app without the `.dmg`, run this from `mac/src-tauri`:
 
