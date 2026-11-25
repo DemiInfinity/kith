@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
 import { HelpSheet, useRoute } from "./components/bits";
+import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat } from "./screens/Chat";
 import { Talk } from "./screens/Talk";
@@ -46,19 +47,19 @@ function SignIn() {
 }
 
 // Settings and the companion's profile hold the rest (personality, memories, What … sees, Google, the desk).
-const NAV = [
-  { to: "/", icon: "💬", label: "Chat" },
-  { to: "/study", icon: "📚", label: "Study" },
-  { to: "/stories", icon: "✍️", label: "Stories with a friend" },
-  { to: "/art", icon: "🎨", label: "Art" },
-  { to: "/oc", icon: "⭐", label: "OC workshop" },
-  { to: "/settings", icon: "⚙️", label: "Settings" },
+const NAV: { to: string; icon: IconName; label: string }[] = [
+  { to: "/", icon: "chat", label: "Chat" },
+  { to: "/study", icon: "study", label: "Study" },
+  { to: "/stories", icon: "stories", label: "Stories with a friend" },
+  { to: "/art", icon: "art", label: "Art" },
+  { to: "/oc", icon: "oc", label: "OC workshop" },
+  { to: "/settings", icon: "settings", label: "Settings" },
 ];
-const TABS = [
-  { to: "/", icon: "💬", label: "Chat" },
-  { to: "/study", icon: "📚", label: "Study" },
-  { to: "/create", icon: "✨", label: "Create" },
-  { to: "/settings", icon: "⚙️", label: "Settings" },
+const TABS: { to: string; icon: IconName; label: string }[] = [
+  { to: "/", icon: "chat", label: "Chat" },
+  { to: "/study", icon: "study", label: "Study" },
+  { to: "/create", icon: "create", label: "Create" },
+  { to: "/settings", icon: "settings", label: "Settings" },
 ];
 const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google"];
 
@@ -127,14 +128,14 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
           return (
             <button key={n.to} className={`navbtn ${on ? "on" : ""}`} aria-current={on ? "page" : undefined} onClick={() => go(n.to)}>
-              <span className="ic" aria-hidden>{n.icon}</span>{n.label}
+              <span className="ic"><Icon name={n.icon} on={on} size={22} /></span>{n.label}
             </button>
           );
         })}
-        <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic" aria-hidden>🧡</span>Need a grown-up?</button>
+        <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic"><Icon name="grownup" size={22} /></span>Need a grown-up?</button>
         <div className="foot">
           <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
-          <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}>📞 Call {name}</button>
+          <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}><Icon name="call" size={18} /> Call {name}</button>
         </div>
       </nav>
       <div className="main">
@@ -142,16 +143,16 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <header className="topbar mobile-only">
             <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" laptop={!!working} /></button>
             <span className="who" onClick={() => go("/pip")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
-            <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}>📞 Call</button>
+            <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={17} /> Call</button>
           </header>
         )}
         {screen}
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
             const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
-            return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><span aria-hidden>{t.icon}</span><span>{t.label}</span></button>;
+            return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><Icon name={t.icon} on={on} /><span>{t.label}</span></button>;
           })}
-          <button className="sos" onClick={openHelp}><span aria-hidden>🧡</span><span>Need a grown-up?</span></button>
+          <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Need a grown-up?</span></button>
         </nav>
       </div>
       {showAside && <DeskAside me={me} go={go} />}

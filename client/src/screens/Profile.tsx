@@ -3,6 +3,7 @@ import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
+import { Icon } from "../components/Icons";
 
 interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
@@ -78,7 +79,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
           <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
         </div>
         <div className="row">
-          <button className="callbtn" onClick={() => go("/talk")}>📞 Call</button>
+          <button className="callbtn" onClick={() => go("/talk")}><Icon name="call" size={17} /> Call</button>
           <button className="btn ghost small" onClick={() => go("/")}>💬 Message</button>
           <button className="btn ghost small" onClick={() => go("/me")}>✏️ Edit</button>
         </div>
