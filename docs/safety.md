@@ -119,8 +119,11 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
   such as reCAPTCHA, hCaptcha and Cloudflare); Pip stops, logs it and moves on, and never tries to get past one.
 - **A block list isn't perfect.** New sites appear all the time, so every page still goes through the safety check,
   unsuitable pages are skipped and logged, and both the child and the parent can watch it live.
-- **Read-only:** JavaScript is off; there are no downloads, uploads, form posts, sign-ins or cookies, and a fresh browser
-  context is used for every page.
+- **Pip only reads; people can do a little more, never sign in.** The browser has JavaScript, tabs and its own saved
+  storage (which the parent can clear). Pip itself never types, sends anything (only GET requests), or downloads. When
+  a person takes over they can click and type (so search boxes and site menus work), but password fields can't be
+  typed into and any request carrying a password is blocked. Downloads, uploads, notifications, camera, microphone and
+  location are always off, and pop-ups open as tabs under the same rules.
 - **Page text is untrusted data.** It's wrapped as `<untrusted_web_page>` with explicit rules not to follow anything it
   says, and it goes through the safety check. Unsuitable pages are skipped and the skip is logged.
 - **Every visit is logged** with its URL, time and the task it was for, and shown to the child and the parent. "Watch

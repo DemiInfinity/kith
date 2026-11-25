@@ -8,7 +8,7 @@ import { DeskComputer } from "./DeskComputer";
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
 type Category = "adult" | "gambling" | "dating" | "social" | "harm" | "proxies";
-interface BrowserSettings { enabled: boolean; mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; categories: Category[]; blockLists: string[]; search: "duckduckgo" | "wikipedia" | "brave" }
+interface BrowserSettings { enabled: boolean; mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; categories: Category[]; blockLists: string[]; search: "bing" | "duckduckgo" | "wikipedia" | "brave" }
 const CATEGORIES: [Category, string][] = [
   ["adult", "Adult and explicit"], ["gambling", "Gambling"], ["dating", "Dating"], ["social", "Social media and stranger chat"],
   ["harm", "Weapons, drugs, gore and self-harm"], ["proxies", "Proxies, VPNs and ways around filters"],
@@ -137,8 +137,9 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
 
       <div className="card">
         <b>The desk’s browser</b>
-        <span className="small">Reads websites only for tasks your child asked for, with JavaScript, sign-ins, forms and downloads off. It stops at robot checks (CAPTCHAs) and never tries to get past them. Every page is logged, safety-checked and can be watched live, and the proxy on the server applies the same rules again.</span>
+        <span className="small">A real browser with tabs, kept cookies and site data. On its own, Pip only reads pages for tasks your child asked for: it never types, signs in or downloads, and it stops at robot checks (CAPTCHAs) without trying to get past them. When you or your child take over, you can click, type and use tabs, but signing in is blocked. Every page is logged, safety-checked and can be watched live, and the proxy on the server applies the same rules again.</span>
         <Toggle label="Browsing switched on" checked={s.browser.enabled} onChange={(v) => setWeb({ enabled: v })} />
+        <button className="btn ghost small" onClick={async () => { if (confirm("Clear the desk browser’s saved data? Sites will forget their settings, and open tabs close.")) { try { await api("/api/parent/browser/clear", { body: {} }); setMsg("The desk browser’s saved data is cleared."); } catch (e) { setMsg((e as Error).message); } } }}>Clear saved data (cookies, site data, history)</button>
         <label className="field">What it can reach
           <select className="select" value={s.browser.mode} onChange={(e) => setWeb({ mode: e.target.value as BrowserSettings["mode"] })}>
             <option value="blocklist">The whole web, except what’s blocked (recommended)</option>
@@ -165,7 +166,8 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
         )}
         <label className="field">Search
           <select className="select" value={s.browser.search} onChange={(e) => setWeb({ search: e.target.value as BrowserSettings["search"] })}>
-            <option value="duckduckgo">DuckDuckGo, SafeSearch strict (no key needed)</option>
+            <option value="bing">Bing, SafeSearch strict (no key needed)</option>
+            <option value="duckduckgo">DuckDuckGo, SafeSearch strict (often blocks servers with a robot check)</option>
             <option value="brave">Brave Search, SafeSearch strict (needs KITH_BRAVE_API_KEY)</option>
             <option value="wikipedia">Wikipedia’s own search only</option>
           </select></label>

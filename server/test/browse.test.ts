@@ -86,8 +86,21 @@ describe("the desk browser, from the server", () => {
     expect(await b.read("https://www.example.org/", "x", null)).toBeNull();
     expect(all<{ outcome: string }>(db, "SELECT outcome FROM browse_log")[0].outcome).toBe("stopped: robot check");
   });
-  it("searches DuckDuckGo with SafeSearch strict, favourites first, blocked dropped", async () => {
+  it("searches Bing with SafeSearch strict, favourites first, blocked dropped", async () => {
     const db = openDb(":memory:");
+    let asked = "";
+    const a1 = (u: string) => `https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u=a1${Buffer.from(u).toString("base64url")}&amp;ntb=1`;
+    const html = ["https://www.example.org/a", "https://bet365.com/x", "https://en.wikipedia.org/wiki/Cell"].map((u) => `<li class="b_algo" data-x="1"><h2 class=""><a target="_blank" href="${a1(u)}">r</a></h2></li>`).join("");
+    const f = (async (u: string) => { if (String(u).includes("bing.com")) asked = String(u); return new Response(html); }) as unknown as typeof fetch;
+    const b = new Browser(db, fakeDesk(), okSafety, f, tmp());
+    expect(await b.search("cells", "x", 1)).toEqual(["https://en.wikipedia.org/wiki/Cell", "https://www.example.org/a"]);
+    expect(asked).toContain("adlt=strict");
+  });
+  it("searches DuckDuckGo with SafeSearch strict when chosen", async () => {
+    const db = openDb(":memory:");
+    const st0 = loadParentSettings(db);
+    st0.browser.search = "duckduckgo";
+    saveParentSettings(db, st0);
     let asked = "";
     const html = ['https://www.example.org/a', 'https://bet365.com/x', 'https://en.wikipedia.org/wiki/Cell'].map((u) => `<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=${encodeURIComponent(u)}&amp;rut=1">r</a>`).join("");
     const f = (async (u: string) => { if (String(u).includes("duckduckgo")) asked = String(u); return new Response(html); }) as unknown as typeof fetch;
@@ -97,6 +110,9 @@ describe("the desk browser, from the server", () => {
   });
   it("doesn't push past a robot check on the search page", async () => {
     const db = openDb(":memory:");
+    const st1 = loadParentSettings(db);
+    st1.browser.search = "duckduckgo";
+    saveParentSettings(db, st1);
     const f = (async () => new Response("<div class='anomaly-modal'>Unfortunately, bots use DuckDuckGo too.</div>")) as unknown as typeof fetch;
     const b = new Browser(db, fakeDesk(), okSafety, f, tmp());
     expect(await b.search("cells", "x", 1)).toEqual([]);

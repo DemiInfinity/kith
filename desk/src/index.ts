@@ -6,7 +6,7 @@ import type { BrowseRules } from "./rules.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
-import { act, browse, liveView, release, takeOver, takenOver } from "./browser.js";
+import { act, browse, clearStorage, liveView, release, takeOver, takenOver } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
@@ -76,10 +76,11 @@ const server = http.createServer(async (req, res) => {
       const b = await readJson(req);
       try {
         if (parts[1] === "takeover") {
-          return send(res, 200, await takeOver(String(b.who ?? "someone").slice(0, 20), readRules(b), b.url as string | undefined));
+          return send(res, 200, await takeOver(String(b.who ?? "someone").slice(0, 20), readRules(b), b.url as string | undefined, typeof b.name === "string" ? b.name : undefined));
         }
         if (parts[1] === "action") return send(res, 200, await act(b as never));
         if (parts[1] === "release") { await release(); return send(res, 200, { ok: true }); }
+        if (parts[1] === "clear") { await clearStorage(); return send(res, 200, { ok: true }); }
       } catch (err) {
         return send(res, 422, { error: (err as Error).message });
       }

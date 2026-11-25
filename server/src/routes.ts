@@ -168,11 +168,12 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
 
   // ── The desk's browser and today's work (child and parent both see these) ─────────────
-  app.get("/api/desk/browser", { preHandler: either }, async () => {
+  app.get("/api/desk/browser", { preHandler: either }, async (req) => {
     let live = null;
     try { live = await studio.desk.live(); } catch { /* desk not reachable */ }
     const s = loadParentSettings(db).browser;
-    return { enabled: s.enabled, mode: s.mode, sites: s.sites, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
+    const you = req.user!.role === "parent" ? config.people.parentLabel : childName(db) || "you";
+    return { enabled: s.enabled, mode: s.mode, sites: s.sites, you, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
   });
   // Take over the desk browser (child or parent). Same rules: block list, read-only, logged.
   const who = (role: string) => (role === "parent" ? config.people.parentLabel : childName(db) || "you");
@@ -184,15 +185,19 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const b = loadParentSettings(db).browser;
     if (!b.enabled) return reply.code(409).send({ error: "Browsing is switched off." });
     try {
-      const l = await studio.desk.takeOver(who(req.user!.role), studio.browser.deskRules(b));
+      const l = await studio.desk.takeOver(who(req.user!.role), studio.browser.deskRules(b), undefined, loadProfile(db).name);
       logVisit(l.url, l.title, req.user!.role);
       return { ...l, takenOverBy: who(req.user!.role) };
     } catch (err) {
       return reply.code(422).send({ error: (err as Error).message });
     }
   });
-  app.post("/api/desk/browser/action", { preHandler: either, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (req, reply) => {
-    const a = z.object({ type: z.enum(["go", "click", "scroll", "back"]), url: z.string().max(500).optional(), x: z.number().optional(), y: z.number().optional(), dy: z.number().optional() }).parse(req.body);
+  app.post("/api/desk/browser/action", { preHandler: either, config: { rateLimit: { max: 240, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const a = z.object({
+      type: z.enum(["go", "click", "scroll", "back", "forward", "reload", "home", "newtab", "tab", "closetab", "type", "key"]),
+      url: z.string().max(500).optional(), x: z.number().optional(), y: z.number().optional(), dy: z.number().optional(),
+      index: z.number().int().min(0).max(20).optional(), text: z.string().max(500).optional(), key: z.string().max(20).optional(),
+    }).parse(req.body);
     try {
       const l = await studio.desk.act(a);
       if (l.navigated) logVisit(l.url, l.title, req.user!.role);
@@ -206,6 +211,12 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const a = z.object({ x: z.number(), y: z.number() }).parse(req.body);
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
+  });
+  // Forget what sites stored in the desk's browser (cookies, site data, history). Parent only.
+  app.post("/api/parent/browser/clear", { preHandler: parent }, async (_req, reply) => {
+    try { await studio.desk.clearBrowser(); } catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
+    logActivity(db, "🧹", `${config.people.parentLabel} cleared the desk browser's saved data`);
+    return { ok: true };
   });
   app.post("/api/desk/browser/release", { preHandler: either }, async (req) => {
     await studio.desk.release().catch(() => undefined);

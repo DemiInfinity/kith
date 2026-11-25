@@ -177,17 +177,23 @@ The desk's browser reads web pages only for tasks the child asked for:
     by a public list, only by your own list.
 - If you'd rather keep it to a fixed list, switch "What it can reach" to "Only the favourite sites below".
 - **Robot checks stop it.** If a site puts up a CAPTCHA or an "are you human?" page, Pip stops there, logs
-  "stopped: robot check", and moves on. It never tries to get past one. (People who take over see the same page, and
-  can't pass it either: JavaScript is off.)
+  "stopped: robot check", and moves on. It never tries to get past one. (A person who has taken over can do the check
+  themselves.)
 
 **How it stays locked down:**
 
 - **The desk has no internet.** Its only way out is the `egress` container, which allows HTTPS to public hosts
   that aren't blocked (it holds the full block list, public lists included), and never to private addresses or
   internal names (your home network included).
-- **Read-only:** the browser runs with JavaScript off, and with no downloads, uploads, forms, sign-ins or cookies.
-- **Search** goes through DuckDuckGo with SafeSearch strict (no key needed), the Brave Search API with SafeSearch
-  strict if you set `KITH_BRAVE_API_KEY`, or Wikipedia's own search. Blocked results are dropped and favourites come
+- **A real browser, with limits.** It has tabs, JavaScript and its own saved storage (cookies, site data), kept in
+  the desk's volume; "Clear saved data" in the parent view wipes it. On its own Pip only reads: it never types, sends
+  anything or downloads. When a person takes over they can click, type, scroll and use tabs, but signing in is
+  blocked: password fields can't be typed into, and anything sent with a password in it is refused. No downloads,
+  uploads, notifications, camera, microphone or location, ever.
+- **Windows** on the desk can be minimised (they wait on the taskbar), maximised or closed, like a normal desktop.
+- **Search** goes through Bing with SafeSearch strict (no key needed; a cookie keeps it strict in the browser too),
+  the Brave Search API with SafeSearch strict if you set `KITH_BRAVE_API_KEY`, or Wikipedia's own search.
+  DuckDuckGo is offered but usually answers servers with a robot check, so Pip stops there. Blocked results are dropped and favourites come
   first.
 - **What it reads is treated as information, never as instructions.** Each page passes the safety check before the
   companion uses it.
@@ -197,6 +203,13 @@ The desk's browser reads web pages only for tasks the child asked for:
   their pointer and pages. "Give back" (or 3 minutes idle) hands it back to Pip.
 
 To switch browsing off, untick it in the parent view.
+
+**If the desk can't save (an `EACCES` error in the desk's browser):** the `desk-data` volume was created by an older
+image as a different user. Give it to the desk's user once:
+
+```bash
+docker run --rm --user root -v kith_desk-data:/desk --entrypoint chown kith-desk:local -R 1001:1001 /desk
+```
 
 ## 9. Running it
 

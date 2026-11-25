@@ -74,9 +74,9 @@ export const BrowserSettings = z.object({
   blockLists: z.array(z.string().url().max(300)).max(5).default([
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn/hosts",
   ]),
-  // "duckduckgo" (SafeSearch strict) and "wikipedia" need no key. "brave" uses the Brave Search API
-  // with SafeSearch strict (KITH_BRAVE_API_KEY).
-  search: z.enum(["duckduckgo", "wikipedia", "brave"]).default("duckduckgo"),
+  // "bing" (SafeSearch strict) and "wikipedia" need no key. "brave" uses the Brave Search API with
+  // SafeSearch strict (KITH_BRAVE_API_KEY). "duckduckgo" often answers servers with a robot check.
+  search: z.enum(["bing", "duckduckgo", "wikipedia", "brave"]).default("bing"),
 });
 export type BrowserSettings = z.infer<typeof BrowserSettings>;
 

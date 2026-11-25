@@ -48,19 +48,21 @@ export function pageAllowed(url: string, rules: BrowseRules): boolean {
   return !hostBlocked(u.hostname, rules);
 }
 
-/** Images and styles only (scripts, fetches and sockets never load). */
-export function resourceAllowed(url: string, type: string, method: string, rules: BrowseRules): boolean {
-  if (method !== "GET") return false;
-  if (type === "script" || type === "xhr" || type === "fetch" || type === "websocket" || type === "eventsource" || type === "manifest" || type === "other") return false;
+/**
+ * Everything a page loads (scripts, data, images, fonts, sockets) must come from a host that's
+ * allowed, over https or wss. Which methods may be used is decided by the browser (Pip only reads).
+ */
+export function resourceAllowed(url: string, type: string, _method: string, rules: BrowseRules): boolean {
   if (type === "document") return pageAllowed(url, rules);
-  if ((rules.mode ?? "safelist") === "blocklist") return pageAllowed(url, rules);
-  if (pageAllowed(url, { sites: rules.sites.map((s) => strip(s).split("/")[0]), assetHosts: [] })) return true;
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return url.startsWith("https://") && rules.assetHosts.map(strip).some((h) => host === h || host.endsWith("." + h));
-  } catch {
-    return false;
-  }
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  if (u.protocol === "data:" || u.protocol === "blob:") return true;
+  if (u.protocol === "wss:") u = new URL(url.replace(/^wss:/, "https:"));
+  if (u.protocol !== "https:") return false;
+  if ((rules.mode ?? "safelist") === "blocklist") return pageAllowed(u.href, rules);
+  if (pageAllowed(u.href, { sites: rules.sites.map((s) => strip(s).split("/")[0]), assetHosts: [] })) return true;
+  const host = u.hostname.toLowerCase();
+  return rules.assetHosts.map(strip).some((h) => host === h || host.endsWith("." + h));
 }
 
 /** A robot check (CAPTCHA, "are you human?") instead of the page. Pip stops; it never tries to pass one. */

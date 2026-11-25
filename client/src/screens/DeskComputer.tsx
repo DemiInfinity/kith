@@ -6,8 +6,8 @@ import { clock } from "../components/bits";
 import { ItemViewer, MakeSheet } from "./Desk";
 
 interface BrowserView {
-  enabled: boolean; mode?: "blocklist" | "safelist"; sites: string[];
-  live: { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; takenOverBy?: string | null; cursor?: { x: number; y: number }; robotCheck?: boolean } | null;
+  enabled: boolean; mode?: "blocklist" | "safelist"; sites: string[]; you?: string;
+  live: { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; takenOverBy?: string | null; cursor?: { x: number; y: number }; robotCheck?: boolean; signIn?: boolean; tabs?: { title: string; url: string }[]; active?: number } | null;
   visits: { id: number; ts: number; url: string; title: string; why: string; job_id: number | null; outcome: string }[];
 }
 interface Today {
@@ -48,7 +48,17 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const [today, setToday] = useState<Today | null>(null);
   const [stories, setStories] = useState<StoryRow[]>([]);
   const [chars, setChars] = useState<Character[]>([]);
-  const [open, setOpen] = useState<Folder>("browser");
+  const [open, setOpenRaw] = useState<Folder>("browser");
+  // Every app's window can be minimised (it waits on the taskbar), maximised (fills the desktop)
+  // or closed (back to the desktop).
+  const [win, setWin] = useState<"normal" | "min" | "max" | "closed">("normal");
+  const setOpen = (f: Folder) => { setOpenRaw(f); setWin((w) => (w === "max" ? "max" : "normal")); };
+  const screenRef = useRef<HTMLDivElement | null>(null);
+  const typed = useRef("");
+  const typeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wheel = useRef(0);
+  const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [typeText, setTypeText] = useState("");
   const [item, setItem] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const [watch, setWatch] = useState(true);
@@ -62,10 +72,11 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const applyLive = (l: Live) => setBr((b) => (b ? { ...b, live: { ...l } } : b));
   const takeOver = async () => {
     setBrowseErr("");
-    try { const l = await api<Live>("/api/desk/browser/takeover", { body: {} }); me2.current = l.takenOverBy ?? null; applyLive(l); setDriving(true); setUrlText(l.url); setOpen("browser"); }
+    try { const l = await api<Live>("/api/desk/browser/takeover", { body: {} }); me2.current = l.takenOverBy ?? null; applyLive(l); setDriving(true); setUrlText(l.url); setOpen("browser"); setWin((w) => (w === "max" ? "max" : "normal")); }
     catch (e) { setBrowseErr((e as Error).message); }
   };
-  const act = async (a: { type: "go" | "click" | "scroll" | "back"; url?: string; x?: number; y?: number; dy?: number }) => {
+  type Act = { type: "go" | "click" | "scroll" | "back" | "forward" | "reload" | "home" | "newtab" | "tab" | "closetab" | "type" | "key"; url?: string; x?: number; y?: number; dy?: number; index?: number; text?: string; key?: string };
+  const act = async (a: Act) => {
     setBrowseErr("");
     try { const l = await api<Live>("/api/desk/browser/action", { body: a }); applyLive(l); setUrlText(l.url); }
     catch (e) { setBrowseErr((e as Error).message); }
@@ -78,14 +89,49 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     lastSent.current = t;
     void api("/api/desk/browser/pointer", { body: { x, y } }).catch(() => undefined);
   };
+  // Typing on the page: letters are gathered for a moment and sent together; keys like Enter go at once.
+  const flushTyped = () => { const t = typed.current; typed.current = ""; if (t) void act({ type: "type", text: t }); };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!driving) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const special: Record<string, string> = { Enter: "Enter", Backspace: "Backspace", Delete: "Delete", Tab: "Tab", Escape: "Escape", ArrowUp: "ArrowUp", ArrowDown: "ArrowDown", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown" };
+    if (e.key.length === 1) {
+      e.preventDefault();
+      typed.current += e.key;
+      if (typeTimer.current) clearTimeout(typeTimer.current);
+      typeTimer.current = setTimeout(flushTyped, 160);
+    } else if (special[e.key]) {
+      e.preventDefault();
+      flushTyped();
+      void act({ type: "key", key: special[e.key] });
+    }
+  };
+  // The mouse wheel (or a trackpad) scrolls the page, gathered into one scroll every quarter second.
+  useEffect(() => {
+    const el = screenRef.current;
+    if (!el || !driving) return;
+    const h = (e: WheelEvent) => {
+      e.preventDefault();
+      wheel.current += e.deltaY;
+      if (wheelTimer.current) return;
+      wheelTimer.current = setTimeout(() => { const dy = wheel.current; wheel.current = 0; wheelTimer.current = null; if (Math.abs(dy) > 2) void act({ type: "scroll", dy }); }, 250);
+    };
+    el.addEventListener("wheel", h, { passive: false });
+    return () => el.removeEventListener("wheel", h);
+  });
   const giveBack = async () => { await api("/api/desk/browser/release", { body: {} }).catch(() => undefined); setDriving(false); };
-  useEffect(() => () => { if (driving) void api("/api/desk/browser/release", { body: {} }).catch(() => undefined); }, [driving]);
+  // (Leaving the page doesn't hand the browser back: a reload carries on, and it's handed back
+  // after 3 idle minutes anyway.)
   const [now, setNow] = useState(Date.now());
   const name = me.profile.name;
 
   const load = useCallback(() => {
     api<DeskView>("/api/desk").then(setDesk).catch(() => undefined);
-    api<BrowserView>("/api/desk/browser").then(setBr).catch(() => undefined);
+    api<BrowserView>("/api/desk/browser").then((b) => {
+      setBr(b);
+      // Still driving after a reload (or in another window): carry on.
+      if (b.live?.takenOverBy && b.live.takenOverBy === b.you) { me2.current = b.you; setDriving(true); }
+    }).catch(() => undefined);
     api<Today>("/api/desk/today").then(setToday).catch(() => undefined);
   }, []);
   useEffect(() => {
@@ -153,13 +199,13 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             {driving ? (
               <>
                 <b>You’re driving:</b>
-                <span>tap a link on the page to follow it, or type an address. Blocked sites won’t open; reading only. Everyone watching sees what you do.</span>
+                <span>click and type on the page, scroll with the mouse wheel, use tabs, or type an address. Blocked sites won’t open and signing in isn’t allowed. Everyone watching sees what you do.</span>
               </>
             ) : (
               <>
                 <b>{live?.takenOverBy ? `${live.takenOverBy} is driving.` : `Why ${name} is here:`}</b>
                 <span>{live?.why ? (live.why.startsWith("taken over") ? "" : `you asked “${live.why}”.`) : "nothing right now."}</span>
-                <span>{visitsForLive ? `${visitsForLive} page${visitsForLive > 1 ? "s" : ""}, all checked.` : "—"} Reading only: no sign-ins, forms or downloads, and it stops at robot checks.</span>
+                <span>{visitsForLive ? `${visitsForLive} page${visitsForLive > 1 ? "s" : ""}, all checked.` : "—"} {name} only reads: it never types, signs in or downloads, and it stops at robot checks.</span>
               </>
             )}
             {browseErr && <span style={{ color: "#A8402E", fontSize: 12.5 }}>{browseErr}</span>}
@@ -171,20 +217,33 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     );
     body = (
       <div className="dbrowser">
+        <div className="dtabs" role="tablist" aria-label="Tabs">
+          {(live?.tabs ?? []).map((t, i) => (
+            <span key={i} role="tab" aria-selected={i === (live?.active ?? 0)} className={`dtab ${i === (live?.active ?? 0) ? "on" : ""}`}>
+              <button className="dtab-t" disabled={!driving} onClick={() => act({ type: "tab", index: i })} title={t.url}>{t.title || "New tab"}</button>
+              {driving && <button className="dtab-x" aria-label={`Close ${t.title}`} onClick={() => act({ type: "closetab", index: i })}><Icon name="close" size={12} /></button>}
+            </span>
+          ))}
+          {driving && <button className="dtab-new" aria-label="New tab" onClick={() => act({ type: "newtab" })}><Icon name="plus" size={14} /></button>}
+        </div>
         {driving ? (
-          <form className="durl" onSubmit={(e) => { e.preventDefault(); void act({ type: "go", url: urlText.startsWith("http") ? urlText : `https://${urlText}` }); }}>
+          <form className="durl" onSubmit={(e) => { e.preventDefault(); const u = urlText.trim(); void act({ type: "go", url: /^https?:\/\//.test(u) ? u : /^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(u) ? `https://${u}` : `https://www.bing.com/search?adlt=strict&setlang=en-GB&q=${encodeURIComponent(u)}` }); }}>
             <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Back" onClick={() => act({ type: "back" })}><Icon name="back" size={16} /></button>
-            <input aria-label="Address" value={urlText} onChange={(e) => setUrlText(e.target.value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontWeight: 700, fontSize: 13, color: "#2a1d3a" }} />
+            <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Forward" onClick={() => act({ type: "forward" })}><Icon name="arrow" size={16} /></button>
+            <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Reload" onClick={() => act({ type: "reload" })}><Icon name="newchat" size={16} /></button>
+            <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Home" onClick={() => act({ type: "home" })}><Icon name="home" size={16} /></button>
+            <input aria-label="Address" placeholder="Search or type an address" value={urlText} onChange={(e) => setUrlText(e.target.value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontWeight: 700, fontSize: 13, color: "#2a1d3a" }} />
             <button type="submit" className="dtag" style={{ background: "#2A1D3A", color: "#fff", border: 0 }}>Go</button>
           </form>
         ) : (
-          <div className="durl"><Icon name="lock" size={15} /><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live?.url ? live.url.replace(/^https:\/\//, "") : "nothing open"}</span><span className="dtag" style={{ background: "#DFF5E7", color: "#1E7A45", display: "inline-flex", alignItems: "center", gap: 3 }}><Icon name="shield" size={12} />{br?.mode === "safelist" ? "Safe list" : "Filtered"}</span></div>
+          <div className="durl"><Icon name="lock" size={15} /><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live?.url ? live.url.replace(/^https:\/\//, "") : live?.tabs?.length ? "Home" : "nothing open"}</span><span className="dtag" style={{ background: "#DFF5E7", color: "#1E7A45", display: "inline-flex", alignItems: "center", gap: 3 }}><Icon name="shield" size={12} />{br?.mode === "safelist" ? "Safe list" : "Filtered"}</span></div>
         )}
         <div className="dbrowse-grid">
           <div className="dshot" style={driving ? { outline: "2px solid #D9A3E0", outlineOffset: -2 } : {}}>
             {!br?.enabled && <span style={{ color: "#7A5C76", fontSize: 13 }}>{me.parentLabel} has switched browsing off.</span>}
             {br?.enabled && live?.frame && (
-              <div className={`screen169 ${driving ? "driving" : ""}`}
+              <div ref={screenRef} className={`screen169 ${driving ? "driving" : ""}`} tabIndex={driving ? 0 : -1} onKeyDown={onKey}
+                aria-label={driving ? "The page. Click to use it; type to type into it." : undefined}
                 onPointerMove={(e) => {
                   if (!driving) return;
                   const r = e.currentTarget.getBoundingClientRect();
@@ -197,6 +256,8 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                   const r = e.currentTarget.getBoundingClientRect();
                   const p = { x: ((e.clientX - r.left) / r.width) * 1280, y: ((e.clientY - r.top) / r.height) * 720 };
                   setPointer(p);
+                  e.currentTarget.focus();
+                  flushTyped();
                   void act({ type: "click", ...p });
                 }}>
                 <img src={live.frame} alt={`What’s open: ${live.title}`} />
@@ -211,7 +272,8 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                   );
                 })()}
                 {browseErr && !live.robotCheck && <div className="robotcheck"><Icon name="shield" size={18} /><span>{browseErr}</span></div>}
-                {live.robotCheck && <div className="robotcheck"><Icon name="shield" size={18} /><span>This site put up a robot check. {name} stops at those and never tries to get past them.</span></div>}
+                {live.robotCheck && <div className="robotcheck"><Icon name="shield" size={18} /><span>{driving ? `This site wants a robot check. ${name} always stops at these; you can do it yourself.` : `This site put up a robot check. ${name} stops at those and never tries to get past them.`}</span></div>}
+                {live.signIn && !live.robotCheck && !browseErr && <div className="robotcheck"><Icon name="lock" size={18} /><span>This page asks for a password. Signing in isn’t allowed on {name}’s computer.</span></div>}
               </div>
             )}
             {br?.enabled && !live?.frame && <span style={{ color: "#7A5C76", fontSize: 13 }}>{name} only browses when it’s looking something up for you.</span>}
@@ -260,18 +322,23 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             {power && <span className="pchip" style={{ background: power.mode === "full" ? "rgba(245,150,70,0.2)" : "rgba(156,194,232,0.2)", color: power.mode === "full" ? "#F7B57A" : "#B8D4F0" }}><Icon name={power.mode === "full" ? "fire" : power.mode === "low" ? "battery" : "moon"} size={14} /> {power.mode === "full" ? "Full power" : power.mode === "low" ? `Low power${power.fullBackAt ? ` until ${clock(power.fullBackAt)}` : ""}` : "Resting"}</span>}
             <b>{new Date(now).toLocaleDateString("en-GB", { weekday: "short" })} {clock(now)}</b>
           </div>
-          <div className="pscreen">
+          <div className={`pscreen ${win === "max" ? "hasmax" : ""}`}>
             <div className="pfolders">
               {folders.map(([k, ic, label]) => (
                 <button key={k} className={`picon ${open === k ? "on" : ""}`} onClick={() => setOpen(k)} aria-pressed={open === k}><span><Icon name={ic} size={30} /></span><span>{label}</span></button>
               ))}
             </div>
             <div className="pcenter">
-              <div className={`dwin ${open === "browser" ? "browserwin" : ""}`}>
-                <div className="dwin-tb"><i style={{ background: "#FF5F57" }} /><i style={{ background: "#FEBC2E" }} /><i style={{ background: "#28C840" }} /><b>{windowTitle}</b>
+              {win !== "min" && win !== "closed" && <div className={`dwin ${open === "browser" ? "browserwin" : ""} ${win === "max" ? "maxwin" : ""}`}>
+                <div className="dwin-tb" onDoubleClick={() => setWin(win === "max" ? "normal" : "max")}>
+                  <button className="wbtn close" aria-label={`Close ${windowTitle}`} onClick={() => setWin("closed")}><Icon name="close" size={9} /></button>
+                  <button className="wbtn min" aria-label={`Minimise ${windowTitle}`} onClick={() => setWin("min")}><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden><path d="M2 5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg></button>
+                  <button className="wbtn max" aria-label={win === "max" ? `Restore ${windowTitle}` : `Maximise ${windowTitle}`} onClick={() => setWin(win === "max" ? "normal" : "max")}><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden><path d={win === "max" ? "M3 3h4v4H3z" : "M2 2h6v6H2z"} fill="none" stroke="currentColor" strokeWidth="1.4" /></svg></button>
+                  <b>{windowTitle}</b>
                   {canEdit && open !== "browser" && open !== "journal" && <button className="dmake" onClick={() => setMaking(true)}>+ Make</button>}</div>
                 {body}
-              </div>
+              </div>}
+              {win === "closed" && <div className="pempty">Open something from the desktop.</div>}
               <div className="ptodo" role="list" aria-label={`${name}’s to-do`}>
                 <b className="hand" style={{ color: "#2A1D3A", fontSize: 28 }}>{name}’s to-do</b>
                 <span style={{ fontSize: 11.5, fontWeight: 800, color: "#8A5A12" }}>You asked for these · {name} works on them in its own time</span>
@@ -289,11 +356,19 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             </div>
           </div>
           <div className="pnow" role="toolbar" aria-label="Taskbar">
+            {win !== "closed" && (
+              <button className={`tbtn app ${win === "min" ? "" : "on"}`} onClick={() => setWin(win === "min" ? "normal" : "min")} aria-pressed={win !== "min"} title={win === "min" ? `Show ${windowTitle}` : `Minimise ${windowTitle}`}>
+                <Icon name={folders.find((f) => f[0] === open)?.[1] ?? "folder"} size={16} /><span className="tlabel">{folders.find((f) => f[0] === open)?.[2]}</span>
+              </button>
+            )}
             <span className={`dot ${working || br?.live?.busy || br?.live?.takenOverBy ? "" : "idle"}`} />
             <span className="pnow-text"><b>Now:</b> {driving ? "you’re driving the browser" : br?.live?.takenOverBy ? `${br.live.takenOverBy} is driving the browser` : working ? desk?.status.activity || `making ${working.title}` : br?.live?.busy ? `reading ${br.live.title || "a page"}` : `${name}’s desk is quiet`}</span>
             {working && !driving && <><span className="bar pnow-bar" style={{ height: 8 }}><span style={{ width: `${working.progress}%`, background: "linear-gradient(90deg,#D9A3E0,#F59646)" }} /></span><b>{working.progress}%</b></>}
             {br?.enabled && (driving ? (
               <>
+                <form className="ttype" onSubmit={(e) => { e.preventDefault(); if (typeText) void act({ type: "type", text: typeText }).then(() => act({ type: "key", key: "Enter" })); setTypeText(""); }}>
+                  <input aria-label="Type into the page" placeholder="Type into the page…" value={typeText} onChange={(e) => setTypeText(e.target.value)} maxLength={500} />
+                </form>
                 <button className="tbtn" aria-label="Scroll up" onClick={() => act({ type: "scroll", dy: -500 })}><Icon name="arrow" size={16} style={{ transform: "rotate(-90deg)" }} /></button>
                 <button className="tbtn" aria-label="Scroll down" onClick={() => act({ type: "scroll", dy: 500 })}><Icon name="arrow" size={16} style={{ transform: "rotate(90deg)" }} /></button>
                 <button className="tbtn on" onClick={giveBack}><Icon name="joystick" size={16} />Give back to {name}</button>

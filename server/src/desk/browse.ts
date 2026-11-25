@@ -68,6 +68,20 @@ export function parseDuckDuckGo(html: string): string[] {
   return out.filter((u) => u.startsWith("https://") && !/duckduckgo\.com\/y\.js/.test(u));
 }
 
+/** Pulls result links out of Bing's results page (its links point at bing.com/ck/a?…&u=a1<base64url>). */
+export function parseBing(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<li class="b_algo"[^>]*>[\s\S]*?<h2[^>]*><a[^>]*href="([^"]+)"/g)) {
+    const href = m[1].replace(/&amp;/g, "&");
+    try {
+      const u = new URL(href);
+      const enc = u.hostname.endsWith("bing.com") ? u.searchParams.get("u") : null;
+      out.push(enc?.startsWith("a1") ? Buffer.from(enc.slice(2), "base64url").toString("utf8") : href);
+    } catch { /* skip */ }
+  }
+  return out.filter((u) => u.startsWith("https://"));
+}
+
 /** Pages that are a robot check rather than the page itself. */
 export const ROBOT_CHECK = /captcha|are you (a )?(human|robot)|verify (that )?you('| a)re (a )?human|unusual traffic|checking your browser|just a moment\.\.\.|attention required|press (&|and) hold|bots use duckduckgo|anomaly-modal|cf-challenge|challenge-platform/i;
 
@@ -100,7 +114,17 @@ export class Browser {
     const q = query.slice(0, 120);
     let urls: string[] = [];
     try {
-      if (s.search === "duckduckgo") {
+      if (s.search === "bing") {
+        const r = await this.fetchImpl(`https://www.bing.com/search?${new URLSearchParams({ q, adlt: "strict", setlang: "en-GB", cc: "GB" })}`, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; Kith/0.1; home companion; read-only)", "Accept-Language": "en-GB", Cookie: "SRCHHPGUSR=ADLT=STRICT" }, signal: AbortSignal.timeout(10_000),
+        });
+        const html = await r.text();
+        if (ROBOT_CHECK.test(html.slice(0, 20_000)) && !/b_algo/.test(html)) {
+          this.log(`search: ${q}`, "", why, jobId, "stopped: robot check on the search page");
+          return [];
+        }
+        urls = parseBing(html);
+      } else if (s.search === "duckduckgo") {
         const r = await this.fetchImpl(`https://html.duckduckgo.com/html/?${new URLSearchParams({ q, kp: "1", kl: "uk-en" })}`, {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; Kith/0.1; home companion; read-only)" }, signal: AbortSignal.timeout(10_000),
         });

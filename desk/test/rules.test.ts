@@ -13,10 +13,10 @@ describe("desk browser rules", () => {
     expect(pageAllowed("https://user:pw@en.wikipedia.org/", rules)).toBe(false);
     expect(pageAllowed("https://example.com/", rules)).toBe(false);
   });
-  it("is read-only and never runs scripts", () => {
-    expect(resourceAllowed("https://en.wikipedia.org/w/index.php", "document", "POST", rules)).toBe(false);
-    expect(resourceAllowed("https://en.wikipedia.org/x.js", "script", "GET", rules)).toBe(false);
-    expect(resourceAllowed("https://en.wikipedia.org/api", "fetch", "GET", rules)).toBe(false);
+  it("loads a listed site's own scripts and data, nothing from elsewhere", () => {
+    expect(resourceAllowed("https://en.wikipedia.org/x.js", "script", "GET", rules)).toBe(true);
+    expect(resourceAllowed("https://tracker.example/x.js", "script", "GET", rules)).toBe(false);
+    expect(resourceAllowed("http://en.wikipedia.org/x.js", "script", "GET", rules)).toBe(false);
   });
   it("lets images and styles come from listed asset hosts", () => {
     expect(resourceAllowed("https://upload.wikimedia.org/a.png", "image", "GET", rules)).toBe(true);
@@ -30,7 +30,9 @@ describe("the whole web, minus the block list", () => {
   it("opens ordinary https sites and their images", () => {
     expect(pageAllowed("https://www.example.org/x", r)).toBe(true);
     expect(resourceAllowed("https://cdn.example.net/a.png", "image", "GET", r)).toBe(true);
-    expect(resourceAllowed("https://cdn.example.net/a.js", "script", "GET", r)).toBe(false);
+    expect(resourceAllowed("https://cdn.example.net/a.js", "script", "GET", r)).toBe(true);
+    expect(resourceAllowed("https://ads.casino-partner.example/a.js", "script", "GET", r)).toBe(false);
+    expect(resourceAllowed("wss://live.example.net/socket", "websocket", "GET", r)).toBe(true);
   });
   it("refuses blocked sites, blocked words, plain http and internal names", () => {
     expect(pageAllowed("https://www.reddit.com/r/x", r)).toBe(false);
@@ -46,5 +48,15 @@ describe("robot checks", () => {
     expect(looksLikeRobotCheck("Just a moment...", "Checking your browser before accessing")).toBe(true);
     expect(looksLikeRobotCheck("Shop", "lots of text", ["https://www.google.com/recaptcha/api2/anchor"])).toBe(true);
     expect(looksLikeRobotCheck("Cell (biology)", "The cell is the basic unit of life. ".repeat(200))).toBe(false);
+  });
+});
+
+describe("sign-ins", () => {
+  it("anything sent with a password in it is spotted", async () => {
+    const { looksLikeSignIn } = await import("../src/browser.js");
+    expect(looksLikeSignIn("user=sam&password=hunter2")).toBe(true);
+    expect(looksLikeSignIn('{"email":"a@b.c","pass":"x"}')).toBe(true);
+    expect(looksLikeSignIn("q=cells&lang=en")).toBe(false);
+    expect(looksLikeSignIn(null)).toBe(false);
   });
 });

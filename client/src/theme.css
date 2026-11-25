@@ -488,3 +488,28 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .browseinfo .dwhy { color: var(--text-3); }
 .browseinfo .dwhy b { color: var(--text); }
 .browseinfo .dvisits { color: var(--text-3); }
+.wbtn { width: 13px; height: 13px; border-radius: 50%; border: 0; padding: 0; display: inline-grid; place-items: center; color: transparent; cursor: pointer; }
+.wbtn.close { background: #FF5F57; } .wbtn.min { background: #FEBC2E; } .wbtn.max { background: #28C840; }
+.dwin-tb:hover .wbtn, .wbtn:focus-visible { color: rgba(0,0,0,0.55); }
+.dwin.maxwin { position: absolute; inset: 0; z-index: 5; }
+.pscreen { position: relative; }
+.pempty { display: grid; place-items: center; color: rgba(255,255,255,0.55); font-size: 13px; min-height: 120px; }
+.dtabs { display: flex; gap: 4px; align-items: flex-end; overflow-x: auto; padding: 0 2px; scrollbar-width: none; }
+.dtab { display: inline-flex; align-items: center; max-width: 190px; min-width: 70px; border-radius: 8px 8px 0 0; background: #f1e4ef; }
+.dtab.on { background: #fff; box-shadow: 0 -1px 0 #eadbe9 inset; }
+.dtab-t { flex: 1; min-width: 0; border: 0; background: none; padding: 6px 8px; font: inherit; font-size: 12px; font-weight: 700; color: #2a1d3a; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dtab-t:disabled { cursor: default; }
+.dtab-x, .dtab-new { border: 0; background: none; color: #7A5C76; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
+.dtab-x:hover, .dtab-new:hover { background: #eadbe9; }
+.screen169.driving:focus { outline: none; }
+.ttype input { width: 190px; min-height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color: #fff; padding: 0 10px; font: inherit; font-size: 12.5px; }
+.ttype input::placeholder { color: rgba(255,255,255,0.55); }
+@media (max-width: 760px) { .ttype input { width: 130px; } .dwin.maxwin { position: static; } }
+.pscreen.hasmax .pcenter { position: static; }
+/* Maximised: fills the desktop exactly (the taskbar below always stays), and the 16:9 page fits inside. */
+.dwin.maxwin { align-self: stretch; justify-self: stretch; }
+.dwin.maxwin .dbrowser { flex: 1; min-height: 0; }
+.dwin.maxwin .dbrowse-grid { flex: 1; min-height: 0; }
+.dwin.maxwin .dshot { flex: 1; min-height: 0; aspect-ratio: auto; background: #1d1428; }
+.dwin.maxwin .screen169 { height: 100%; width: auto; max-width: 100%; }
+.dwin.maxwin .dwin-body { flex: 1; min-height: 0; }
