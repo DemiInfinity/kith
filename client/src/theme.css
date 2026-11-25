@@ -277,6 +277,52 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875r
   .talk.call .controls { padding-top: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .youtile { transition: none; } }
+/* Hands-free / Tap to talk, and Mute: just above the call's buttons. */
+.calloptions { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px 0; }
+.callmode { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+.callmode button { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: transparent; color: var(--muted); font-size: 0.8438rem; font-weight: 800; }
+.callmode button.on { background: var(--lilac); color: var(--ink); }
+.mutebtn { min-height: 42px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--text-2); font-size: 0.8438rem; font-weight: 800; }
+.mutebtn.on { background: var(--ember); color: var(--ember-ink); border-color: var(--ember); }
+/* Hands-free is waiting for her: a soft ring says "go ahead". Muted: dimmed, with the crossed-out mic. */
+.youtile.open { box-shadow: 0 0 0 2px rgba(217,163,224,0.55); color: var(--lilac-soft); }
+.youtile.muted { color: var(--ember); border-color: var(--ember); }
+
+/* The mini call: the call carrying on in a small portrait window while she's on another page.
+   Its corners keep clear of the header, "Grown-up?" (the sidebar on a computer, the tab bar on a
+   phone) and the chat's send button (above the composer). Under sheets and dialogs (z-index 40+). */
+.minicall { position: fixed; z-index: 30; width: 132px; height: 220px; touch-action: none; user-select: none; -webkit-user-select: none;
+  --mc-top: calc(var(--safe-top) + 72px); --mc-side: 12px; --mc-left: 12px; --mc-bottom: calc(var(--safe-bottom) + 150px); }
+.minicall.mc-tl { top: var(--mc-top); left: var(--mc-left); }
+.minicall.mc-tr { top: var(--mc-top); right: var(--mc-side); }
+.minicall.mc-bl { bottom: var(--mc-bottom); left: var(--mc-left); }
+.minicall.mc-br { bottom: var(--mc-bottom); right: var(--mc-side); }
+@media (min-width: 1100px) {
+  .minicall { width: 180px; height: 300px; --mc-top: 96px; --mc-side: 20px; --mc-left: calc(240px + 20px); --mc-bottom: 112px; }
+}
+.minicall.dragging { cursor: grabbing; z-index: 31; }
+.mc-card { position: relative; width: 100%; height: 100%; border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse 80% 60% at 50% 35%, rgba(217,163,224,0.28), rgba(217,163,224,0) 70%), linear-gradient(#2a1a25, #1a1017);
+  border: 2px solid var(--plum); box-shadow: 0 14px 36px rgba(0,0,0,0.45); }
+.minicall.live .mc-card { border-color: var(--lilac); }
+.mc-pip { flex: 1; min-height: 0; position: relative; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; border-radius: 20px 20px 0 0; }
+.mc-pip .p3d { position: absolute; inset: 0; }
+.mc-pip .p3d canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
+.mc-still { width: 100%; height: 100%; object-fit: cover; }
+.mc-status { padding: 4px 8px 0; font-size: 0.6875rem; font-weight: 800; color: var(--lilac-soft); text-align: center; line-height: 1.25; min-height: 2.5em; display: flex; align-items: center; justify-content: center; }
+.mc-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px; }
+.mc-name { flex: 1; min-width: 0; font-size: 0.8125rem; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-btn { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--text-2); cursor: pointer; }
+.mc-btn.on { background: var(--ember); color: var(--ember-ink); border-color: var(--ember); }
+.mc-btn.end { background: var(--danger); color: #fff4ec; border: 0; }
+@media (min-width: 1100px) { .mc-name { font-size: 0.9375rem; } .mc-status { font-size: 0.75rem; } }
+/* The Mac app's own mini window: the card fills the (rounded) window. */
+html.miniwin, html.miniwin body, html.miniwin #root { height: 100%; margin: 0; overflow: hidden; background: #1a1017; }
+.miniwin-body { position: fixed; inset: 0; cursor: default; }
+.minicall.inwin { position: absolute; inset: 0; width: auto; height: auto; }
+.minicall.inwin .mc-card { border-radius: 0; border: 0; box-shadow: none; }
+.minicall.inwin .mc-name { font-size: 0.9375rem; }
+@media (prefers-reduced-motion: reduce) { .minicall, .minicall * { transition: none !important; } }
 
 /* ── Sheets and dialogs ───────────────────────────────────────────────────────────────── */
 .scrim { position: fixed; inset: 0; background: rgba(10,6,9,0.6); z-index: 40; animation: fade 0.2s; }

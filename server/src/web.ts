@@ -49,6 +49,8 @@ export const APP_ROUTES = [
   "/", "/signin", "/parent", "/talk", "/study", "/languages", "/create", "/stories", "/art", "/oc", "/my-pip",
   "/settings", "/you", "/me", "/memory", "/shared", "/google", "/notifications", "/connectors", "/help",
   "/desk", "/lab", "/pip",
+  // The Mac app's own small call window (mac/src-tauri/src/mini.rs).
+  "/call-mini",
 ];
 export function isAppRoute(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, "") || "/";

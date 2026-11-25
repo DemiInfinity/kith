@@ -11,9 +11,13 @@
 import { pollWhileVisible } from "./poll";
 import { api } from "../api";
 
-type Tauri = {
+export type Tauri = {
   core: { invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> };
-  event: { listen<T>(event: string, cb: (e: { payload: T }) => void): Promise<() => void> };
+  event: {
+    listen<T>(event: string, cb: (e: { payload: T }) => void): Promise<() => void>;
+    emitTo(target: string, event: string, payload?: unknown): Promise<void>;
+  };
+  window?: { getCurrentWindow(): { startDragging(): Promise<void>; label: string } };
 };
 
 export type SharedFile = { name: string; text: string; truncated: boolean };
@@ -22,7 +26,7 @@ type Action =
   | { id: number; kind: "event"; title: string; start: number; end: number | null; allDay: boolean }
   | { id: number; kind: "reminder"; title: string; due: number | null };
 
-function tauri(): Tauri | null {
+export function tauri(): Tauri | null {
   const t = (window as unknown as { __TAURI__?: Tauri }).__TAURI__;
   return t?.core?.invoke ? t : null;
 }

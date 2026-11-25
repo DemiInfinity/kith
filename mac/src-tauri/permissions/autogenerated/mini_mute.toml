@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mini-mute"
+description = "Enables the mini_mute command without any pre-configured scope."
+commands.allow = ["mini_mute"]
+
+[[permission]]
+identifier = "deny-mini-mute"
+description = "Denies the mini_mute command without any pre-configured scope."
+commands.deny = ["mini_mute"]

@@ -2,78 +2,72 @@
 // PCM and sent to the home server for speech-to-text. Nothing is recorded or saved.
 
 /** An AudioContext made (and resumed) inside a tap, which iOS Safari needs before it plays or records.
- *  Calls make one when the mic is first tapped and reuse it for listening and speaking. */
+ *  Calls make one when the mic is first tapped (or on opening the call, if the browser allows it
+ *  then) and reuse it for listening and speaking. */
 export function audioContextFromTap(existing: AudioContext | null): AudioContext {
   const ctx = existing && existing.state !== "closed" ? existing : new AudioContext();
   if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
   return ctx;
 }
 
-export class MicCapture {
+/**
+ * The microphone, open for a call. Each small frame of audio (and how loud it is) goes to onFrame;
+ * what's kept for a turn is decided by the call (vad.ts). Stopping it releases the microphone, so the
+ * system's "mic on" light goes off.
+ */
+export class MicStream {
   private ctx: AudioContext | null = null;
-  private ownsCtx = false;
   private stream: MediaStream | null = null;
   private src: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
-  private chunks: Float32Array[] = [];
-  private heardSpeech = false;
-  private quietSince = 0;
-  onLevel: (rms: number) => void = () => {};
-  /** Called when they stop talking (after some speech, ~1.2 s of quiet). */
-  onSilence: () => void = () => {};
+  /** Bumped by stop(), so a start() still waiting for the microphone gives it straight back. */
+  private gen = 0;
+  onFrame: (samples: Float32Array, rms: number) => void = () => {};
 
-  /** Starts listening. Pass the call's AudioContext (made in the tap) to reuse it; otherwise one is made here. */
-  async start(shared?: AudioContext) {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+  get sampleRate(): number { return this.ctx?.sampleRate ?? 48000; }
+  get open(): boolean { return this.stream !== null; }
+
+  /** Starts listening, on the call's AudioContext (made in a tap). */
+  async start(ctx: AudioContext) {
+    const gen = ++this.gen;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+    if (gen !== this.gen) { stream.getTracks().forEach((t) => t.stop()); return; }
+    this.stream = stream;
     try {
-      this.ownsCtx = !shared;
-      this.ctx = shared ?? new AudioContext();
-      if (this.ctx.state === "suspended") await this.ctx.resume().catch(() => undefined);
-      await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
+      this.ctx = ctx;
+      if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+      await ctx.audioWorklet.addModule("/pcm-worklet.js");
     } catch (e) {
       // Don't leave the microphone on (and its indicator showing) if the worklet couldn't load.
-      this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = null;
-      if (this.ownsCtx) await this.ctx?.close().catch(() => undefined);
-      this.ctx = null;
+      this.stop();
       throw e;
     }
-    const src = this.ctx.createMediaStreamSource(this.stream);
+    if (gen !== this.gen || !this.stream) return; // stopped while it was starting
+    const src = ctx.createMediaStreamSource(this.stream);
     this.src = src;
-    this.node = new AudioWorkletNode(this.ctx, "pcm-collector");
-    this.chunks = [];
-    this.heardSpeech = false;
-    this.quietSince = 0;
-    this.node.port.onmessage = (e: MessageEvent<{ samples: Float32Array; rms: number }>) => {
-      this.chunks.push(e.data.samples);
-      this.onLevel(e.data.rms);
-      const now = performance.now();
-      if (e.data.rms > 0.03) { this.heardSpeech = true; this.quietSince = 0; }
-      else if (this.heardSpeech) {
-        if (!this.quietSince) this.quietSince = now;
-        else if (now - this.quietSince > 1200) { this.heardSpeech = false; this.onSilence(); }
-      }
-    };
+    this.node = new AudioWorkletNode(ctx, "pcm-collector");
+    this.node.port.onmessage = (e: MessageEvent<{ samples: Float32Array; rms: number }>) => this.onFrame(e.data.samples, e.data.rms);
     src.connect(this.node);
   }
 
-  /** Stops the mic and returns 16 kHz, 16-bit mono PCM. */
-  async stop(): Promise<ArrayBuffer> {
-    const rate = this.ctx?.sampleRate ?? 48000;
+  stop() {
+    this.gen++;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.src?.disconnect();
     this.src = null;
     if (this.node) { this.node.port.onmessage = null; this.node.disconnect(); this.node = null; }
-    if (this.ownsCtx) await this.ctx?.close().catch(() => undefined);
     this.ctx = null;
-    const total = this.chunks.reduce((n, c) => n + c.length, 0);
-    const all = new Float32Array(total);
-    let o = 0;
-    for (const c of this.chunks) { all.set(c, o); o += c.length; }
-    this.chunks = [];
-    return toPcm16(all, rate, 16000);
   }
+}
+
+/** A turn's frames as 16 kHz, 16-bit mono PCM for speech-to-text. */
+export function joinPcm(chunks: Float32Array[], rate: number): ArrayBuffer {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const all = new Float32Array(total);
+  let o = 0;
+  for (const c of chunks) { all.set(c, o); o += c.length; }
+  return toPcm16(all, rate, 16000);
 }
 
 export function toPcm16(input: Float32Array, fromRate: number, toRate: number): ArrayBuffer {

@@ -28,7 +28,8 @@ Reminders, documents she chooses, and a shortcut to call Pip from anywhere.
     Mac comes back online.
   - Kith › Change Server… brings the address form back, except in a build with a server baked in (see "Setting the
     server address").
-- **The microphone** for voice calls. macOS asks once, with "Kith listens when you tap the mic during a call."
+- **The microphone** for voice calls. macOS asks once, with "Kith listens during a call: when you tap the mic, or by
+  itself if you choose hands-free."
 - **The start page's content security policy** (`app.security.csp` in `mac/src-tauri/tauri.conf.json`): its own
   script and image only, no inline script, and network requests only to check the server answers.
 - **The usual Mac menus:** Edit (copy, paste, undo), View, Window and Kith › Quit.
@@ -46,6 +47,7 @@ Privacy & Security.
 | **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip** and macOS lets Kith in (the tick stays off if she says no). **Kith › Choose What Pip Sees** lists her calendars and reminder lists to tick or untick (all of them until she changes it; calendars added later aren't shared once she has chosen). The line under it says exactly what Pip sees, e.g. "Pip sees: Home, School (next 7 days) · Homework (due in the next 7 days)". The next 7 days of events and the reminders due in the next 7 days (none without a due date) go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Works from macOS 12: Kith asks with macOS 14's new calendar prompts where they exist and the older one otherwise. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
 | **Documents** | The 📄 button in the chat composer (Mac app only), or drop a file on the window. PDF, Word, RTF, ODT, HTML, text and Markdown. | Text only, up to 12,000 characters. It goes through the same safety check and redaction as her messages. **No photos or videos**: Kith's minors policy rules out image uploads until image-safety detection is in place (docs/minors-policy.md). Pip sees the text for that turn; the chat keeps "📄 name". |
 | **Call Pip** | **⌃⌥Space** from any app (or Call Pip in the menu bar or View menu) brings Kith forward and opens a call. | If another app already uses ⌃⌥Space, Kith carries on without it. |
+| **Mini call** | During a call, switching to another app (or minimising Kith) shows a small always-on-top window with Pip, its name, Mute and End, on whichever space she's on. Click Pip to come back; it closes when Kith's window has focus again (`mini.rs`, route `/call-mini`). | Kith.app only, never Kith Parent. It loads only the Kith server's `/call-mini` and gets only events, dragging itself and its three buttons. The voice and the microphone stay in the main window; the mini window just shows the call. |
 
 How it fits together:
 

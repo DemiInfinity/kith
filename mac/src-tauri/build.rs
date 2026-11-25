@@ -23,6 +23,10 @@ fn main() {
         "native_add_event",
         "native_add_reminder",
         "native_pick_document",
+        "call_status",
+        "mini_mute",
+        "mini_end",
+        "mini_focus_main",
     ])))
     .expect("failed to run tauri-build");
 }

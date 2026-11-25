@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Kith listens when you tap the mic during a call.</string>
+  <string>Kith listens during a call: when you tap the mic, or by itself if you choose hands-free.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Pip can see what's coming up this week, and add things you ask for (you say yes each time).</string>
   <key>NSCalendarsUsageDescription</key>

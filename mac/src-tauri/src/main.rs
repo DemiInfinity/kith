@@ -10,7 +10,8 @@
 //   only the calendars and lists she ticks there (the menu says exactly what Pip sees); anything
 //   Pip adds is confirmed in a native prompt first;
 // - documents she picks or drops on the window (files.rs: text only, no photos);
-// - ⌃⌥Space from anywhere to call Pip.
+// - ⌃⌥Space from anywhere to call Pip;
+// - during a call, a small always-on-top window with Pip when she switches to another app (mini.rs).
 //
 // The server: a build with a server baked in (mac/kith.config.json) is locked to it. Kith (the
 // child's) has no Change Server at all; Kith Parent can change it after a confirmation. Changing
@@ -26,6 +27,7 @@
 
 mod eventkit;
 mod files;
+mod mini;
 mod native;
 mod net;
 mod notify;
@@ -297,10 +299,27 @@ fn grant_native(app: &AppHandle, state: &State, origin: &str) {
         .permission("allow-native-calendar-snapshot")
         .permission("allow-native-add-event")
         .permission("allow-native-add-reminder")
-        .permission("allow-native-pick-document");
+        .permission("allow-native-pick-document")
+        .permission("allow-call-status");
     match app.add_capability(cap) {
         Ok(()) => s.granted.push(origin.to_string()),
         Err(e) => eprintln!("[kith] couldn't grant the server native access: {e}"),
+    }
+    // The mini call window (Kith.app only): the same server's /call-mini, with events (the call's
+    // state from the main window), dragging itself, and its three buttons. Nothing else.
+    if !who::parent_edition(app) {
+        let mini = CapabilityBuilder::new(format!("kith-mini-{}", s.granted.len()))
+            .remote(format!("{origin}/*"))
+            .local(false)
+            .window(mini::MINI)
+            .permission("core:event:default")
+            .permission("core:window:allow-start-dragging")
+            .permission("allow-mini-mute")
+            .permission("allow-mini-end")
+            .permission("allow-mini-focus-main");
+        if let Err(e) = app.add_capability(mini) {
+            eprintln!("[kith] couldn't grant the mini call window: {e}");
+        }
     }
 }
 
@@ -710,6 +729,10 @@ fn main() {
             native::native_add_event,
             native::native_add_reminder,
             native::native_pick_document,
+            mini::call_status,
+            mini::mini_mute,
+            mini::mini_end,
+            mini::mini_focus_main,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -895,6 +918,8 @@ fn main() {
                         let _ = w.hide();
                     }
                 }
+                // During a call: a small Pip window while she's in another app, gone when she's back.
+                WindowEvent::Focused(focused) => mini::main_focused(&drop_app, *focused),
                 // A document dropped on the window: read its text and hand it to the chat.
                 WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                     if let Some(path) = paths.first().cloned() {

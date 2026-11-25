@@ -26,12 +26,17 @@ import { Stories } from "./screens/Stories";
 import { usePoll } from "./lib/poll";
 import { action, Toaster } from "./lib/action";
 import { WorrySheet } from "./components/WorrySheet";
+import { CallProvider, useCallActive } from "./components/CallBits";
+import { MiniCall } from "./components/MiniCall";
+import { CallSession } from "./lib/callSession";
 
 // The bigger screens load when they're first opened, so the chat starts quickly on a phone.
 const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
 const Languages = lazy(() => import("./screens/Languages").then((m) => ({ default: m.Languages })));
 const Study = lazy(() => import("./screens/Study").then((m) => ({ default: m.Study })));
 const MyPip = lazy(() => import("./screens/MyPip").then((m) => ({ default: m.MyPip })));
+// The Mac app's own small call window (only ever opened by the Mac app).
+const CallMiniWindow = lazy(() => import("./screens/CallMiniWindow").then((m) => ({ default: m.CallMiniWindow })));
 // The avatar lab is a tool for working on Kith, so it isn't in the app people install.
 const AvatarLab = import.meta.env.DEV ? lazy(() => import("./screens/AvatarLab").then((m) => ({ default: m.AvatarLab }))) : null;
 
@@ -246,6 +251,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const [threadTitle, setThreadTitle] = useState("");
   const [threadLang, setThreadLang] = useState<string | null>(null);
   const [chatLangs, setChatLangs] = useState<ChatLang[]>([]);
+  // The call outlives the call screen: on another page it carries on as the mini call.
+  const [callSession] = useState(() => new CallSession());
+  const callActive = useCallActive(callSession);
+  const beforeTalk = useRef("/");
+  useEffect(() => { if (path !== "/talk") beforeTalk.current = path + location.search; }, [path]);
   const narrow = typeof window !== "undefined" && window.innerWidth < 600;
   const pickThread = (id: number) => {
     setThread(id);
@@ -307,7 +317,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const goToChat = () => { setProfileOpen(false); pickThread(1); go("/"); };
 
   let screen: React.ReactNode;
-  if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
+  if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} go={go} leave={() => go(beforeTalk.current)} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/my-pip") screen = <MyPip me={me} onSaved={onSaved} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
@@ -347,7 +357,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     </>
   );
 
+  // The mini call shows on every page but the call itself; only one 3D Pip moves at a time, so the
+  // header's live picture rests while it's there.
+  const mini = callActive && path !== "/talk";
   return (
+    <CallProvider session={callSession} deps={{ name, lowEnergy: energy?.mode === "low", onTurn, openHelp }}>
     <div className="app">
       <nav className="sidebar" aria-label="Sections">
         <button className="me brand" onClick={() => go("/")} aria-label="Kith home" style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
@@ -376,7 +390,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {/* My Pip shows Pip itself in 3D, so its picture isn't repeated up here. */}
             {path !== "/my-pip" && <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
               aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-              <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} live={profileOpen ? "off" : "on"} /></span>
+              <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} live={profileOpen || mini ? "off" : "on"} /></span>
               <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
             </button>}
             <span className="tb-right">
@@ -390,7 +404,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {/* On a phone the 3D makers need the room: no picture up here on My Pip or the OC workshop. */}
             {!onProfile && !makerPage && (
               <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-                <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} live={profileOpen ? "off" : "on"} /></span>
+                <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} live={profileOpen || mini ? "off" : "on"} /></span>
                 <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
               </button>
             )}
@@ -412,8 +426,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       {path !== "/talk" && !onProfile && <ProfilePanel open={profileOpen} tab={profileTab} me={me} state={state} mood={baseMood} go={(to) => { setProfileOpen(false); go(to); }} onClose={() => setProfileOpen(false)} />}
       <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
       <WorrySheet name={me.profile.name} goToChat={goToChat} openHelp={openHelp} />
+      {mini && <MiniCall me={me} go={go} still3d={profileOpen || makerPage} />}
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>
+    </CallProvider>
   );
 }
 
@@ -474,5 +490,7 @@ function Root() {
 }
 
 export function App() {
+  // The Mac app's mini call window: it only shows the call going on in Kith's main window.
+  if (location.pathname === "/call-mini") return <Suspense fallback={null}><CallMiniWindow /></Suspense>;
   return <><Root /><Toaster /></>;
 }
