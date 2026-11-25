@@ -211,7 +211,7 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
     ["/google", "cloud", "Google Drive", "Save what you make to your own Drive"],
   ];
   return (
-    <div className="screen narrow">
+    <div className="screen narrow dgrid">
       <span className="hand">yours</span>
       <h2 className="screen-title">Settings</h2>
       <b>Usage</b>

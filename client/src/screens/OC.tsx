@@ -27,7 +27,7 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
     </label>
   );
   return (
-    <div className="card" style={{ gap: 12 }}>
+    <div className="card full" style={{ gap: 12 }}>
       <div className="row">
         <input className="input" aria-label="Icon" value={s.icon} onChange={(e) => set({ icon: e.target.value.slice(0, 4) })} style={{ width: 64, textAlign: "center", fontSize: 24 }} />
         {field("name", "Name")}
@@ -102,7 +102,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
   );
 
   return (
-    <div className="screen narrow" style={{ paddingTop: 0 }}>
+    <div className="screen narrow dgrid" style={{ paddingTop: 0 }}>
       <div style={{ paddingTop: "calc(10px + var(--safe-top))" }}><span className="hand">your characters, your world</span><h2 className="screen-title" style={{ marginTop: 0 }}>OC workshop</h2></div>
       <div style={{ margin: "0 -18px" }}>{tabs}</div>
 

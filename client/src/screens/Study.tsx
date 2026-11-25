@@ -52,7 +52,7 @@ function SubjectEditor({ row, boards, onDone }: { row: SubjectRow | null; boards
   );
 }
 
-function Focus({ subjects, tooLate }: { subjects: SubjectRow[]; tooLate: boolean }) {
+function Focus({ subjects, tooLate, full = false }: { subjects: SubjectRow[]; tooLate: boolean; full?: boolean }) {
   const [len, setLen] = useState(25);
   const [left, setLeft] = useState<number | null>(null);
   const [subjectId, setSubjectId] = useState<number | null>(subjects[0]?.id ?? null);
@@ -74,7 +74,7 @@ function Focus({ subjects, tooLate }: { subjects: SubjectRow[]; tooLate: boolean
     }), 1000);
   };
   return (
-    <div className="card">
+    <div className={`card ${full ? "full" : ""}`}>
       <b>Focus session</b>
       {tooLate && <span className="small">It’s late. Rest is revision too: your brain sorts things out while you sleep.</span>}
       {left === null ? (
@@ -231,7 +231,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
   };
 
   return (
-    <div className="screen narrow">
+    <div className="screen narrow dgrid">
       {head}{tabs}
       {!v && <span className="small">…</span>}
       {v && tab === "plan" && (
@@ -252,7 +252,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
               <span className="small">Short sessions, one rest day, nothing after {v.profile.latestStudy}. Move things around: it’s a guide, not a rule.</span>
             </div>
           )}
-          <Focus subjects={v.subjects} tooLate={v.tooLate} />
+          <Focus subjects={v.subjects} tooLate={v.tooLate} full={v.tooLate || v.plan.length === 0 || v.subjects.length === 0} />
           <span className="small">Focus today: {v.focusMinutesToday} minutes. Revision runs on Low power to save energy for chats and calls.</span>
         </>
       )}

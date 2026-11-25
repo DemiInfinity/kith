@@ -66,7 +66,7 @@ const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google", "/n
 
 function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
   return (
-    <div className="screen narrow">
+    <div className="screen narrow dgrid">
       <span className="hand">make something</span>
       <h2 className="screen-title">Create</h2>
       {[["/stories", "pencil", "Stories with a friend", "Write together; every part credited"], ["/art", "art", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "oc", "OC workshop", "Your characters and their world"], ["/pip", "desk", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
@@ -184,7 +184,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}><Icon name="call" size={18} /> Call {name}</button>
         </div>
       </nav>
-      {dock && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
+      {dock && path === "/" && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
       <div className={`main ${!onProfile && path !== "/talk" ? "hang-m" : ""} ${path === "/" && !profileOpen ? "hang-d" : ""}`}>
         {path === "/" && (
           <header className="topbar deskbar desktop-only">

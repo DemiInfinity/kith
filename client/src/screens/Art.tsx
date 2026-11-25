@@ -30,10 +30,10 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
   const askInChat = () => go(`/?mode=art${coursework ? "&coursework=1" : ""}&label=${encodeURIComponent(`Art${coursework ? " · coursework" : ""}`)}`);
 
   return (
-    <div className="screen narrow">
+    <div className="screen narrow dgrid">
       {head}{tabs}
       {tab === "talk" && (
-        <div className="card" style={{ gap: 10 }}>
+        <div className="card full" style={{ gap: 10, maxWidth: 640 }}>
           <b>Talk art with {name}</b>
           <span className="small">Opens your chat with {name}, set up for art: prompts, techniques, artists, and feedback on what you describe.</span>
           <Toggle label="This is for my art coursework (portfolio or set task)" checked={coursework} onChange={setCoursework} />

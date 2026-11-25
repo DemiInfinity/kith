@@ -571,3 +571,19 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .profilepanel .deskpage { flex-direction: column; }
 .profilepanel .deskside { width: 100%; }
 .profilepanel .grid2 { grid-template-columns: 1fr; }
+/* ── Pages on a computer: roomier, and card pages lay out two to a row ───────────────── */
+@media (min-width: 1100px) {
+  .main > .screen.narrow { max-width: 820px; padding: 36px 48px 56px; gap: 16px; }
+  .main > .screen.narrow .screen-title { font-size: 40px; margin-top: 0; }
+  .main > .screen.narrow .hand { font-size: 26px; }
+  .main > .screen.narrow.dgrid { max-width: 1120px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-content: start; align-items: start; }
+  .main > .screen.narrow.dgrid > * { grid-column: 1 / -1; }
+  .main > .screen.narrow.dgrid > .card:not(.full),
+  .main > .screen.narrow.dgrid > button.card:not(.full) { grid-column: auto; }
+  .main > .screen.narrow.dgrid > .card.glow { grid-column: 1 / -1; }
+  .main > .screen.narrow.dgrid { grid-auto-flow: row dense; }
+  .main > .screen.narrow.dgrid > .hand + .screen-title, .main > .screen.narrow.dgrid > .screen-title { margin-top: -10px; }
+  .main > .screen.narrow.dgrid > .btn.block, .main > .screen.narrow.dgrid > .btn:not(.small) { justify-self: start; min-width: 240px; }
+  .main > .screen.narrow .card { padding: 18px 20px; }
+}
+@media (min-width: 1100px) { .main > .screen .notice { max-width: none; align-self: stretch; justify-self: stretch; width: auto; margin-left: 0; margin-right: 0; } }
