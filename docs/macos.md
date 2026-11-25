@@ -42,7 +42,7 @@ Privacy & Security.
 
 | What | How it works | Safeguards |
 | --- | --- | --- |
-| **Notifications** | Pip's check-ins, reminders and "your thing is ready" show as Mac notifications, even with the window closed. The page polls the server every 30 seconds. | Same choices as on her phone (Settings › Notifications). Up to 5 a minute show as they are; any more are gathered into one "N more notifications" a few seconds later, so none are lost. |
+| **Notifications** | Pip's check-ins, reminders and "your thing is ready" show as Mac notifications, even with the window closed. The app itself checks the server every 30 seconds (`who.rs`), so they keep coming while the window is closed and its page is paused; the page checks too while it's open, and each notification shows once, whichever gets there first. | Same choices as on her phone (Settings › Notifications). Up to 5 a minute show as they are; any more are gathered into one "N more notifications" a few seconds later, so none are lost. |
 | **Calendar & Reminders** | Off until she ticks **Kith › Share Calendar & Reminders with Pip** and macOS lets Kith in (the tick stays off if she says no). **Kith › Choose What Pip Sees** lists her calendars and reminder lists to tick or untick (all of them until she changes it; calendars added later aren't shared once she has chosen). The line under it says exactly what Pip sees, e.g. "Pip sees: Home, School (next 7 days) · Homework (due in the next 7 days)". The next 7 days of events and the reminders due in the next 7 days (none without a due date) go to the server every 10 minutes, and Pip sees them in its instructions. When she asks, Pip can add an event or a reminder. | Titles only, redacted like anything she types, kept for a day. Works from macOS 12: Kith asks with macOS 14's new calendar prompts where they exist and the older one otherwise. Switching it on or off shows in the activity log the parent sees. **Every addition shows a native "Add / Not now" prompt first**; the page can't skip it. At most 5 waiting. Unticking it clears the server copy. |
 | **Documents** | The 📄 button in the chat composer (Mac app only), or drop a file on the window. PDF, Word, RTF, ODT, HTML, text and Markdown. | Text only, up to 12,000 characters. It goes through the same safety check and redaction as her messages. **No photos or videos**: Kith's minors policy rules out image uploads until image-safety detection is in place (docs/minors-policy.md). Pip sees the text for that turn; the chat keeps "📄 name". |
 | **Call Pip** | **⌃⌥Space** from any app (or Call Pip in the menu bar or View menu) brings Kith forward and opens a call. | If another app already uses ⌃⌥Space, Kith carries on without it. |
@@ -55,7 +55,7 @@ How it fits together:
   capability added at start-up for that one origin. The sign-in provider, other sites and the desk's sandboxed frames
   get nothing. The bundled start page has its own two commands (read and save the server address) and none of these.
 - **In the web app (`client/src/lib/native.ts`):** does nothing in a normal browser. In the Mac app it polls the
-  notification inbox, sends the calendar snapshot, passes Pip's requests to the native prompt and handles ⌃⌥Space and
+  notification inbox while the page runs (the app polls it too, see Notifications above), sends the calendar snapshot, passes Pip's requests to the native prompt and handles ⌃⌥Space and
   dropped files.
 - **On the server (`server/src/native.ts`):** child-only routes under `/api/native/`, the inbox that `pushToChild()`
   also writes to, the shared calendar, and Pip's `add_calendar_event` and `add_reminder` tools. The tools are offered
@@ -122,14 +122,17 @@ Apple has approved for that site). So "Sign in with Pocket ID" in the app works 
    in your browser, which goes on to Pocket ID.
 2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half,
    sending the secret in the `X-Kith-Handoff-Secret` header. The id can show up in URLs and logs; the secret never
-   does, so the id alone can't collect the session.
+   does, so the id alone can't collect the session. If the server is busy or restarting (5xx, 429) or the Mac drops
+   offline for a moment, the window keeps waiting, a little longer each time (up to 20 seconds between checks), for as
+   long as the handoff lasts (15 minutes); only a real answer (signed in, cancelled, not allowed, expired) ends it.
 3. After your passkey, the browser asks "Finish signing in?" with a 4-digit code. The Kith window shows the same code,
-   big ("check your browser shows 4821, and tap Yes"). Nothing is handed over until you tap Yes; No cancels it, and the
+   big ("check your browser shows 4821, and tap Yes"). For VoiceOver the note is a dialog named by its heading,
+   the code is read out digit by digit ("Your code is 4 8 2 1"), and changes to its words are announced. Nothing is handed over until you tap Yes; No cancels it, and the
    window says so kindly with a Try again button (as it does if the sign-in times out).
 4. After Yes, the browser shows "You're signed in". The server hands the session to the app once,
    and Kith comes back to the front.
 
-The handoff lapses after two minutes, and the server only stores hashes of the id and secret. (A server from before
+A started handoff lasts 15 minutes, and after Yes the app has two minutes to collect the session. The server only stores hashes of the id and secret. (A server from before
 the secret answers 404 to `/auth/handoff/start`; the app then uses the older handoff with its own random id.) The polling script is only added
 to the window while it's showing the Kith server itself. Nothing else loads in the window during sign-in: there's no
 "anything while signing in" allowance, only the server and `signInHosts`. Pop-ups (`window.open`,
@@ -172,8 +175,9 @@ The server must be `https://`. Plain `http://` is allowed only for this Mac (`lo
 The address is parsed as an IP, so look-alikes such as `10.example.com` don't count. Handy for development, e.g.
 `http://localhost:8787`.
 
-Sign-in follows the server. A local dev server with `KITH_DEV_LOGIN=true` shows its "Try as…" buttons, and a server
-with Pocket ID sends you to Pocket ID inside the window. The app never turns dev sign-in on itself.
+Sign-in follows the server. A local dev server with `KITH_DEV_LOGIN=true` shows its "Try as…" buttons in the window.
+A server with Pocket ID opens Pocket ID in your browser, and the window shows a 4-digit code to check against the
+browser's "Finish signing in?" page (see "Signing in" above). The app never turns dev sign-in on itself.
 
 ## Build
 
@@ -190,9 +194,20 @@ Then build both apps:
 mac/build-all.sh
 ```
 
-If Rust can build for both kinds of Mac (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`), the apps are
-universal (Apple silicon and Intel, `--target universal-apple-darwin`); otherwise they're for the Mac you're on, and the
-script says so. `KITH_UNIVERSAL=0` always builds for this Mac; `KITH_UNIVERSAL=1` insists on universal.
+The apps are universal: one app for Apple silicon and Intel Macs (`--target universal-apple-darwin`). That needs
+both Rust targets, once:
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+```
+
+Without them the script stops and says which is missing. `KITH_UNIVERSAL=0 mac/build-all.sh` builds for this Mac only,
+which is quicker for trying things out; don't hand those builds to anyone. Check a build with
+`lipo -archs "mac/dist/Kith.app/Contents/MacOS/kith-mac"` (it should say `x86_64 arm64`).
+
+Both apps are **signed ad hoc** (`"signingIdentity": "-"` in `tauri.conf.json`): the whole bundle is sealed, so
+`codesign --verify --deep --strict` passes and a downloaded copy isn't reported as "damaged". It isn't a Developer ID
+signature, so macOS still won't open a downloaded copy without one extra step (see Install).
 
 This puts all four files in `mac/dist/` (git-ignored):
 
@@ -228,18 +243,30 @@ open -n --env KITH_DEBUG=1 --stderr /tmp/kith.log mac/src-tauri/target/release/b
 Open each `.dmg` and drag the app to Applications: **Kith** for the child, **Kith Parent** for you. They have different
 names and bundle ids, so one never replaces the other. On the child's Mac you only need Kith.
 
-The builds aren't signed, so the first time macOS says it can't check the app:
+The apps are signed ad hoc but not with a Developer ID or notarised, so a copy downloaded from GitHub (or sent by
+AirDrop, Messages or mail) is blocked the first time. It isn't reported as "damaged" (that would mean a broken
+signature): macOS says Apple **could not verify "Kith" is free of malware** and only offers Done or Move to Trash. To
+open it, once per app:
 
-1. Open it once (it'll be blocked).
-2. Go to System Settings › Privacy & Security and choose **Open Anyway**.
+1. Drag it to Applications and open it. When macOS says it can't verify it, click **Done** (not Move to Trash).
+2. Open System Settings › Privacy & Security and scroll down to Security. It says **"Kith" was blocked to protect your
+   Mac.** Click **Open Anyway**, then confirm with your password or Touch ID.
+3. Open Kith again and choose **Open** in the last prompt. After that it opens normally, including after updates.
 
-Or, for apps you built yourself on this Mac, clear the download flag instead:
+The Open Anyway button only appears for about an hour after the blocked attempt; if it's gone, open the app again
+first. On macOS 15 and later, Control-click › Open no longer gets past this prompt; use Open Anyway. (Checked on
+macOS 27 with a copy from the `.dmg` given the download flag: `spctl -a -vv` says "rejected", `codesign --verify --deep
+--strict` passes, and Privacy & Security shows the Open Anyway line above.)
+
+Or, for apps you built yourself, clear the download flag instead:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Kith.app "/Applications/Kith Parent.app"
 ```
 
-A build made on the same Mac and never downloaded usually opens without either step.
+A build made on the same Mac and never downloaded opens without either step. The proper fix is a Developer ID
+signature plus notarisation (below): then a downloaded copy opens with just the usual "downloaded from the internet"
+prompt.
 
 ## Signing and notarising (Developer ID)
 
@@ -293,17 +320,41 @@ matching private key is refused) and restarts.
 
 To publish updates:
 
-1. Once: `cargo tauri signer generate -w ~/.tauri/kith.key`. Keep the private key and its password out of the repo;
-   the public key goes in `updatePublicKey`.
-2. Build with `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents or path) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set,
-   and `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`. That adds `Kith.app.tar.gz` and its `.sig` next to
-   the app.
-3. Upload the `.tar.gz` and serve a `latest.json` at `updateUrl`:
-   `{ "version": "0.2.0", "notes": "…", "pub_date": "2026-12-01T00:00:00Z", "platforms": { "darwin-aarch64": { "url": "https://…/Kith.app.tar.gz", "signature": "<contents of the .sig>" }, "darwin-x86_64": { … } } }`.
-   Both apps are built from the same config, so `{app}` in `updateUrl` becomes `child` in Kith and `parent` in Kith
-   Parent: each gets its own `latest.json` and archive.
+1. **Once, make the update signing key.** This is Tauri's own key (minisign), separate from any Apple certificate:
 
-Updates replace the app in place. Unsigned ones still install, but once Kith is shared beyond this family, sign and
+   ```bash
+   cargo tauri signer generate -w ~/.tauri/kith.key
+   ```
+
+   It asks for a password. Keep `~/.tauri/kith.key` and its password out of the repo and back them up somewhere safe
+   (a password manager): **without the private key no installed copy will accept another update**, and anyone with it
+   can push one, so never share it. The command prints the public key (also in `~/.tauri/kith.key.pub`); put that in
+   `updatePublicKey`. For a GitHub release, set
+   `"updateUrl": "https://github.com/OWNER/NAME/releases/latest/download/latest-{app}.json"`.
+2. **Build** with the key in the environment, typed at a hidden prompt rather than saved anywhere:
+
+   ```bash
+   export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/kith.key"
+   read -s TAURI_SIGNING_PRIVATE_KEY_PASSWORD; export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+   mac/build-all.sh
+   ```
+
+   With `updateUrl` and `updatePublicKey` both in `mac/kith.config.json`, `build-all.sh` turns on
+   `bundle.createUpdaterArtifacts` (it's `false` in `tauri.conf.json`, the same switch as the app's updater) and stops if
+   the key isn't set. `mac/dist` then also has `Kith.app.tar.gz` and `Kith-Parent.app.tar.gz`, each with its `.sig`.
+3. **Write the manifests:**
+
+   ```bash
+   mac/installer/update-manifest.py --repo OWNER/NAME --tag v0.3.0 --notes "What's new"
+   ```
+
+   It writes `mac/dist/latest-child.json` (Kith) and `latest-parent.json` (Kith Parent): Tauri's `latest.json`, with
+   the version, notes, date, and for both `darwin-aarch64` and `darwin-x86_64` (the apps are universal) the archive's
+   release URL and the contents of its `.sig`. Nothing is signed by the script.
+4. **Upload** the two archives and the two manifests to the GitHub release, along with the `.dmg` files.
+
+Updates replace the app in place. They're checked against the update key, not Apple's, so until there's a Developer ID
+an updated copy is ad-hoc signed like the first one (see Install). Once Kith is shared beyond this family, sign and
 notarise each update too (above).
 
 ## Not done yet
@@ -315,7 +366,8 @@ notarise each update too (above).
 - **Parent view of the shared calendar.** The parent sees when sharing is switched on or off, not the events.
 - **"Time Sensitive" notifications.** macOS only allows these for signed apps with Apple's entitlement, so urgent
   parent notifications use a sound instead. With signing, they could break through Focus.
-- **Signing and notarising** (see above): needs an Apple Developer account.
+- **Developer ID signing and notarising** (see above): needs an Apple Developer account. Until then the apps are only
+  signed ad hoc, so a downloaded copy needs Open Anyway once (see Install). Developer ID plus notarisation is the proper fix.
 - **Updates** are wired but off (see above): no update address or signing key yet.
 
 ## The other way: bundle the client

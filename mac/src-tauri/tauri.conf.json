@@ -32,6 +32,7 @@
       "dmg"
     ],
     "category": "Lifestyle",
+    "createUpdaterArtifacts": false,
     "shortDescription": "Kith, your companion from home",
     "copyright": "Kith contributors",
     "icon": [
@@ -43,7 +44,7 @@
     "macOS": {
       "minimumSystemVersion": "12.0",
       "entitlements": "Entitlements.plist",
-      "signingIdentity": null
+      "signingIdentity": "-"
     }
   },
   "plugins": {

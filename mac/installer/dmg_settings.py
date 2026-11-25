@@ -24,4 +24,5 @@ arrange_by = None
 icon_size = 112
 text_size = 13
 icon_locations = {appname: (165, 215), "Applications": (495, 215)}
-hide_extensions = [appname]
+# No hide_extensions: it sets a Finder flag (com.apple.FinderInfo) on the app, which breaks its signature
+# check (codesign --strict). Finder hides ".app" anyway.

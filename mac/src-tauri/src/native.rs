@@ -2,8 +2,9 @@
 // See capability_for_server() in main.rs: these commands are the only ones that origin may call.
 //
 // - native_info: what this app can do and what's switched on.
-// - native_notify: show a Mac notification (Pip's check-ins and reminders). A burst is gathered into
-//   one "N more" notification (notify.rs), never dropped.
+// - native_notify: show a Mac notification from the child's inbox (Pip's check-ins and reminders).
+//   The app reads the same inbox itself (who.rs), so a notification both bring shows once. A burst
+//   is gathered into one "N more" notification (notify.rs), never dropped.
 // - native_calendar_snapshot: the coming week from the calendars and reminder lists she has chosen
 //   (reminders due in the next 7 days), only while she has switched on Kith › Share Calendar &
 //   Reminders with Pip.
@@ -49,7 +50,9 @@ pub fn native_info(state: tauri::State<'_, State>) -> Info {
 
 #[tauri::command]
 pub fn native_notify(app: AppHandle, title: String, body: String) {
-    crate::notify::show(&app, &title, &body, false);
+    // The page reads the child's inbox while it's open; the app reads it too (who.rs), so each one
+    // shows once, from whichever gets there first.
+    crate::notify::show_inbox(&app, crate::notify::Via::Page, &title, &body);
 }
 
 #[derive(Serialize)]

@@ -4,14 +4,16 @@
 // - the signed-in role, from the server's /api/me with the window's own sign-in cookie (read from
 //   the web view's cookie store, kept in memory only, never logged). For the parent, the window and
 //   menus say "Kith Parent" and the child-only items (Calendar & Reminders, Call Pip) are off.
+// - for the child (in Kith.app), /api/native/inbox: Pip's check-ins and reminders, as Mac
+//   notifications even while the window is closed (it's only hidden, and its page may be paused).
+//   The page reads the same inbox while it's open (client/src/lib/native.ts); notify.rs shows each
+//   one once, from whichever reader gets there first. The app's place in the inbox is kept here.
 // - for the parent, /api/native/parent-inbox: the notifications the server would send the parent
 //   by web push. The server applies the parent's choices (which report levels, quiet hours with
 //   urgent ones allowed, generic lock-screen text unless summaries are on) and never includes the
 //   child's chat; the app just shows what it's given, page after page until the inbox is empty
 //   (a burst is gathered into one "N more" notification, notify.rs). Until the server has that
 //   route it answers 404 and the app stays quiet.
-//
-// The child's notifications stay with the page (client/src/lib/native.ts).
 
 use crate::{net, LockExt, State};
 use serde::Deserialize;
@@ -128,25 +130,50 @@ struct Item {
 /// At most this many pages a round (100 notifications); the rest come 30 seconds later.
 const MAX_PAGES: usize = 10;
 
-/// Shows anything new for the parent, page after page until the inbox is empty. Returns where
-/// the inbox is up to: the last item shown, so nothing past a page is skipped.
-fn parent_inbox(app: &AppHandle, server: &str, sid: &str, mut after: Option<i64>) -> Option<i64> {
+/// Whose inbox: the child's (`/api/native/inbox`) or the parent's (`/api/native/parent-inbox`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Whose {
+    Child,
+    Parent,
+}
+
+/// The inbox this app reads for who's signed in, if any: only Kith.app reads the child's, only
+/// Kith Parent.app the parent's.
+fn inbox_for(role: Role, parent_app: bool) -> Option<Whose> {
+    match (role, parent_app) {
+        (Role::Child, false) => Some(Whose::Child),
+        (Role::Parent, true) => Some(Whose::Parent),
+        _ => None,
+    }
+}
+
+/// Shows anything new, page after page until the inbox is empty. Returns where the inbox is up
+/// to: the last item shown, so nothing past a page is skipped. The first call (`after` None) only
+/// learns where it is now, so old ones aren't replayed.
+fn read_inbox(app: &AppHandle, server: &str, sid: &str, which: Whose, mut after: Option<i64>) -> Option<i64> {
     let agent = net::agent();
+    let (path, hint) = match which {
+        Whose::Child => ("/api/native/inbox", "child"),
+        Whose::Parent => ("/api/native/parent-inbox", "parent"),
+    };
     for _ in 0..MAX_PAGES {
         let url = match after {
-            Some(a) => format!("{server}/api/native/parent-inbox?after={a}"),
-            None => format!("{server}/api/native/parent-inbox"),
+            Some(a) => format!("{server}{path}?after={a}"),
+            None => format!("{server}{path}"),
         };
-        let Ok(mut r) = agent.get(&url).header("Cookie", &net::session(sid)).header("X-Kith-App", "parent").call() else { return after };
+        let Ok(mut r) = agent.get(&url).header("Cookie", &net::session(sid)).header("X-Kith-App", hint).call() else { return after };
         if r.status().as_u16() != 200 {
             if std::env::var_os("KITH_DEBUG").is_some() {
-                eprintln!("[kith] parent inbox: {}", r.status());
+                eprintln!("[kith] {which:?} inbox: {}", r.status());
             }
             return after; // not on this server yet (404), or not right now
         }
         let Some(inbox) = r.body_mut().read_to_string().ok().and_then(|b| serde_json::from_str::<Inbox>(&b).ok()) else { return after };
         for n in &inbox.items {
-            crate::notify::show(app, &n.title, &n.body, n.urgent);
+            match which {
+                Whose::Child => crate::notify::show_inbox(app, crate::notify::Via::App, &n.title, &n.body),
+                Whose::Parent => crate::notify::show(app, &n.title, &n.body, n.urgent),
+            }
         }
         after = Some(inbox.last);
         if !inbox.more || inbox.items.is_empty() {
@@ -191,11 +218,9 @@ pub fn start(app: AppHandle, state: State) {
                         crate::apply_role(&app, role);
                     }
                 }
-                // Only Kith Parent.app ever asks for the parent's notifications.
-                if role == Role::Parent && parent_edition(&app) {
-                    if let Some(sid) = &sid {
-                        after = parent_inbox(&app, &server, sid, after);
-                    }
+                // Kith.app reads the child's notifications, Kith Parent.app the parent's.
+                if let (Some(which), Some(sid)) = (inbox_for(role, parent_edition(&app)), &sid) {
+                    after = read_inbox(&app, &server, sid, which, after);
                 }
             }
             // Every 30 seconds, or sooner when a page has just loaded.
@@ -207,4 +232,18 @@ pub fn start(app: AppHandle, state: State) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{inbox_for, Role, Whose};
+
+    #[test]
+    fn each_app_reads_only_its_own_persons_inbox() {
+        assert_eq!(inbox_for(Role::Child, false), Some(Whose::Child));
+        assert_eq!(inbox_for(Role::Parent, true), Some(Whose::Parent));
+        assert_eq!(inbox_for(Role::Parent, false), None);
+        assert_eq!(inbox_for(Role::Child, true), None);
+        assert_eq!(inbox_for(Role::SignedOut, false), None);
+    }
 }
