@@ -70,12 +70,13 @@ beforeAll(async () => {
 });
 afterAll(() => provider.close());
 
-async function signIn(claims: Record<string, unknown>, handoff?: string, existing?: { app: ReturnType<typeof Fastify>; db: ReturnType<typeof openDb> }) {
+async function signIn(claims: Record<string, unknown>, handoff?: string, existing?: { app: ReturnType<typeof Fastify>; db: ReturnType<typeof openDb> }, appHint?: string) {
   user = claims;
   const db = existing?.db ?? openDb(":memory:");
   const app = existing?.app ?? Fastify();
   if (!existing) { await app.register(cookie); registerAuth(app, db); }
-  const start = await app.inject({ method: "GET", url: handoff ? `/auth/login?handoff=${handoff}` : "/auth/login" });
+  const q = [handoff && `handoff=${handoff}`, appHint && `app=${appHint}`].filter(Boolean).join("&");
+  const start = await app.inject({ method: "GET", url: q ? `/auth/login?${q}` : "/auth/login" });
   expect(start.statusCode).toBe(302);
   const auth = new URL(start.headers.location as string);
   expect(auth.origin + auth.pathname).toBe(`${issuer}/authorize`);
@@ -135,6 +136,52 @@ describe("signing in with Pocket ID", () => {
     registerAuth(app, db);
     const r = await app.inject({ method: "GET", url: "/auth/callback?code=x&state=forged" });
     expect(r.headers.location).toBe("/?signin=expired");
+  });
+  describe("each app lets in only its own person (?app=)", () => {
+    const both = { sub: "u-both", groups: ["kith-child", "kith-parent"] };
+    it("a parent who's also in the child group can't get into the child app", async () => {
+      const { back, db } = await signIn(both, undefined, undefined, "child");
+      expect(back.headers.location).toBe("/?signin=use-parent-app&app=child");
+      expect(String(back.headers["set-cookie"] ?? "")).not.toContain("kith_sid=");
+      expect(db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+    });
+    it("…but gets into the parent app", async () => {
+      const { back } = await signIn(both, undefined, undefined, "parent");
+      expect(back.headers.location).toBe("/parent");
+      expect(String(back.headers["set-cookie"])).toContain("kith_sid=");
+    });
+    it("the child can't get into the parent app, and can get into theirs", async () => {
+      const kid = { sub: "u-123", groups: ["kith-child"] };
+      expect((await signIn(kid, undefined, undefined, "parent")).back.headers.location).toBe("/?signin=use-child-app&app=parent");
+      expect((await signIn(kid, undefined, undefined, "child")).back.headers.location).toBe("/");
+    });
+    it("strangers are still not allowed, and no hint behaves as before", async () => {
+      expect((await signIn({ sub: "u-x", groups: [] }, undefined, undefined, "child")).back.headers.location).toBe("/?signin=not-allowed&app=child");
+      expect((await signIn(both)).back.headers.location).toBe("/parent");
+    });
+    it("hands the error back to an installed app's handoff", async () => {
+      const id = crypto.randomBytes(32).toString("base64url");
+      const { app } = await signIn(both, id, undefined, "child");
+      const poll = await app.inject({ method: "GET", url: `/auth/handoff/${id}` });
+      expect(poll.statusCode).toBe(403);
+      expect(poll.json()).toEqual({ error: "use-parent-app" });
+    });
+    it("refuses an unknown app name", async () => {
+      const app = Fastify(); await app.register(cookie); registerAuth(app, openDb(":memory:"));
+      expect((await app.inject({ method: "GET", url: "/auth/login?app=admin" })).statusCode).toBe(400);
+    });
+    it("an app sending X-Kith-App with someone else's session gets a friendly 403", async () => {
+      const { db, back } = await signIn({ sub: "u-123", groups: ["kith-child"] });
+      const sid = /kith_sid=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
+      const app = Fastify(); await app.register(cookie); registerAuth(app, db);
+      app.get("/api/me", async (req) => ({ role: req.user?.role }));
+      const wrong = await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid }, headers: { "x-kith-app": "parent" } });
+      expect(wrong.statusCode).toBe(403);
+      expect(wrong.json()).toMatchObject({ code: "wrong-app", role: "child" });
+      expect(wrong.json().error).toContain("Kith");
+      expect((await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid }, headers: { "x-kith-app": "child" } })).json()).toEqual({ role: "child" });
+      expect((await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid } })).json()).toEqual({ role: "child" });
+    });
   });
   describe("from an installed web app (Dock or Home Screen)", () => {
     const newId = () => crypto.randomBytes(32).toString("base64url");

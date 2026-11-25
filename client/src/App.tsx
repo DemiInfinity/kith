@@ -1,3 +1,4 @@
+import { withApp, wrongAppWords } from "./lib/appHint";
 import { isInstalledApp, newHandoffId, prepareSignIn, preparedFresh, waitForHandoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -33,7 +34,24 @@ function SignInDone({ error }: { error: string | null }) {
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
         <h2 style={{ fontSize: 30 }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
-        <span style={{ color: "var(--text-2)" }}>{error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
+        <span style={{ color: "var(--text-2)" }}>{error && wrongAppWords(error) ? wrongAppWords(error) : error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
+      </div>
+    </div>
+  );
+}
+
+/** An installed app with someone else's session: say so, and offer to sign out. */
+function WrongApp({ text }: { text: string }) {
+  const signOut = async () => {
+    const r = await fetch("/auth/logout", { method: "POST", headers: { "X-Kith": "1" }, credentials: "include" }).then((x) => x.json()).catch(() => ({ redirect: null })) as { redirect?: string | null };
+    location.href = r.redirect || "/";
+  };
+  return (
+    <div className="main">
+      <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+        <LogoMark size={72} />
+        <h2 style={{ fontSize: 28 }}>{text}</h2>
+        <button className="btn ghost" onClick={signOut}>Sign out</button>
       </div>
     </div>
   );
@@ -65,12 +83,12 @@ function SignIn() {
     const ctrl = new AbortController();
     setWaiting(ctrl);
     if (p) window.open(p.url, "_blank");
-    else window.open(`/auth/login?handoff=${id}`, "kith-signin", "popup,width=520,height=760"); // an older server
+    else window.open(withApp(`/auth/login?handoff=${id}`), "kith-signin", "popup,width=520,height=760"); // an older server
     void prepareSignIn().then((x) => { prepared.current = x; }); // ready for another try
     const r = await waitForHandoff(id, ctrl.signal);
     setWaiting(null);
     if (r.ok) { location.href = r.redirect; return; }
-    if (r.error !== "cancelled") setHandoffErr(r.error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : "Sign-in didn’t finish. Try again?");
+    if (r.error !== "cancelled") setHandoffErr(wrongAppWords(r.error) ?? (r.error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : "Sign-in didn’t finish. Try again?"));
   };
   useEffect(() => { api<{ oidc: boolean; label: string; dev: boolean }>("/api/public/signin").then(setInfo).catch(() => undefined); }, []);
   return (
@@ -81,8 +99,9 @@ function SignIn() {
         <span className="hand">a companion that grows up with you, kept at home</span>
         {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}
         {reason === "failed" && <div className="notice">Sign-in didn’t work. Try again?</div>}
+        {reason && wrongAppWords(reason) && <div className="notice">{wrongAppWords(reason)}</div>}
         {handoffErr && <div className="notice">{handoffErr}</div>}
-        {info?.oidc && !waiting && <a className="btn primary" href="/auth/login" onClick={signInFromApp} style={{ textDecoration: "none" }}>Sign in with {info.label}</a>}
+        {info?.oidc && !waiting && <a className="btn primary" href={withApp("/auth/login")} onClick={signInFromApp} style={{ textDecoration: "none" }}>Sign in with {info.label}</a>}
         {waiting && (
           <div className="stack" style={{ alignItems: "center" }}>
             <span className="typing" aria-hidden><i /><i /><i /></span>
@@ -306,13 +325,19 @@ function ChildApp({ me: initialMe }: { me: Me }) {
 export function App() {
   const [me, setMe] = useState<Me | null | "signed-out">(null);
   const [err, setErr] = useState("");
+  const [wrongApp, setWrongApp] = useState("");
   useEffect(() => {
-    api<Me>("/api/me").then(setMe).catch((e) => (e instanceof ApiError && e.status === 401 ? setMe("signed-out") : setErr((e as Error).message)));
+    api<Me>("/api/me").then(setMe).catch((e) => {
+      if (e instanceof ApiError && e.status === 401) setMe("signed-out");
+      else if (e instanceof ApiError && e.code === "wrong-app") setWrongApp(e.message);
+      else setErr((e as Error).message);
+    });
     void registerServiceWorker();
   }, []);
   // The sign-in window an installed app opened: say it's done (whatever the session state here).
   const sp = new URLSearchParams(location.search).get("signin") ?? "";
   if (sp === "done" || sp.startsWith("done-")) return <SignInDone error={sp === "done" ? null : sp.slice(5)} />;
+  if (wrongApp) return <WrongApp text={wrongApp} />;
   if (err) return <div className="main"><div className="screen narrow"><div className="notice">Kith can’t reach home right now. {err}</div></div></div>;
   if (me === null) return <div className="main" aria-busy="true" />;
   if (me === "signed-out") return <SignIn />;

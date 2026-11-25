@@ -83,7 +83,8 @@ describe("notifications to the parent", () => {
 describe("Kith Parent", () => {
   it("the manifest names the app by who's signed in", async () => {
     expect(manifestFor("parent").name).toBe("Kith Parent");
-    expect(manifestFor("parent").start_url).toBe("/parent");
+    expect(manifestFor("parent").start_url).toBe("/?app=parent");
+    expect(manifestFor("child").start_url).toBe("/?app=child");
     expect(manifestFor("child").name).toBe("Kith");
     expect(manifestFor(null).short_name).toBe("Kith");
   });

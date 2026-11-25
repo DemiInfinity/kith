@@ -34,6 +34,34 @@ export function roleFor(
   return null;
 }
 
+// ── Each app lets in only its own person ───────────────────────────────────────────────────
+// Kith (the child's app) and Kith Parent can say which one they are: ?app=child|parent on
+// /auth/login, and the X-Kith-App header on API calls. A parent is never let into the child app,
+// even if they're also in the child's group, so the child app can never show a parent the child's
+// chats. Without a hint, everything works as before.
+export type AppHint = "child" | "parent";
+export const APP_HINT = /^(child|parent)$/;
+
+/** Which role this person gets in this app, or why not. */
+export function appRole(
+  ids: { sub: string; email?: string; emailVerified?: boolean; groups?: string[] },
+  app: AppHint | null,
+  people = config.people,
+  groups = { child: config.oidc.childGroup, parent: config.oidc.parentGroup },
+): { role: Role } | { error: "not-allowed" | "use-parent-app" | "use-child-app" } {
+  if (!app) { const role = roleFor(ids, people, groups); return role ? { role } : { error: "not-allowed" }; }
+  const isParent = roleFor(ids, { ...people, child: [] }, { ...groups, child: "" }) === "parent";
+  const isChild = roleFor(ids, { ...people, parents: [] }, { ...groups, parent: "" }) === "child";
+  if (app === "parent") return isParent ? { role: "parent" } : isChild ? { error: "use-child-app" } : { error: "not-allowed" };
+  return isParent ? { error: "use-parent-app" } : isChild ? { role: "child" } : { error: "not-allowed" };
+}
+
+/** The friendly words for the wrong app (the child's name comes from Kith's own settings). */
+export function wrongAppText(app: AppHint, child: string): string {
+  const who = child || "your child";
+  return app === "child" ? `This is ${child ? `${child}’s` : "the child’s"} Kith. Grown-ups use Kith Parent.` : `This is the grown-up’s app. ${who.charAt(0).toUpperCase() + who.slice(1)} uses Kith.`;
+}
+
 export function firstName(claims: { given_name?: unknown; name?: unknown }): string {
   const n = (typeof claims.given_name === "string" && claims.given_name) || (typeof claims.name === "string" && claims.name.split(" ")[0]) || "";
   return n.slice(0, 30);
@@ -128,11 +156,13 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     if (!config.oidc.issuer) return reply.code(503).send({ error: "Sign-in isn't set up yet (KITH_OIDC_ISSUER)." });
     const handoffId = (req.query as { handoff?: string }).handoff;
     if (handoffId !== undefined && !HANDOFF_ID.test(handoffId)) return reply.code(400).send({ error: "bad handoff" });
+    const appHint = (req.query as { app?: string }).app;
+    if (appHint !== undefined && !APP_HINT.test(appHint)) return reply.code(400).send({ error: "bad app" });
     const cfg = await discover();
     const verifier = oidc.randomPKCECodeVerifier();
     const state = oidc.randomState();
     const nonce = oidc.randomNonce();
-    run(db, "INSERT INTO oidc_state(state, verifier, nonce, created, handoff) VALUES (?,?,?,?,?)", state, verifier, nonce, Date.now(), handoffId ? hashId(handoffId) : null);
+    run(db, "INSERT INTO oidc_state(state, verifier, nonce, created, handoff, app) VALUES (?,?,?,?,?,?)", state, verifier, nonce, Date.now(), handoffId ? hashId(handoffId) : null, appHint ?? null);
     const url = oidc.buildAuthorizationUrl(cfg, {
       redirect_uri: redirectUri,
       scope: config.oidc.childGroup || config.oidc.parentGroup ? "openid email profile groups" : "openid email profile",
@@ -151,7 +181,7 @@ export function registerAuth(app: FastifyInstance, db: DB) {
   app.get("/auth/callback", async (req, reply) => {
     const q = req.query as { state?: string; error?: string };
     if (q.error) return reply.redirect("/?signin=failed");
-    const row = q.state ? get<{ verifier: string; nonce: string; created: number; handoff: string | null }>(db, "SELECT verifier, nonce, created, handoff FROM oidc_state WHERE state = ?", q.state) : undefined;
+    const row = q.state ? get<{ verifier: string; nonce: string; created: number; handoff: string | null; app: AppHint | null }>(db, "SELECT verifier, nonce, created, handoff, app FROM oidc_state WHERE state = ?", q.state) : undefined;
     if (!row || Date.now() - row.created > 15 * 60_000) return reply.redirect("/?signin=expired");
     run(db, "DELETE FROM oidc_state WHERE state = ?", q.state!);
     // In a sign-in window opened by an installed app, finish on a "you can close this" page.
@@ -170,8 +200,12 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       const email = typeof claims.email === "string" ? claims.email : undefined;
       const verified = claims.email_verified === true || config.oidc.trustEmail;
       const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).filter((g): g is string => typeof g === "string") : [];
-      const role = roleFor({ sub: claims.sub, email, emailVerified: verified, groups });
-      if (!role) return done("/?signin=not-allowed", { error: "not-allowed" });
+      const decided = appRole({ sub: claims.sub, email, emailVerified: verified, groups }, row.app);
+      if ("error" in decided) {
+        // No session is made. The app shows a friendly page (it knows which app it is).
+        return done(`/?signin=${decided.error}${row.app ? `&app=${row.app}` : ""}`, { error: decided.error });
+      }
+      const role = decided.role;
       const viaGroup = role === "parent" ? config.oidc.parentGroup : config.oidc.childGroup;
       const group = viaGroup && groups.some((g) => g.toLowerCase() === viaGroup.toLowerCase()) ? viaGroup : "";
       if (tokens.id_token) idTokens.set(claims.sub, tokens.id_token);
@@ -238,6 +272,11 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     const user = sessionFor(db, req.cookies[COOKIE]);
     if (!user) return reply.code(401).send({ error: "Please sign in." });
     if (req.method !== "GET" && req.method !== "HEAD" && req.headers["x-kith"] !== "1") return reply.code(403).send({ error: "Missing X-Kith header." });
+    // An app that says which one it is (X-Kith-App) only works with a session of its own role.
+    const hint = req.headers["x-kith-app"];
+    if (typeof hint === "string" && APP_HINT.test(hint) && user.role !== hint) {
+      return reply.code(403).send({ error: wrongAppText(hint as AppHint, childName(db)), code: "wrong-app", role: user.role });
+    }
     req.user = user;
   });
 }

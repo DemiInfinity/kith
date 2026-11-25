@@ -4,6 +4,8 @@
 // window and polls /auth/handoff/<id>; the server hands over the session once (the poll sets the
 // cookie in the app's own context). In a normal browser tab, sign-in is unchanged.
 
+import { withApp } from "./appHint";
+
 export function isInstalledApp(): boolean {
   try {
     return window.matchMedia("(display-mode: standalone)").matches
@@ -55,7 +57,7 @@ export type PreparedSignIn = { id: string; url: string; at: number };
 export async function prepareSignIn(fetchImpl: typeof fetch = fetch): Promise<PreparedSignIn | null> {
   const id = newHandoffId();
   try {
-    const r = await fetchImpl(`/auth/login?handoff=${id}&json=1`, { credentials: "same-origin", cache: "no-store" });
+    const r = await fetchImpl(withApp(`/auth/login?handoff=${id}&json=1`), { credentials: "same-origin", cache: "no-store" });
     if (!r.ok) return null;
     const j = (await r.json()) as { url?: unknown };
     return typeof j.url === "string" && /^https?:\/\//.test(j.url) ? { id, url: j.url, at: Date.now() } : null;

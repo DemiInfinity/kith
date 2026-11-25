@@ -2,8 +2,10 @@
 // X-Kith header, which the server requires (it blocks cross-site form posts).
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
+
+import { appHint } from "./lib/appHint";
 
 const BASE = (import.meta.env.VITE_KITH_API as string | undefined) ?? "";
 
@@ -13,6 +15,9 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   if (method !== "GET") headers["X-Kith"] = "1";
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.raw) headers["Content-Type"] = opts.type ?? "application/octet-stream";
+  // An installed app says which one it is, so the server only accepts its own person's session.
+  const hint = appHint();
+  if (hint) headers["X-Kith-App"] = hint;
   const res = await fetch(BASE + path, {
     method,
     headers,
@@ -20,8 +25,8 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
     body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
   });
   if (!res.ok) {
-    const j = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(j.error ?? `Something went wrong (${res.status}).`, res.status);
+    const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    throw new ApiError(j.error ?? `Something went wrong (${res.status}).`, res.status, j.code);
   }
   const ct = res.headers.get("content-type") ?? "";
   return (ct.includes("application/json") ? res.json() : res.blob()) as Promise<T>;

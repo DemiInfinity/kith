@@ -9,7 +9,7 @@ export function manifestFor(role: "child" | "parent" | null) {
     short_name: parent ? "Kith Parent" : "Kith",
     description: parent ? "The grown-up's view of Kith." : "Your companion, kept at home.",
     // An installed parent app opens on the parent view.
-    start_url: parent ? "/parent" : "/",
+    start_url: parent ? "/?app=parent" : "/?app=child", // the app remembers which one it is
     id: parent ? "/parent" : "/",
     scope: "/",
     display: "standalone",

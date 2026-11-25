@@ -150,6 +150,7 @@ function migrate(db: DB) {
   if (!ps.includes("audience")) db.exec("ALTER TABLE push_subs ADD COLUMN audience TEXT NOT NULL DEFAULT 'child'");
   const st = (db.prepare("PRAGMA table_info(oidc_state)").all() as { name: string }[]).map((c) => c.name);
   if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
+  if (!st.includes("app")) db.exec("ALTER TABLE oidc_state ADD COLUMN app TEXT");
   const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
   db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");
