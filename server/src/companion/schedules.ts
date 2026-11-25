@@ -56,7 +56,13 @@ export function nextRun(prev: number, repeat: Repeat, tz: string, time?: string)
   return null;
 }
 
-export function addSchedule(db: DB, input: unknown, tz: string, now = Date.now()): { ok: true; schedule: Schedule } | { ok: false; error: string } {
+/** Why a schedule can't be added (bad time, too many, past), or null. Saves nothing. */
+export function scheduleProblem(db: DB, input: unknown, tz: string, now = Date.now()): string | null {
+  const r = addSchedule(db, input, tz, now, true);
+  return r.ok ? null : r.error;
+}
+
+export function addSchedule(db: DB, input: unknown, tz: string, now = Date.now(), dryRun = false): { ok: true; schedule: Schedule } | { ok: false; error: string } {
   const v = ScheduleInput.safeParse(input);
   if (!v.success) return { ok: false, error: "That doesn't look like a time I understand." };
   const s = v.data;
@@ -68,6 +74,7 @@ export function addSchedule(db: DB, input: unknown, tz: string, now = Date.now()
     while (at <= now) at = nextRun(at, s.repeat, tz, s.when.slice(11)) ?? Infinity;
   }
   if (s.kind === "make" && !s.make) return { ok: false, error: "What should I make?" };
+  if (dryRun) return { ok: true, schedule: { id: 0, created: now, title: s.title, kind: s.kind, payload: "{}", at, repeat: s.repeat, time: s.when.slice(11), active: 1, last_run: null } };
   const res = run(db, "INSERT INTO schedules(created, title, kind, payload, at, repeat, time, active) VALUES (?,?,?,?,?,?,?,1)",
     now, s.title, s.kind, JSON.stringify(s.make ?? {}), at, s.repeat, s.when.slice(11));
   return { ok: true, schedule: get<Schedule>(db, "SELECT * FROM schedules WHERE id = ?", Number(res.lastInsertRowid))! };

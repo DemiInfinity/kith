@@ -36,9 +36,15 @@ What the child says:
    child sees "I couldn't check that just now, try again in a moment", nothing is answered, and the parent gets an
    "fyi" that the safety check was unavailable (at most one an hour, and never what the message said). Anything the
    fixed rules caught still counts: a worry is still answered with the safety reply and reported. The same goes for
-   soul.md, identity notes and memories the child writes, desk ideas and changes, and study and language topics: they
-   wait (a 503) rather than go through unchecked.
-5. **Personal details are removed** (address, postcode, phone, email, school) before the message is stored or sent to
+   soul.md, identity notes and memories the child writes, desk ideas and changes, scheduled reminders and desk jobs,
+   and study, language and story topics: they wait (a 503) rather than go through unchecked.
+5. **Worries typed outside chat are reported too, never just refused.** If the check finds something worrying in
+   soul.md, identity notes, a memory, a desk idea or change, a scheduled reminder or desk job, a study, language or
+   story topic, a language request, or (by the fixed rules) her own story passages or OC sheets, it's reported exactly
+   as in chat: the report is recorded, she's told first (a message from the companion in her main chat, and the same
+   words on screen, with the helplines and a pointer to chat), and only then is it sent. Content that's merely not
+   allowed (romance, grown-up stuff, personal details) is still just turned down.
+6. **Personal details are removed** (address, postcode, phone, email, school) before the message is stored or sent to
    the API.
 
 What the companion says:
@@ -56,7 +62,23 @@ What the companion says:
 
 Desk items, check-ins, the journal and the weekly summary go through the same output check. So do the rolling chat
 summary (it goes back into every later prompt: one that fails isn't kept, and the old one stays) and every word of a
-Google proposal (an edit, calendar event or homework task) before the child sees the card.
+Google proposal (an edit, calendar event or homework task) before the child sees the card. The heartbeat's note on why
+it did something, and the desk browser's page titles, are checked before they're shown (a title that fails shows only
+the site's name).
+
+**Long text is checked in full.** Anything longer than one check (about 7,000 characters) is split into chunks with no
+gaps, and every chunk is checked; any chunk that fails fails the whole thing. For desk items that means all of it: the
+title, the summary, the visible text, the strings inside a game's scripts, flashcard and quiz rows, and slides. Each new
+chapter of a story is checked on its own as it's written. Google changes are capped (a Doc change at 4 blocks of 2,000
+characters, a Sheet change at 50 rows of 10 cells, Slides at 4 changes) so the card can show every word of what will be
+applied.
+
+**What the companion's tools would save waits for its reply.** Memories, reminders and other schedules, desk projects,
+OC sheets and world entries, language requests, Google proposals, and actions through the parent's connections or the
+Mac's calendar are held during the turn. Only if the final reply passes the check is each one's own text checked too,
+and only those that pass are kept; if the reply is held back or replaced, they're all dropped. Text from outside the
+child (her shared calendar, a shared document, Google reads, connection results and web pages) is marked as untrusted
+in the prompt, and the companion is told never to follow it; a memory copied from it isn't saved.
 
 **Resting (the monthly hard stop):** the companion doesn't think, and the safety model isn't called either, to keep
 spending at the stop. The fixed rules still read every message, so a crisis is still caught, answered with the safety
@@ -70,9 +92,12 @@ When something reaches a report level:
 1. The companion is told (by a system message the child can't see but which is listed here) to **tell the child, in that
    reply**, what it will share, why, and that they're not in trouble.
 2. The chat shows a card with the exact words the parent will receive.
-3. The report is recorded before the reply is made (so a turn that dies part-way still leaves it to be sent), but only
-   after the reply exists does it go to the reporters, at its level. For "now", the "Grown-up?"
-   sheet opens too.
+3. The report is recorded before the reply is made, as **awaiting reply**, and nothing sends it in that state. Only once
+   the reply that tells her is saved does it become **pending** and go to the reporters, at its level. For "now", the
+   "Grown-up?" sheet opens too. If the server stops in between, a report still awaiting its reply after 30 minutes is
+   sent anyway, marked **child not told**, with a note for the parent that she may not have seen the message (and a
+   line in the server log). Each report is claimed before it's sent, so it's sent once even if the retry job and the
+   chat try at the same moment.
 4. The child sees every report in "What … sees". There are no secret reports.
 
 "Grown-up?" is always one tap away: it messages the parent (a "now" report the child sends themselves), and gives
@@ -94,10 +119,14 @@ always kept (added back if it's removed). If the list were ever empty, the safet
 
 - **Chats on the home server:** kept for 30 days (configurable down to 1), then deleted. The same goes for everything
   else that holds their words: the chat archive (by each chapter's last day), check-ins, tool and browsing logs,
-  homework-help notes, the message a side chat was split from, the details of Google changes once they're done or
-  declined, and the request behind each desk job once it's finished.
+  the message a side chat was split from, the details of Google changes once they're done or declined, and the
+  request behind each desk job once it's finished. If chats are kept for less than a week, the weekly summary says it
+  only covers the days kept.
 - **Kept longer:** reports, weekly summaries and the journal are kept for a year, so both can look back, then
-  deleted.
+  deleted. So is the coursework help log: it's what the child shows their teacher for the coursework declaration, so
+  it has to last the school year.
+- **Google changes that stop part-way** (stuck "applying" for 15 minutes) are marked failed, so she can check the file
+  and ask again.
 - **Deleting means gone:** deleted rows are overwritten in the database file (SQLite `secure_delete`), and the file is
   compacted once a week. Backups you make keep their own copies, so delete them on the same schedule.
 - **Anthropic:**
@@ -177,9 +206,11 @@ always kept (added back if it's removed). If the list were ever empty, the safet
   coursework is malpractice, and GCSE Art is mostly coursework.
 - **Desk tools are removed in coursework mode**, so it can't "make" anything.
 - **It reminds the child** that the work must be their own and that AI help should be acknowledged.
-- **Every coursework conversation is noted in a help log** the child can print for their teacher.
+- **Every coursework conversation is noted in a help log** the child can print for their teacher. It's kept for a year.
 - **Only the parent can take a coursework mark off** a Google file. In the same way, a language the parent switched off
   stays off until the parent switches it back on.
+- **The practice language comes from the side chat itself**, and only if the parent approved it and it's switched on.
+  What the app sends can't choose it; an unapproved language is refused.
 - **A "yes" to a Google change applies once**, even if it's tapped twice.
 
 ## Writing with a friend

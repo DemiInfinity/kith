@@ -13,7 +13,7 @@ import { computeDeskEnergy, recentRows } from "../budget/budget.js";
 import { callJson, type LLM } from "../llm.js";
 import { loadParentSettings, loadProfile } from "../settings.js";
 import type { SafetyChecker } from "../safety/check.js";
-import { stripHtml } from "../connections/connections.js";
+import { checkOutputAll, visibleText } from "../safety/chunks.js";
 import { DeskClient, DeskError, type ItemMeta } from "./deskClient.js";
 import { charactersForPrompt } from "./oc.js";
 import type { Storage } from "../storage/storage.js";
@@ -224,13 +224,20 @@ export class Studio {
     });
   }
 
-  /** Same safety check as chat. One retry with the reason; then give up kindly. */
-  private async safeGenerate(system: string, prompt: string, brief: string, kind?: string) {
+  /**
+   * Same safety check as chat, on everything the item shows or says: the title, the summary, all of
+   * its visible text (including the strings inside its scripts), flashcard and quiz rows and slides,
+   * in chunks with no gaps. For a story chapter after the first, `before` is the story so far, and
+   * only what's new is checked (the earlier chapters already were). One retry with the reason; then
+   * give up kindly.
+   */
+  private async safeGenerate(system: string, prompt: string, brief: string, kind: string | undefined, format: string, before = "") {
+    const check = (out: z.infer<typeof Out>) => checkOutputAll(this.safety, deskTexts(out, format, before), brief, "desk");
     let out = await this.generate(system, prompt, kind);
-    let verdict = await this.safety.checkOutput(stripHtml(out.content).slice(0, 8000), brief);
+    let verdict = await check(out);
     if (!verdict.ok) {
       out = await this.generate(system, `${prompt}\n\nA safety check stopped the last version (${verdict.reason}). Make it again, keeping it suitable.`, kind);
-      verdict = await this.safety.checkOutput(stripHtml(out.content).slice(0, 8000), brief);
+      verdict = await check(out);
       if (!verdict.ok) throw new Error("I couldn't make that one in a way that's okay for the desk.");
     }
     return out;
@@ -261,7 +268,7 @@ export class Studio {
         ? `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}\nThis is chapter ${ch} of ${chapters}.${soFar ? `\nThe story so far (keep it, then add chapter ${ch} at the end):\n${soFar}` : ""}\nReturn the whole story so far as content, and "chapter ${ch} of ${chapters}" as the summary.`
         : `Make ${spec.what}: "${req.title}". What they asked for: ${req.brief}`;
       const withSources = prompt + sources;
-      const out = await this.safeGenerate(system, withSources, req.brief, req.kind);
+      const out = await this.safeGenerate(system, withSources, req.brief, req.kind, spec.format, soFar);
       soFar = out.content;
       meta = meta
         ? await this.desk.update(meta.id, { title: out.title, summary: out.summary, content: out.content })
@@ -285,12 +292,26 @@ export class Studio {
       `Here is "${current.meta.title}" (${current.meta.format}):\n<current>\n${current.content}\n</current>\n\nChange it like this: ${req.brief}\nReturn the whole updated ${current.meta.format} as content.`,
       req.brief,
       current.meta.kind,
+      current.meta.format,
     );
     const meta = await this.desk.update(req.fileId, { title: out.title || current.meta.title, summary: out.summary, content: out.content });
     // A new version alongside the old one, never an overwrite.
     await this.storage?.mirror(meta.id, { kind: meta.kind, title: meta.title, format: meta.format, content: out.content, version: meta.version, characterIds: meta.characterIds, rows: out.rows, slides: out.slides });
     return meta.id;
   }
+}
+
+/**
+ * Every piece of text a desk result would show or say, for the safety check. For a later story
+ * chapter (`before` is the story so far), only the new part, unless earlier text was changed.
+ */
+export function deskTexts(out: { title: string; summary: string; content: string; rows?: string[][]; slides?: { title: string; body: string }[] }, format: string, before = ""): string[] {
+  const content = before && out.content.startsWith(before) ? out.content.slice(before.length) : out.content;
+  return [
+    out.title, out.summary, visibleText(content, format),
+    ...(out.rows ?? []).map((r) => r.join(" | ")),
+    ...(out.slides ?? []).map((sl) => `${sl.title}\n${sl.body}`),
+  ];
 }
 
 /** Wraps an HTML desk item for the locked sandbox. Served with a CSP sandbox header too. */

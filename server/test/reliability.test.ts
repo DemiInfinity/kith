@@ -105,6 +105,7 @@ describe("scheduler", () => {
     const now = Date.now();
     const old = now - 40 * DAY;
     run(db, "INSERT INTO help_log(ts, subject, asked, help) VALUES (?, 'maths', 'a question', 'help')", old);
+    run(db, "INSERT INTO help_log(ts, subject, asked, help) VALUES (?, 'maths', 'last year', 'help')", now - 370 * DAY);
     run(db, "INSERT INTO threads(ts, title, from_text, updated) VALUES (?, 'side', 'what she said', ?)", old, old);
     run(db, "INSERT INTO google_actions(ts, kind, title, lines, payload, status) VALUES (?, 'doc', 't', '[]', '{\"text\":\"x\"}', 'applied')", old);
     run(db, "INSERT INTO desk_jobs(ts, kind, title, request, status, updated) VALUES (?, 'story', 't', '{\"brief\":\"x\"}', 'done', ?)", old, old);
@@ -112,7 +113,8 @@ describe("scheduler", () => {
     run(db, "INSERT INTO journal(day, text, created) VALUES ('2026-01-01', 'recent', ?)", now - 300 * DAY);
     run(db, "INSERT INTO summaries(week_start, text, created) VALUES ('2025-01-01', 'old', ?)", now - 400 * DAY);
     retention(db, now);
-    expect(all(db, "SELECT * FROM help_log")).toHaveLength(0);
+    // The coursework help log is for the teacher's declaration, so it's kept for a year.
+    expect(all<{ asked: string }>(db, "SELECT asked FROM help_log").map((r) => r.asked)).toEqual(["a question"]);
     expect(get<{ from_text: string | null }>(db, "SELECT from_text FROM threads WHERE title = 'side'")?.from_text).toBeNull();
     expect(get<{ payload: string }>(db, "SELECT payload FROM google_actions")?.payload).toBe("{}");
     expect(get<{ request: string }>(db, "SELECT request FROM desk_jobs")?.request).toBe("{}");

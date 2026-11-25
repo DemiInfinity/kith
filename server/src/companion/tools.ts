@@ -3,12 +3,12 @@
 
 import { z } from "zod";
 import type { DB } from "../db.js";
-import { addMemory } from "./memory.js";
+import { addMemory, memoryProblem } from "./memory.js";
 import type { ToolDef } from "../connections/connections.js";
 import { KIND_NAMES, type Studio } from "../desk/studio.js";
 import { addWorld, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
 import { searchHistory } from "./history.js";
-import { addSchedule } from "./schedules.js";
+import { addSchedule, scheduleProblem } from "./schedules.js";
 import { config } from "../config.js";
 import { askForLanguage } from "../study/languageRequests.js";
 import type { Pending } from "../storage/googleWork.js";
@@ -19,6 +19,59 @@ export interface TurnEffects {
   characters: number[];
   /** Google changes waiting for her yes (shown as cards under the reply). */
   confirms?: Pending[];
+  /**
+   * What the companion's tools would change, held until its reply passes the safety check. Then
+   * each one's words get the output check too, and only those that pass are committed; if the reply
+   * is held back or replaced, they're all discarded. Not sent to the client.
+   */
+  staged?: Staged[];
+  /**
+   * Text from outside the child this turn (a shared document, her Mac calendar, web or Google
+   * reads). A memory copied from it is refused: it never creates memories directly.
+   */
+  untrusted?: string[];
+  /** Her own message this turn (what she said is hers, even if outside text says it too). */
+  childSaid?: string;
+}
+
+export interface Staged {
+  /** What it's for, for the logs (never the words). */
+  label: string;
+  /** The words it would save or show, for the output check. Empty when already checked. */
+  text: string;
+  commit(): void | Promise<void>;
+  discard?(): void;
+}
+
+/** Holds a change until the reply passes (or does it now when nothing is staging, e.g. a test). */
+export async function stage(effects: TurnEffects, s: Staged) {
+  if (effects.staged) effects.staged.push(s);
+  else await s.commit();
+}
+
+const squash = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+/** True when a memory is copied from outside text (a document, the calendar, a web page). */
+export function copiedFromUntrusted(memory: string, untrusted: string[] = [], childSaid = ""): boolean {
+  const m = squash(memory);
+  if (m.length < 6) return false;
+  const said = squash(childSaid);
+  // Something she said herself this turn is hers, even if a document or her calendar says it too.
+  const fromOutside = (t: string) => !said.includes(t);
+  return untrusted.some((u) => {
+    if (squash(u).includes(m) && fromOutside(m)) return true;
+    // A calendar title or a short line from a document, inside the memory.
+    return u.split(/\n/).some((line) => { const t = squash(line); return t.length >= 6 && t.length <= 120 && m.includes(t) && fromOutside(t); });
+  });
+}
+
+const HELD = "(This is held until your reply is sent, and only kept if it passes the safety check.)";
+
+/** Every string in an OC's fields (names, backstory, relationship notes…), for the output check. */
+export function fieldText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v.map(fieldText).filter(Boolean).join("\n");
+  if (v && typeof v === "object") return Object.values(v).map(fieldText).filter(Boolean).join("\n");
+  return "";
 }
 
 const obj = (properties: Record<string, unknown>, required: string[]) =>
@@ -40,8 +93,11 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       }, ["language", "level", "goal", "interests"]),
       async (input) => {
         const v = z.object({ language: z.string().min(2).max(40), level: z.enum(["A1", "A2", "B1"]), goal: z.enum(["school", "fun"]), interests: z.string().max(200).default("") }).parse(input);
-        const r = await askForLanguage(db, v.language, { level: v.level, goal: v.goal, interests: v.interests });
-        return r.message;
+        await stage(effects, {
+          label: "language request", text: `${v.language} ${v.interests}`,
+          commit: async () => { await askForLanguage(db, v.language, { level: v.level, goal: v.goal, interests: v.interests }); },
+        });
+        return `Asking their grown-up about ${v.language} once your reply is sent. Nothing is practised until their grown-up says yes. ${HELD}`;
       },
     ),
     tool(
@@ -57,12 +113,17 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       }, ["title", "kind", "when", "repeat"]),
       async (input) => {
         const v = input as { title: string; kind: string; when: string; repeat: string; make_kind?: string; make_brief?: string };
-        const r = addSchedule(db, {
+        const req = {
           title: v.title, kind: v.kind, when: v.when, repeat: v.repeat,
           make: v.kind === "make" ? { kind: v.make_kind ?? "notes", brief: v.make_brief ?? v.title } : undefined,
-        }, config.timezone);
-        if (!r.ok) return `Not scheduled: ${r.error}`;
-        return `Scheduled (${r.schedule.repeat === "none" ? "once" : r.schedule.repeat}). It's on your profile under Scheduled, where they can pause or delete it.`;
+        };
+        const problem = scheduleProblem(db, req, config.timezone);
+        if (problem) return `Not scheduled: ${problem}`;
+        await stage(effects, {
+          label: "schedule", text: [v.title, v.make_brief].filter(Boolean).join("\n"),
+          commit: () => { const r = addSchedule(db, req, config.timezone); if (!r.ok) console.warn("[tools] a staged schedule couldn't be added:", r.error); },
+        });
+        return `Scheduled (${v.repeat === "none" ? "once" : v.repeat}). It's on your profile under Scheduled, where they can pause or delete it. ${HELD}`;
       },
     ),
     tool(
@@ -86,9 +147,16 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       }, ["icon", "text", "about_date"]),
       async (input) => {
         const v = z.object({ icon: z.string(), text: z.string(), about_date: z.string().optional() }).parse(input);
-        const r = addMemory(db, { icon: v.icon, text: v.text, aboutDate: v.about_date || null });
-        if (r.ok) effects.memories.push(v.text);
-        return r.ok ? "Remembered." : `Not saved: ${r.reason}`;
+        const problem = memoryProblem(db, v.text);
+        if (problem) return `Not saved: ${problem}`;
+        if (copiedFromUntrusted(v.text, effects.untrusted, effects.childSaid)) {
+          return "Not saved: that came from a document, their calendar or a web page, not from them. Only remember what they tell you themselves.";
+        }
+        await stage(effects, {
+          label: "memory", text: v.text,
+          commit: () => { const r = addMemory(db, { icon: v.icon, text: v.text, aboutDate: v.about_date || null }); if (r.ok) effects.memories.push(v.text); },
+        });
+        return `Remembered. ${HELD}`;
       },
     ),
     tool(
@@ -107,10 +175,15 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
           kind: z.enum(KIND_NAMES as [string, ...string[]]), title: z.string().min(1), brief: z.string(),
           chapters: z.number().int().optional(), character_ids: z.array(z.number().int()).optional(), look_up: z.string().max(120).optional(),
         }).parse(input);
-        const job = studio.enqueue({ kind: v.kind as never, title: v.title, brief: v.brief, chapters: v.chapters, characterIds: v.character_ids, lookUp: v.look_up });
-        if (!job.ok) return job.error;
-        effects.jobs.push({ id: job.job.id, title: job.job.title, kind: job.job.kind });
-        return `Started on your desk (job ${job.job.id}). Tell them it'll appear on your desk when it's ready.`;
+        await stage(effects, {
+          label: "desk project", text: [v.title, v.brief, v.look_up].filter(Boolean).join("\n"),
+          commit: () => {
+            const job = studio.enqueue({ kind: v.kind as never, title: v.title, brief: v.brief, chapters: v.chapters, characterIds: v.character_ids, lookUp: v.look_up });
+            if (job.ok) effects.jobs.push({ id: job.job.id, title: job.job.title, kind: job.job.kind });
+            else console.warn("[tools] a staged desk project couldn't start:", job.error);
+          },
+        });
+        return `It'll start on your desk once your reply is sent. Tell them it'll appear on your desk when it's ready. ${HELD}`;
       },
     ),
     tool(
@@ -119,10 +192,15 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       obj({ file_id: { type: "string" }, change: { type: "string" } }, ["file_id", "change"]),
       async (input) => {
         const v = z.object({ file_id: z.string(), change: z.string() }).parse(input);
-        const job = studio.enqueue({ kind: "edit", title: `Changing ${v.file_id}`, brief: v.change, fileId: v.file_id });
-        if (!job.ok) return job.error;
-        effects.jobs.push({ id: job.job.id, title: job.job.title, kind: "edit" });
-        return `Changing it on your desk (job ${job.job.id}).`;
+        await stage(effects, {
+          label: "desk change", text: v.change,
+          commit: () => {
+            const job = studio.enqueue({ kind: "edit", title: `Changing ${v.file_id}`, brief: v.change, fileId: v.file_id });
+            if (job.ok) effects.jobs.push({ id: job.job.id, title: job.job.title, kind: "edit" });
+            else console.warn("[tools] a staged desk change couldn't start:", job.error);
+          },
+        });
+        return `Changing it on your desk once your reply is sent. ${HELD}`;
       },
     ),
     tool(
@@ -139,10 +217,17 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       }, ["fields"]),
       async (input) => {
         const v = z.object({ id: z.number().int().optional(), fields: z.record(z.string(), z.unknown()) }).parse(input);
-        const r = saveCharacter(db, { id: v.id, fields: v.fields as never });
-        if (!r.ok) return `Not saved: ${r.problems.join("; ")}`;
-        effects.characters.push(r.character.id);
-        return `Saved ${r.character.sheet.name} (id ${r.character.id}).`;
+        const dry = saveCharacter(db, { id: v.id, fields: v.fields as never }, true);
+        if (!dry.ok) return `Not saved: ${dry.problems.join("; ")}`;
+        await stage(effects, {
+          label: "character", text: fieldText(v.fields),
+          commit: () => {
+            const r = saveCharacter(db, { id: v.id, fields: v.fields as never });
+            if (r.ok) effects.characters.push(r.character.id);
+            else console.warn("[tools] a staged character couldn't be saved");
+          },
+        });
+        return `Saved ${dry.character.sheet.name}${v.id ? ` (id ${v.id})` : ""}. ${HELD}`;
       },
     ),
     tool(
@@ -150,8 +235,14 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       "Add a place, event or group to their OCs' world (used for maps and timelines).",
       obj({ kind: { type: "string", enum: ["place", "event", "group"] }, name: { type: "string" }, note: { type: "string" }, when: { type: "string" } }, ["kind", "name"]),
       async (input) => {
-        const r = addWorld(db, input as never);
-        return r.ok ? "Added to their world." : `Not saved: ${r.problems.join("; ")}`;
+        const dry = addWorld(db, input as never, true);
+        if (!dry.ok) return `Not saved: ${dry.problems.join("; ")}`;
+        const v = input as { name?: string; note?: string; when?: string };
+        await stage(effects, {
+          label: "world entry", text: [v.name, v.note, v.when].filter(Boolean).join("\n"),
+          commit: () => { addWorld(db, input as never); },
+        });
+        return `Added to their world. ${HELD}`;
       },
     ),
   ];

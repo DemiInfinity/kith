@@ -62,7 +62,7 @@ export function getCharacter(db: DB, id: number): Character | null {
 }
 
 /** Create or merge fields into a sheet. Returns problems instead of saving if it isn't okay. */
-export function saveCharacter(db: DB, input: { id?: number; fields: Partial<Sheet> }): { ok: true; character: Character } | { ok: false; problems: string[] } {
+export function saveCharacter(db: DB, input: { id?: number; fields: Partial<Sheet> }, dryRun = false): { ok: true; character: Character } | { ok: false; problems: string[] } {
   const existing = input.id ? getCharacter(db, input.id) : null;
   if (input.id && !existing) return { ok: false, problems: ["no character with that id"] };
   const merged = { ...(existing?.sheet ?? {}), ...input.fields };
@@ -71,6 +71,7 @@ export function saveCharacter(db: DB, input: { id?: number; fields: Partial<Shee
   const problems = sheetProblems(parsed.data);
   if (problems.length) return { ok: false, problems };
   const now = Date.now();
+  if (dryRun) return { ok: true, character: { id: existing?.id ?? 0, ts: existing?.ts ?? now, updated: now, sheet: parsed.data } };
   if (existing) {
     run(db, "UPDATE characters SET sheet = ?, updated = ? WHERE id = ?", JSON.stringify(parsed.data), now, existing.id);
     return { ok: true, character: { ...existing, updated: now, sheet: parsed.data } };
@@ -87,10 +88,11 @@ export function listWorld(db: DB) {
   return all<{ id: number; ts: number; kind: string; json: string }>(db, "SELECT * FROM world ORDER BY ts")
     .map((r) => ({ id: r.id, ...WorldEntry.parse(JSON.parse(r.json)) }));
 }
-export function addWorld(db: DB, entry: z.input<typeof WorldEntry>) {
+export function addWorld(db: DB, entry: z.input<typeof WorldEntry>, dryRun = false) {
   const e = WorldEntry.parse(entry);
   const problems = sheetProblems({ backstory: `${e.name} ${e.note}` });
   if (problems.length) return { ok: false as const, problems };
+  if (dryRun) return { ok: true as const, id: 0 };
   const res = run(db, "INSERT INTO world(ts, kind, json) VALUES (?,?,?)", Date.now(), e.kind, JSON.stringify(e));
   return { ok: true as const, id: Number(res.lastInsertRowid) };
 }

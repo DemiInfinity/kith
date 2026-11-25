@@ -85,6 +85,10 @@ export function parseBing(html: string): string[] {
 /** Pages that are a robot check rather than the page itself. */
 export const ROBOT_CHECK = /captcha|are you (a )?(human|robot)|verify (that )?you('| a)re (a )?human|unusual traffic|checking your browser|just a moment\.\.\.|attention required|press (&|and) hold|bots use duckduckgo|anomaly-modal|cf-challenge|challenge-platform/i;
 
+function hostOrBlank(url: string): string {
+  try { return new URL(url).hostname; } catch { return ""; }
+}
+
 export class Browser {
   readonly lists: ExternalLists;
   private cached: { key: string; rules: BlockRules } | null = null;
@@ -102,6 +106,30 @@ export class Browser {
     return this.cached.rules;
   }
   allowed(url: string, s = this.settings()): boolean { return webAllowed(url, s, this.rules(s)); }
+
+  /** Page titles already checked (true: fine to show). Small, and only for this run. */
+  private titles = new Map<string, boolean>();
+
+  /**
+   * A page title that's safe to log and show: the title if it passes the output check, otherwise
+   * only the hostname. Used for pages opened by hand (taken over), which don't go through read().
+   */
+  async safeTitle(title: string, url: string): Promise<string> {
+    const t = title.trim().slice(0, 200);
+    if (!t) return hostOrBlank(url);
+    let ok = this.titles.get(t);
+    if (ok === undefined) {
+      const rules = checkOutputRules(t);
+      const v = rules.length ? { ok: false, categories: rules } : await this.safety.checkOutput(t, "", "desk").catch(() => ({ ok: false, categories: [] }));
+      ok = v.ok;
+      // A check that couldn't run isn't remembered (the next look tries again); a real answer is.
+      if (v.ok || v.categories.length) {
+        if (this.titles.size > 500) this.titles.clear();
+        this.titles.set(t, ok);
+      }
+    }
+    return ok ? t : hostOrBlank(url);
+  }
 
   private log(url: string, title: string, why: string, jobId: number | null, outcome: string) {
     run(this.db, "INSERT INTO browse_log(ts, url, title, why, job_id, outcome) VALUES (?,?,?,?,?,?)", Date.now(), url.slice(0, 500), title.slice(0, 200), why.slice(0, 200), jobId, outcome.slice(0, 200));
@@ -168,14 +196,17 @@ export class Browser {
     }
     try {
       const page = await this.desk.browse(url, why, jobId, this.deskRules(s));
-      // The same 8,000 characters are checked and passed on.
+      // The same 8,000 characters are checked and passed on, with the page title (it's logged and shown).
       const sample = page.text.slice(0, 8000);
-      const rules = checkOutputRules(sample).filter((c) => ["sexual", "grown_up_content"].includes(c));
-      const verdict = rules.length ? { ok: false } : await this.safety.checkOutput(sample, why, "desk");
+      const checked = `${page.title}\n${sample}`;
+      const rules = checkOutputRules(checked).filter((c) => ["sexual", "grown_up_content"].includes(c));
+      const verdict = rules.length ? { ok: false } : await this.safety.checkOutput(checked, why, "desk");
       if (!verdict.ok) {
-        this.log(page.url, page.title, why, jobId, "skipped: not suitable");
+        // Only the hostname is kept for a page that didn't pass: its title may be the problem.
+        this.log(page.url, hostOrBlank(page.url), why, jobId, "skipped: not suitable");
         return null;
       }
+      this.titles.set(page.title, true);
       this.log(page.url, page.title, why, jobId, "read");
       logActivity(this.db, "🧭", `Read “${page.title}” (${new URL(page.url).hostname}) for ${why}`);
       return { url: page.url, title: page.title, text: sample };

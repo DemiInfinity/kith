@@ -4,8 +4,7 @@ import type { DB } from "./db.js";
 import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
 import { callJson, OfflineError, type LLM } from "./llm.js";
-import { CHECK_UNAVAILABLE, type SafetyChecker } from "./safety/check.js";
-import { noteSafetyUnavailable } from "./safety/unavailable.js";
+import type { SafetyChecker } from "./safety/check.js";
 import { checkInputRules, checkOutputRules } from "./safety/rules.js";
 import { energyNow } from "./companion/chat.js";
 import { loadProfile } from "./settings.js";
@@ -26,11 +25,13 @@ import {
 } from "./study/languages.js";
 import { askForLanguage, dismissUnlisted, unlistedAsks } from "./study/languageRequests.js";
 import type { Storage } from "./storage/storage.js";
+import { isWorry, reportOutsideChat, screenInput, sendOutsideReport, withRuleWorries } from "./reporting/outside.js";
+import { makeReporters, type Reporter } from "./reporting/reporter.js";
 
 const child = requireRole("child");
 const either = requireRole("child", "parent");
 
-export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safety: SafetyChecker; storage: Storage }) {
+export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safety: SafetyChecker; storage: Storage; reporters?: Reporter[] }) {
   const { db, llm, safety } = d;
   const today = () => localDate(Date.now(), config.timezone);
 
@@ -53,19 +54,16 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
     }
   }
 
-  async function okInput(reply: FastifyReply, text: string) {
-    const v = await safety.checkInput(text, []);
-    if (v.held) {
-      // The check couldn't run: hold it, and let the parent know the check was down.
-      noteSafetyUnavailable(db, { companionName: loadProfile(db).name, childName: childName(db) });
-      reply.code(503).send({ error: CHECK_UNAVAILABLE, code: "safety-unavailable" });
-      return false;
-    }
-    if (v.level !== "none" || v.categories.some((c) => ["sexual", "romance"].includes(c))) {
-      reply.code(422).send({ error: "That's one to talk through in chat instead, where I can help properly." });
-      return false;
-    }
-    return true;
+  /**
+   * Text typed outside chat. A worry is reported to the grown-up (she's told first, with the
+   * helplines, and pointed to chat); romance or sexual content gets a plain 422; a check that
+   * couldn't run holds it.
+   */
+  async function okInput(reply: FastifyReply, text: string, where: string) {
+    return screenInput({ db, reporters: d.reporters ?? makeReporters(config.reporting.reporters, db), safety, childName: childName(db) }, reply, text, where, {
+      categories: ["sexual", "romance"],
+      message: () => "That's not one I can help with here. Want to try a different topic?",
+    });
   }
 
   // ── GCSE study ─────────────────────────────────────────────────────────────────────────
@@ -102,7 +100,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   // Flashcards and practice always run on Low power (the small model) to save the budget.
   app.post("/api/study/cards/generate", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
     const b = z.object({ subjectId: z.number().int().nullable().default(null), topic: z.string().trim().min(2).max(120), count: z.number().int().min(4).max(30).default(12) }).parse(req.body);
-    if (!(await okInput(reply, b.topic))) return;
+    if (!(await okInput(reply, b.topic, "a flashcard topic"))) return;
     const s = getSubject(db, b.subjectId ?? undefined);
     const out = await askJson(reply, {
       kind: "study",
@@ -120,7 +118,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   const PracticeQ = z.object({ question: z.string(), marks: z.number().int(), markScheme: z.array(z.string()), commandWord: z.string() });
   app.post("/api/study/practice", { preHandler: child, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const b = z.object({ subjectId: z.number().int(), topic: z.string().trim().min(2).max(120), marks: z.number().int().min(1).max(12).default(4) }).parse(req.body);
-    if (!(await okInput(reply, b.topic))) return;
+    if (!(await okInput(reply, b.topic, "a practice question topic"))) return;
     const s = getSubject(db, b.subjectId);
     if (!s) return reply.code(404).send({ error: "Pick a subject first." });
     return askJson(reply, {
@@ -192,7 +190,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   });
   app.post("/api/languages/ask", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
     const { language, ...profile } = AskBody.parse(req.body);
-    if (!(await okInput(reply, `${language} ${profile.interests ?? ""}`))) return;
+    if (!(await okInput(reply, `${language} ${profile.interests ?? ""}`, "a language request"))) return;
     return askForLanguage(db, language, profile);
   });
   app.post("/api/languages/:lang/dismiss", { preHandler: child }, async (req) => { dismissDeclined(db, langParam(req)); return { ok: true }; });
@@ -225,7 +223,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
     const lang = activeLang(req, reply);
     if (!lang) return;
     const b = z.object({ topic: z.string().trim().min(2).max(120), count: z.number().int().min(4).max(20).default(10) }).parse(req.body);
-    if (!(await okInput(reply, b.topic))) return;
+    if (!(await okInput(reply, b.topic, "a language flashcard topic"))) return;
     const p = loadLangProfiles(db)[lang];
     const info = langInfo(db, lang)!;
     const reading = lang === "ja" ? " Reading: the whole front in hiragana." : info.romanisation ? ` Reading: the ${info.romanisation}.` : " Reading: leave empty.";
@@ -308,6 +306,11 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   /** Their own or their friend's writing (pasted, or from a picked Google Doc). */
   async function addHumanPassage(reply: FastifyReply, storyId: number, author: "child" | "friend", text: string) {
     if (!getStory(db, storyId)) return reply.code(404).send({ error: "not found" });
+    // Her own writing: a worry the fixed rules find (self-harm, danger, secrets) is reported, told first.
+    if (author === "child") {
+      const v = withRuleWorries({ level: "none", categories: [], parentSummary: "", steer: "", source: "rules" }, text);
+      if (isWorry(v)) return sendOutsideReport(reply, reportOutsideChat({ db, reporters: d.reporters ?? makeReporters(config.reporting.reporters, db), childName: childName(db) }, v, "a shared story"));
+    }
     const cats = [...checkInputRules(text).categories, ...checkOutputRules(text)];
     if (cats.some((c) => ["sexual", "romance", "grown_up_content"].includes(c))) {
       return reply.code(422).send({ error: "That part can't go into a Kith story. Stories here keep to friendships, rivalries and adventures." });
@@ -334,7 +337,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
     const s = getStory(db, sid(req));
     if (!s) return reply.code(404).send({ error: "not found" });
     const b = z.object({ kind: z.enum(["continue", "idea", "edit"]), request: z.string().max(1000).default(""), passageId: z.number().int().optional() }).parse(req.body);
-    if (b.request && !(await okInput(reply, b.request))) return;
+    if (b.request && !(await okInput(reply, b.request, "a shared story"))) return;
     const profile = loadProfile(db);
     const story = accepted(db, s.id).map((p) => p.text).join("\n\n").slice(-12000);
     const target = b.kind === "edit" ? passages(db, s.id).find((p) => p.id === b.passageId) : null;

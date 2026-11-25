@@ -14,7 +14,7 @@ import { localDate, localParts, startOfDay, startOfWeek } from "./budget/time.js
 import { textOf, type LLM } from "./llm.js";
 import { isGuiltTrip, redactPersonal } from "./safety/rules.js";
 import type { SafetyChecker } from "./safety/check.js";
-import { deliverReport, reportsToRetry, type Reporter } from "./reporting/reporter.js";
+import { deliverReport, releaseStuckReports, reportsToRetry, type Reporter } from "./reporting/reporter.js";
 import { allRollingKeys } from "./companion/context.js";
 import { purgeHistory } from "./companion/history.js";
 import { logActivity } from "./desk/activity.js";
@@ -23,6 +23,7 @@ import type { Studio } from "./desk/studio.js";
 import { heartbeat } from "./companion/heartbeat.js";
 import { flushHeld, notifyParent } from "./checkins/parentPush.js";
 import { diskUsage } from "./disk.js";
+import { failStuckApplying } from "./storage/googleWork.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -132,8 +133,11 @@ export function retention(db: DB, now = Date.now()) {
   run(db, "DELETE FROM tool_log WHERE ts < ?", cutoff);
   run(db, "DELETE FROM desk_activity WHERE ts < ?", cutoff);
   run(db, "DELETE FROM browse_log WHERE ts < ?", cutoff);
-  // Things that hold the child's own words go with chats.
-  run(db, "DELETE FROM help_log WHERE ts < ?", cutoff);
+  // The coursework help log is kept for a year: it's what she shows her teacher for the
+  // coursework declaration, so it has to last the school year.
+  run(db, "DELETE FROM help_log WHERE ts < ?", now - 365 * DAY);
+  // A Google change stuck in 'applying' for 15 minutes (the server stopped part-way) is failed.
+  failStuckApplying(db, now);
   run(db, "UPDATE threads SET from_text = NULL WHERE from_text IS NOT NULL AND ts < ?", cutoff);
   run(db, "UPDATE google_actions SET payload = '{}' WHERE payload != '{}' AND ts < ? AND status NOT IN ('pending','applying')", cutoff);
   run(db, "DELETE FROM google_actions WHERE ts < ?", now - 365 * DAY);
@@ -162,6 +166,8 @@ async function disk(deps: SchedulerDeps, now: number) {
 
 export async function retryReports(deps: Pick<SchedulerDeps, "db" | "reporters" | "childName">, now = Date.now()) {
   const profile = loadProfile(deps.db);
+  // A report whose "telling her" reply never got saved (a crash) is sent anyway, with a note.
+  releaseStuckReports(deps.db, now);
   for (const r of reportsToRetry(deps.db, now)) {
     await deliverReport(deps.db, deps.reporters, r, { companionName: profile.name, childName: deps.childName }, now);
   }
@@ -292,6 +298,9 @@ async function weeklySummary(deps: SchedulerDeps, now: number) {
   let text: string;
   if (topics && energyNow(db).mode === "resting") return; // at the hard stop: no Claude calls
   if (topics && !takeAttempt(db, "summary", key, now)) return;
+  // With chats kept for less than a week, the summary can only cover the days still kept.
+  const days = loadParentSettings(db).retentionDays;
+  const covers = days < 7 ? ` (This only covers the last ${days} day${days === 1 ? "" : "s"}: chats are only kept that long.)` : "";
   if (!topics) {
     text = `A quiet week: no chats with ${profile.name}.${reports ? "" : ` ${profile.name} didn't need to tell ${parent} about anything.`}`;
   } else {
@@ -314,7 +323,7 @@ async function weeklySummary(deps: SchedulerDeps, now: number) {
       return;
     }
   }
-  run(db, "INSERT OR IGNORE INTO summaries(week_start, text, created) VALUES (?,?,?)", key, text, now);
+  run(db, "INSERT OR IGNORE INTO summaries(week_start, text, created) VALUES (?,?,?)", key, text + covers, now);
   await notifyParent(db, { kind: "weekly" }, now);
 }
 

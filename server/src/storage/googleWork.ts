@@ -97,13 +97,20 @@ export async function readFile(db: DB, drive: GoogleDrive, id: string): Promise<
 
 // ── Proposals: nothing is written until she says yes ───────────────────────────────────────
 
+// Small enough that her card can show the whole change, word for word: a Doc change is at most
+// 4 blocks of 2,000 characters, a Sheet change at most 50 rows of 10 cells (in all), Slides 4 changes.
+export const MAX_DOC_CHANGES = 4;
+export const MAX_DOC_CHARS = 2000;
+export const MAX_SHEET_ROWS = 50;
+export const MAX_SHEET_COLS = 10;
 export const DocChange = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("append"), text: z.string().min(1).max(5000) }),
-  z.object({ op: z.literal("replace"), find: z.string().min(1).max(500), with: z.string().max(5000) }),
+  z.object({ op: z.literal("append"), text: z.string().min(1).max(MAX_DOC_CHARS) }),
+  z.object({ op: z.literal("replace"), find: z.string().min(1).max(500), with: z.string().max(MAX_DOC_CHARS) }),
 ]);
+const Cells = z.array(z.array(z.string().max(500)).max(MAX_SHEET_COLS)).min(1).max(MAX_SHEET_ROWS);
 export const SheetChange = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("append_rows"), rows: z.array(z.array(z.string().max(500)).max(26)).min(1).max(100) }),
-  z.object({ op: z.literal("set_cells"), range: z.string().regex(/^[A-Z]{1,2}[0-9]{1,4}(:[A-Z]{1,2}[0-9]{1,4})?$/), values: z.array(z.array(z.string().max(500)).max(26)).min(1).max(100) }),
+  z.object({ op: z.literal("append_rows"), rows: Cells }),
+  z.object({ op: z.literal("set_cells"), range: z.string().regex(/^[A-Z]{1,2}[0-9]{1,4}(:[A-Z]{1,2}[0-9]{1,4})?$/), values: Cells }),
 ]);
 export const SlidesChange = z.discriminatedUnion("op", [
   z.object({ op: z.literal("replace"), find: z.string().min(1).max(500), with: z.string().max(2000) }),
@@ -128,11 +135,17 @@ export type Payload =
 export interface Line { op: "+" | "-" | "~" | "·"; text: string }
 export interface Pending { id: number; ts: number; kind: string; title: string; lines: Line[]; status: string; result: string }
 
-const short = (s: string, n = 160) => (s.length > n ? `${s.slice(0, n)}…` : s);
-const cellRows = (rows: string[][]) => rows.slice(0, 5).map((r) => r.join(" | ")).concat(rows.length > 5 ? [`…and ${rows.length - 5} more rows`] : []);
+// The card shows exactly what will be applied: every line in full, nothing shortened or left out.
+const cellRows = (rows: string[][]) => rows.map((r) => r.join(" | "));
 
-function save(db: DB, kind: string, title: string, lines: Line[], payload: Payload): Pending {
-  const res = run(db, "INSERT INTO google_actions(ts, kind, title, lines, payload) VALUES (?,?,?,?,?)", Date.now(), kind, title.slice(0, 160), JSON.stringify(lines.slice(0, 30)), JSON.stringify(payload));
+/**
+ * 'staged': made during a chat turn and not shown (or appliable) until the reply passes the safety
+ * check; then `publish` makes it 'pending' (a card she can say yes to).
+ */
+export type ProposalStatus = "pending" | "staged";
+
+function save(db: DB, kind: string, title: string, lines: Line[], payload: Payload, status: ProposalStatus = "pending"): Pending {
+  const res = run(db, "INSERT INTO google_actions(ts, kind, title, lines, payload, status) VALUES (?,?,?,?,?,?)", Date.now(), kind, title.slice(0, 160), JSON.stringify(lines), JSON.stringify(payload), status);
   return pending(db, Number(res.lastInsertRowid))!;
 }
 export function pending(db: DB, id: number): Pending | null {
@@ -146,43 +159,82 @@ export function pendingList(db: DB): Pending[] {
 }
 
 /** Proposes changes to a Doc, Sheet or Slides file. Checks everything now; writes nothing. */
-export function proposeFileEdit(db: DB, input: { fileId: string; summary: string; changes: unknown[]; coursework?: boolean }): Pending {
+export function proposeFileEdit(db: DB, input: { fileId: string; summary: string; changes: unknown[]; coursework?: boolean }, status: ProposalStatus = "pending"): Pending {
   need(db, "edit");
   const f = editableFile(db, input.fileId, { forEdit: true, coursework: input.coursework });
   const schema = f.kind === "doc" ? DocChange : f.kind === "sheet" ? SheetChange : SlidesChange;
-  const changes = z.array(schema).min(1).max(20).parse(input.changes);
+  const changes = z.array(schema).min(1).max(f.kind === "sheet" ? 20 : MAX_DOC_CHANGES).parse(input.changes);
+  if (f.kind === "sheet") {
+    const rows = (changes as { rows?: string[][]; values?: string[][] }[]).reduce((n, c) => n + (c.rows ?? c.values ?? []).length, 0);
+    if (rows > MAX_SHEET_ROWS) throw new GoogleRefusal(`That's too big to show on one card: keep it to ${MAX_SHEET_ROWS} rows at a time.`);
+  }
   const lines: Line[] = [{ op: "·", text: input.summary.slice(0, 200) }];
   for (const c of changes as { op: string; [k: string]: unknown }[]) {
-    if (c.op === "append") lines.push({ op: "+", text: short(String(c.text)) });
-    if (c.op === "replace") { lines.push({ op: "-", text: short(String(c.find)) }); lines.push({ op: "+", text: short(String(c.with)) }); }
+    if (c.op === "append") lines.push({ op: "+", text: String(c.text) });
+    if (c.op === "replace") { lines.push({ op: "-", text: String(c.find) }); lines.push({ op: "+", text: String(c.with) }); }
     if (c.op === "append_rows") for (const t of cellRows(c.rows as string[][])) lines.push({ op: "+", text: t });
     if (c.op === "set_cells") for (const t of cellRows(c.values as string[][])) lines.push({ op: "~", text: `${c.range}: ${t}` });
-    if (c.op === "add_slide") lines.push({ op: "+", text: `New slide: ${short(String(c.title))}` });
+    if (c.op === "add_slide") { lines.push({ op: "+", text: `New slide: ${String(c.title)}` }); if (String(c.body ?? "").trim()) lines.push({ op: "+", text: String(c.body) }); }
   }
   gLog(db, "propose_edit", "look", f.name, `${changes.length} change(s) waiting for a yes`);
-  return save(db, "file", `Change “${f.name}”`, lines, { kind: "file", fileId: f.id, changes });
+  return save(db, "file", `Change “${f.name}”`, lines, { kind: "file", fileId: f.id, changes }, status);
 }
 
 /** Proposes a calendar change. Only events Kith made can be changed or deleted (checked again on apply). */
-export async function proposeCalendar(db: DB, drive: GoogleDrive, input: unknown): Promise<Pending> {
+export async function proposeCalendar(db: DB, drive: GoogleDrive, input: unknown, status: ProposalStatus = "pending"): Promise<Pending> {
   need(db, "calendar");
   if (input && typeof input === "object" && "attendees" in input) throw new GoogleRefusal("I never invite other people to events.");
   const action = CalendarAction.parse(input);
   if (action.op !== "create") await kithEvent(drive, action.eventId);
   const lines: Line[] = action.op === "create"
-    ? [{ op: "+", text: `${action.title} · ${action.start.replace("T", " ")}${action.end ? ` to ${action.end.replace("T", " ")}` : ""}` }, ...(action.notes ? [{ op: "·" as const, text: short(action.notes) }] : [])]
+    ? [{ op: "+", text: `${action.title} · ${action.start.replace("T", " ")}${action.end ? ` to ${action.end.replace("T", " ")}` : ""}` }, ...(action.notes ? [{ op: "·" as const, text: action.notes }] : [])]
     : action.op === "delete" ? [{ op: "-", text: "Remove an event Kith added" }]
     : [{ op: "~", text: [action.title, action.start?.replace("T", " ")].filter(Boolean).join(" · ") || "Change an event Kith added" }];
-  return save(db, "calendar", action.op === "create" ? `Add “${action.title}” to your calendar` : action.op === "delete" ? "Remove an event" : "Change an event", lines, { kind: "calendar", action });
+  return save(db, "calendar", action.op === "create" ? `Add “${action.title}” to your calendar` : action.op === "delete" ? "Remove an event" : "Change an event", lines, { kind: "calendar", action }, status);
 }
 
-export function proposeTask(db: DB, input: unknown): Pending {
+export function proposeTask(db: DB, input: unknown, status: ProposalStatus = "pending"): Pending {
   need(db, "tasks");
   const action = TaskAction.parse(input);
   const lines: Line[] = action.op === "add"
     ? [{ op: "+", text: `${action.title}${action.due ? ` · due ${action.due}` : ""}` }]
     : [{ op: "~", text: `Tick off: ${action.title || "a homework task"}` }];
-  return save(db, "tasks", action.op === "add" ? "Add to your Homework list" : "Tick off homework", lines, { kind: "tasks", action });
+  return save(db, "tasks", action.op === "add" ? "Add to your Homework list" : "Tick off homework", lines, { kind: "tasks", action }, status);
+}
+
+/**
+ * Withdraws proposals made during a chat turn whose reply didn't pass the safety check: the card
+ * never reaches her, and a yes can't apply it.
+ */
+export function withdraw(db: DB, ids: number[]) {
+  for (const id of ids) run(db, "UPDATE google_actions SET status = 'withdrawn' WHERE id = ? AND status IN ('pending','staged')", id);
+}
+
+/** The reply passed: a staged proposal becomes a card she can say yes to. */
+export function publish(db: DB, id: number): Pending | null {
+  run(db, "UPDATE google_actions SET status = 'pending', ts = ? WHERE id = ? AND status = 'staged'", Date.now(), id);
+  const p = pending(db, id);
+  return p?.status === "pending" ? p : null;
+}
+
+function ensureClaimColumn(db: DB) {
+  const cols = (db.prepare("PRAGMA table_info(google_actions)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("claimed_ts")) db.exec("ALTER TABLE google_actions ADD COLUMN claimed_ts INTEGER");
+}
+
+/** How long a change may sit in 'applying' before it's taken as stopped part-way. */
+export const STUCK_APPLYING_MS = 15 * 60_000;
+
+/**
+ * A change stuck in 'applying' (the server stopped while Google was being changed) is marked
+ * failed after 15 minutes, so it isn't left half-done and silent. It's never re-applied by itself:
+ * she can check the file and ask again. Returns how many.
+ */
+export function failStuckApplying(db: DB, now = Date.now()): number {
+  ensureClaimColumn(db);
+  return Number(run(db,
+    "UPDATE google_actions SET status = 'failed', result = ? WHERE status = 'applying' AND COALESCE(claimed_ts, ts) < ?",
+    "This was interrupted part-way, so it may not have finished. Check the file in Google, and ask again if it's not there.", now - STUCK_APPLYING_MS).changes);
 }
 
 export function decline(db: DB, id: number): boolean {
@@ -199,7 +251,8 @@ export async function apply(db: DB, drive: GoogleDrive, id: number): Promise<{ o
   const p = JSON.parse(r.payload) as Payload;
   // Claiming it is the one-time step: if two taps race, only the one that moved it out of
   // "pending" applies anything.
-  const claimed = run(db, "UPDATE google_actions SET status = 'applying' WHERE id = ? AND status = 'pending'", id);
+  ensureClaimColumn(db);
+  const claimed = run(db, "UPDATE google_actions SET status = 'applying', claimed_ts = ? WHERE id = ? AND status = 'pending'", Date.now(), id);
   if (Number(claimed.changes) !== 1) return { ok: false, message: "That one's already being done." };
   try {
     let message = "Done.";

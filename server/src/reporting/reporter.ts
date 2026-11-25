@@ -19,8 +19,16 @@ export interface Report {
   childNotice: string;
   /** What the parent receives. */
   parentText: string;
-  status: "pending" | "delivered" | "failed";
+  status: ReportStatus;
 }
+
+/**
+ * awaiting_reply: made before the reply that tells her, and never sent while it's here.
+ * pending: she's been told; ready to send. sending: claimed by one sender (so it's only sent once).
+ * child_not_told: stuck in awaiting_reply (the server stopped before her reply was saved); sent
+ * anyway, with a note that she may not have seen the message. delivered / failed: how sending went.
+ */
+export type ReportStatus = "awaiting_reply" | "pending" | "sending" | "child_not_told" | "delivered" | "failed";
 
 export interface Reporter {
   readonly name: string;
@@ -94,14 +102,36 @@ export function makeReporters(names = config.reporting.reporters, db?: DB): Repo
   return list;
 }
 
-export function createReport(db: DB, r: { level: ReportLevel; category: string; childNotice: string; parentText: string }): Report {
+/**
+ * Records a report. With `awaitingReply`, it waits (status awaiting_reply) until `markTold` says the
+ * reply that tells her has been saved; nothing sends it before then.
+ */
+export function createReport(db: DB, r: { level: ReportLevel; category: string; childNotice: string; parentText: string }, opts: { awaitingReply?: boolean } = {}): Report {
   const ts = Date.now();
+  const status: ReportStatus = opts.awaitingReply ? "awaiting_reply" : "pending";
   const res = run(
     db,
-    "INSERT INTO reports(ts, level, category, child_notice, parent_text, status) VALUES (?,?,?,?,?, 'pending')",
-    ts, r.level, r.category, r.childNotice, r.parentText,
+    "INSERT INTO reports(ts, level, category, child_notice, parent_text, status) VALUES (?,?,?,?,?,?)",
+    ts, r.level, r.category, r.childNotice, r.parentText, status,
   );
-  return { id: Number(res.lastInsertRowid), ts, ...r, status: "pending" };
+  return { id: Number(res.lastInsertRowid), ts, ...r, status };
+}
+
+/** The reply that tells her is stored: the report can now be sent. */
+export function markTold(db: DB, report: Report): Report {
+  run(db, "UPDATE reports SET status = 'pending' WHERE id = ? AND status = 'awaiting_reply'", report.id);
+  return { ...report, status: "pending" };
+}
+
+/**
+ * Claims a report for sending, so the scheduler and the turn that made it can't both send it.
+ * Only one caller moves it to 'sending'; the others get false. A claim left by a sender that
+ * stopped part-way is taken over after STALE_SENDING_MS.
+ */
+export function claimReport(db: DB, id: number, now = Date.now()): boolean {
+  return run(db,
+    `UPDATE reports SET status = 'sending', delivered_ts = ? WHERE id = ? AND (status IN ('pending','failed','child_not_told') OR (status = 'sending' AND COALESCE(delivered_ts, 0) < ?))`,
+    now, id, now - STALE_SENDING_MS).changes > 0;
 }
 
 const MIN = 60_000;
@@ -109,6 +139,11 @@ const MIN = 60_000;
 export const RETRY_FOR_MS = 7 * 24 * 60 * MIN;
 /** A pending report this old was never delivered (the server stopped first), so it's picked up. */
 export const STALE_PENDING_MS = 2 * MIN;
+/** A claim this old belongs to a sender that stopped part-way: it's taken over. */
+export const STALE_SENDING_MS = 10 * MIN;
+/** A report still waiting for her reply after this long never got one (a crash): it's sent anyway. */
+export const STUCK_AWAITING_MS = 30 * MIN;
+export const CHILD_NOT_TOLD_NOTE = "(Kith may not have been able to tell them first: it stopped before its reply was saved, so they may not have seen the message.)";
 
 /** Wait before the next try, after `attempts` failures: 5, 15 and 60 minutes, then hourly. */
 export function retryDelay(attempts: number): number {
@@ -123,6 +158,8 @@ interface DeliveryRow { reporter: string; status: string; attempts: number; next
  * and only once that reporter's backoff is up. Returns true once every reporter has it.
  */
 export async function deliverReport(db: DB, reporters: Reporter[], report: Report, ctx: { companionName: string; childName: string }, now = Date.now()) {
+  // Told first: never while it's waiting for her reply. And only by whoever claims it.
+  if (!claimReport(db, report.id, now)) return false;
   const rows = new Map(all<DeliveryRow>(db, "SELECT reporter, status, attempts, next_at, last_error FROM report_deliveries WHERE report_id = ?", report.id).map((r) => [r.reporter, r]));
   for (const rep of reporters) {
     const row = rows.get(rep.name);
@@ -159,15 +196,31 @@ export function listReports(db: DB, limit = 50) {
 }
 
 /**
- * Reports to try again: failed ones from the last 7 days, and ones still pending after a couple of
- * minutes (the server stopped before it could send them). Per-reporter backoff is applied in
- * deliverReport, so this can be called every tick.
+ * Reports that never got the reply that tells her (still awaiting_reply after 30 minutes: the
+ * server stopped part-way) become child_not_told, with a note for the parent, so they're still sent.
+ * Logged by id only. Returns how many.
+ */
+export function releaseStuckReports(db: DB, now = Date.now()): number {
+  const stuck = all<{ id: number }>(db, "SELECT id FROM reports WHERE status = 'awaiting_reply' AND ts < ?", now - STUCK_AWAITING_MS);
+  for (const r of stuck) {
+    run(db, "UPDATE reports SET status = 'child_not_told', parent_text = parent_text || ' ' || ? WHERE id = ? AND status = 'awaiting_reply'", CHILD_NOT_TOLD_NOTE, r.id);
+    console.warn(`[report] report ${r.id} was never followed by the reply that tells the child; sending it with a note`);
+  }
+  return stuck.length;
+}
+
+/**
+ * Reports to try again: failed ones from the last 7 days, ones still pending after a couple of
+ * minutes (the server stopped before it could send them), child_not_told ones, and claims left by
+ * a sender that stopped. Never awaiting_reply. Per-reporter backoff is applied in deliverReport,
+ * so this can be called every tick.
  */
 export function reportsToRetry(db: DB, now = Date.now()): Report[] {
-  return all<{ id: number; ts: number; level: ReportLevel; category: string; child_notice: string; parent_text: string; status: "pending" | "failed" }>(
+  return all<{ id: number; ts: number; level: ReportLevel; category: string; child_notice: string; parent_text: string; status: ReportStatus }>(
     db,
-    "SELECT id, ts, level, category, child_notice, parent_text, status FROM reports WHERE ts > ? AND (status = 'failed' OR (status = 'pending' AND ts < ?)) ORDER BY ts",
-    now - RETRY_FOR_MS, now - STALE_PENDING_MS,
+    `SELECT id, ts, level, category, child_notice, parent_text, status FROM reports WHERE ts > ? AND (status IN ('failed','child_not_told')
+      OR (status = 'pending' AND ts < ?) OR (status = 'sending' AND COALESCE(delivered_ts, 0) < ?)) ORDER BY ts`,
+    now - RETRY_FOR_MS, now - STALE_PENDING_MS, now - STALE_SENDING_MS,
   ).map((r) => ({ id: r.id, ts: r.ts, level: r.level, category: r.category, childNotice: r.child_notice, parentText: r.parent_text, status: r.status }));
 }
 

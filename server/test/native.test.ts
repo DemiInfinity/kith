@@ -144,7 +144,7 @@ describe("a chat turn", () => {
     const chat = llm.calls.find((c) => c.kind === "chat")!.params as unknown as { system: { text: string }[]; tools: { name: string }[]; messages: { role: string; content: unknown }[] };
     const last = chat.messages[chat.messages.length - 1];
     expect(last.content).toEqual([
-      { type: "document", source: { type: "text", media_type: "text/plain", data: "The Victorians built railways." }, title: "essay.docx" },
+      { type: "document", source: { type: "text", media_type: "text/plain", data: "<untrusted_document>\nThe Victorians built railways.\n</untrusted_document>" }, title: "essay.docx" },
       { type: "text", text: "Can you check my essay?" },
     ]);
     expect(chat.system.map((b) => b.text).join("\n")).toContain("Maths test");

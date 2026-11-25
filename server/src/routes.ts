@@ -28,10 +28,9 @@ import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budge
 import { startOfDay, startOfMonth, startOfWeek } from "./budget/time.js";
 import { activitySince, logActivity } from "./desk/activity.js";
 import { companionFiles, safeguardsDoc } from "./companion/files.js";
-import { checkInputRules } from "./safety/rules.js";
+import { isWorry, reportOutsideChat, screenInput, sendOutsideReport, withRuleWorries } from "./reporting/outside.js";
+import type { InputCategory } from "./safety/types.js";
 import { localDate } from "./budget/time.js";
-import { CHECK_UNAVAILABLE } from "./safety/check.js";
-import { noteSafetyUnavailable } from "./safety/unavailable.js";
 import { deviceCount, isPushEndpoint, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { notifyParent } from "./checkins/parentPush.js";
 import { registerParentInbox } from "./checkins/parentInbox.js";
@@ -58,11 +57,12 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   const turnDeps = (): Deps => ({ ...d, childName: childName(db) });
   registerSessionAdmin(app, db);
 
-  /** The input check couldn't run: hold this (503) and let the parent know the check was down. */
-  const heldForCheck = (reply: import("fastify").FastifyReply) => {
-    noteSafetyUnavailable(db, { companionName: loadProfile(db).name, childName: childName(db) }, d.reporters);
-    return reply.code(503).send({ error: CHECK_UNAVAILABLE, code: "safety-unavailable" });
-  };
+  /**
+   * Text typed outside chat: a worry is reported to the grown-up (she's told first, with the
+   * helplines, and pointed to chat); only-not-allowed content gets a plain 422.
+   */
+  const screen = (reply: import("fastify").FastifyReply, text: string, where: string, refuse: InputCategory[], message: (found: InputCategory[]) => string) =>
+    screenInput({ db, reporters: d.reporters, safety: d.safety, childName: childName(db) }, reply, text, where, { categories: refuse, message });
 
   app.get("/api/me", { preHandler: either }, async (req) => {
     const s = loadParentSettings(db);
@@ -90,7 +90,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     let browsing: { title: string; by: string | null } | null = null;
     try {
       const l = await studio.desk.live();
-      if (l.takenOverBy || l.busy) browsing = { title: l.title, by: l.takenOverBy ?? null };
+      if (l.takenOverBy || l.busy) browsing = { title: await studio.browser.safeTitle(l.title, l.url), by: l.takenOverBy ?? null };
     } catch { /* desk asleep or unreachable */ }
     return {
       energy: childEnergy(e),
@@ -128,6 +128,11 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   // ── Things they asked to schedule ─────────────────────────────────────────────────────
   app.get("/api/schedules", { preHandler: either }, async () => ({ schedules: listSchedules(db) }));
   app.post("/api/schedules", { preHandler: child }, async (req, reply) => {
+    // What's scheduled is her words: a reminder she'll be sent, or something the desk will make.
+    // Both get the input check now, the same as /api/desk/make (a worry is reported).
+    const b = (req.body ?? {}) as { title?: unknown; kind?: unknown; make?: { brief?: unknown; kind?: unknown; lookUp?: unknown } };
+    const words = [b.title, b.make?.brief, b.make?.lookUp].filter((x): x is string => typeof x === "string").join(". ");
+    if (!(await screen(reply, words, b.kind === "make" ? "a scheduled desk job" : "a scheduled reminder", ["sexual", "romance"], () => "That's not something I can schedule. Want to try a different one?"))) return;
     const r = addSchedule(db, req.body, config.timezone);
     return r.ok ? r.schedule : reply.code(422).send({ error: r.error });
   });
@@ -155,8 +160,11 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     // A document shared from the Mac app (its text only).
     file: z.object({ name: z.string().max(200), text: z.string().min(1).max(12_000) }).optional(),
   });
-  app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
+  app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     const body = ChatBody.parse(req.body);
+    // An unapproved language is refused outright; an approved one is still only used when it's the
+    // side chat's own language (inThreadLanguage ignores what the client says).
+    if (body.ctx.lang && !isActive(db, body.ctx.lang)) return reply.code(409).send({ error: "That language is waiting for your grown-up to say yes." });
     // A side chat in Spanish or Japanese: every turn in it is language practice.
     Object.assign(body, inThreadLanguage(db, body));
     const turn = await takeTurn(turnDeps(), body);
@@ -211,13 +219,18 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   // ── The desk's browser and today's work (child and parent both see these) ─────────────
   app.get("/api/desk/browser", { preHandler: either }, async (req) => {
     let live = null;
-    try { live = await studio.desk.live(); } catch { /* desk not reachable */ }
+    try { live = await safeLive(await studio.desk.live()); } catch { /* desk not reachable */ }
     const s = loadParentSettings(db).browser;
     const you = req.user!.role === "parent" ? config.people.parentLabel : childName(db) || "you";
     return { enabled: s.enabled, mode: s.mode, sites: s.sites, you, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
   });
   // Take over the desk browser (child or parent). Same rules: block list, read-only, logged.
   const who = (role: string) => (role === "parent" ? config.people.parentLabel : childName(db) || "you");
+  // Page titles pass the output check before they're logged or shown (else just the hostname).
+  async function safeLive<T extends { url: string; title: string; tabs?: { title: string; url: string }[] }>(l: T): Promise<T> {
+    const tabs = l.tabs ? await Promise.all(l.tabs.map(async (t) => ({ ...t, title: await studio.browser.safeTitle(t.title, t.url) }))) : undefined;
+    return { ...l, title: await studio.browser.safeTitle(l.title, l.url), ...(tabs ? { tabs } : {}) };
+  }
   const logVisit = (url: string, title: string, role: string) => {
     run(db, "INSERT INTO browse_log(ts, url, title, why, job_id, outcome) VALUES (?,?,?,?,NULL,'read')", Date.now(), url.slice(0, 500), title.slice(0, 200), `taken over by ${who(role)}`);
     logActivity(db, "🧭", `${who(role)} browsed “${title || url}”`);
@@ -226,7 +239,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const b = loadParentSettings(db).browser;
     if (!b.enabled) return reply.code(409).send({ error: "Browsing is switched off." });
     try {
-      const l = await studio.desk.takeOver(who(req.user!.role), studio.browser.deskRules(b), undefined, loadProfile(db).name);
+      const l = await safeLive(await studio.desk.takeOver(who(req.user!.role), studio.browser.deskRules(b), undefined, loadProfile(db).name));
       logVisit(l.url, l.title, req.user!.role);
       return { ...l, takenOverBy: who(req.user!.role) };
     } catch (err) {
@@ -240,7 +253,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       index: z.number().int().min(0).max(20).optional(), text: z.string().max(500).optional(), key: z.string().max(20).optional(),
     }).parse(req.body);
     try {
-      const l = await studio.desk.act(a);
+      const l = await safeLive(await studio.desk.act(a));
       if (l.navigated) logVisit(l.url, l.title, req.user!.role);
       return { ...l, takenOverBy: who(req.user!.role) };
     } catch (err) {
@@ -346,33 +359,25 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
 
   // soul.md and identity.md are the child's to write. Safeguards sit above them either way, but
   // obviously unsuitable text (romance, sexual, personal details) isn't kept.
-  async function okText(reply: import("fastify").FastifyReply, text: string) {
-    if (!text.trim()) return true;
-    const rules = checkInputRules(text);
-    const v = await d.safety.checkInput(text, []);
-    if (v.held) { heldForCheck(reply); return false; }
-    const bad = [...rules.categories, ...v.categories].filter((c) => ["sexual", "romance", "personal_info"].includes(c));
-    if (bad.length || v.level !== "none") {
-      reply.code(422).send({ error: bad.includes("personal_info") ? "Leave out personal details like your address or school." : "That bit can’t go in. Pip stays a friendly AI sidekick: no romance or grown-up stuff." });
-      return false;
-    }
-    return true;
+  async function okText(reply: import("fastify").FastifyReply, text: string, where: string) {
+    return screen(reply, text, where, ["sexual", "romance", "personal_info"],
+      (bad) => bad.includes("personal_info") ? "Leave out personal details like your address or school." : "That bit can’t go in. Pip stays a friendly AI sidekick: no romance or grown-up stuff.");
   }
   app.put("/api/pip/soul", { preHandler: child }, async (req, reply) => {
     const { text } = z.object({ text: z.string().max(3000) }).parse(req.body);
-    if (!(await okText(reply, text))) return;
+    if (!(await okText(reply, text, "Pip's soul.md"))) return;
     saveProfile(db, { ...loadProfile(db), soul: text });
     return companionFiles(db, childName(db));
   });
   app.put("/api/pip/identity", { preHandler: child }, async (req, reply) => {
     const { notes } = z.object({ notes: z.string().max(2000) }).parse(req.body);
-    if (!(await okText(reply, notes))) return;
+    if (!(await okText(reply, notes, "Pip's identity notes"))) return;
     saveProfile(db, { ...loadProfile(db), identityNotes: notes });
     return companionFiles(db, childName(db));
   });
   app.post("/api/memories", { preHandler: child }, async (req, reply) => {
     const b = z.object({ text: z.string().trim().min(1).max(140), icon: z.string().max(8).default("💭") }).parse(req.body);
-    if (!(await okText(reply, b.text))) return;
+    if (!(await okText(reply, b.text, "a memory"))) return;
     const r = addMemory(db, { text: b.text, icon: b.icon });
     return r.ok ? r : reply.code(422).send({ error: r.reason });
   });
@@ -485,33 +490,38 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
   app.post("/api/desk/make", { preHandler: child, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const b = MakeBody.parse(req.body);
-    const check = await d.safety.checkInput(`${b.title}. ${b.brief}`, []);
-    if (check.held) return heldForCheck(reply);
-    if (["sexual", "romance"].some((c) => check.categories.includes(c as never)) || check.level !== "none") {
-      return reply.code(422).send({ error: "That's not something I can make. Want to try a different idea?" });
-    }
+    if (!(await screen(reply, `${b.title}. ${b.brief}`, "a desk idea", ["sexual", "romance"], () => "That's not something I can make. Want to try a different idea?"))) return;
     const job = studio.enqueue({ kind: b.kind as never, title: b.title, brief: b.brief, chapters: b.chapters, characterIds: b.characterIds });
     return job.ok ? job.job : reply.code(409).send({ error: job.error });
   });
   app.post("/api/desk/items/:id/change", { preHandler: child, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const { change } = z.object({ change: z.string().trim().min(1).max(1000) }).parse(req.body);
-    const check = await d.safety.checkInput(change, []);
-    if (check.held) return heldForCheck(reply);
-    if (check.level !== "none" || check.categories.some((c) => ["sexual", "romance"].includes(c))) {
-      return reply.code(422).send({ error: "That's not a change I can make." });
-    }
+    if (!(await screen(reply, change, "a change to a desk item", ["sexual", "romance"], () => "That's not a change I can make."))) return;
     const job = studio.enqueue({ kind: "edit", title: "A change", brief: change, fileId: (req.params as { id: string }).id });
     return job.ok ? job.job : reply.code(409).send({ error: job.error });
   });
 
   // ── OC workshop ───────────────────────────────────────────────────────────────────────
   app.get("/api/oc", { preHandler: either }, async () => ({ characters: listCharacters(db), world: listWorld(db) }));
+  // Her characters are her own writing: a worry the fixed rules find (self-harm, danger, secrets) is
+  // reported (she's told first), the same as anywhere else she types.
+  const ocWorry = (reply: import("fastify").FastifyReply, fields: unknown) => {
+    const text = JSON.stringify(fields ?? {}).replace(/[{}"[\]]/g, " ");
+    const v = withRuleWorries({ level: "none", categories: [], parentSummary: "", steer: "", source: "rules" }, text);
+    if (!isWorry(v)) return false;
+    sendOutsideReport(reply, reportOutsideChat({ db, reporters: d.reporters, childName: childName(db) }, v, "the OC workshop"));
+    return true;
+  };
   app.post("/api/oc/characters", { preHandler: child }, async (req, reply) => {
-    const r = saveCharacter(db, { fields: Sheet.partial().parse(req.body) });
+    const fields = Sheet.partial().parse(req.body);
+    if (ocWorry(reply, fields)) return;
+    const r = saveCharacter(db, { fields });
     return r.ok ? r.character : reply.code(422).send({ error: `Not saved: ${r.problems.join("; ")}` });
   });
   app.put("/api/oc/characters/:id", { preHandler: child }, async (req, reply) => {
-    const r = saveCharacter(db, { id: Number((req.params as { id: string }).id), fields: Sheet.partial().parse(req.body) });
+    const fields = Sheet.partial().parse(req.body);
+    if (ocWorry(reply, fields)) return;
+    const r = saveCharacter(db, { id: Number((req.params as { id: string }).id), fields });
     return r.ok ? r.character : reply.code(422).send({ error: `Not saved: ${r.problems.join("; ")}` });
   });
   app.delete("/api/oc/characters/:id", { preHandler: child }, async (req) => ({ ok: deleteCharacter(db, Number((req.params as { id: string }).id)) }));
