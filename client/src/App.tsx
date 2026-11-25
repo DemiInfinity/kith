@@ -425,6 +425,10 @@ function Root() {
     loadMe();
     void registerServiceWorker();
   }, [loadMe]);
+  // The welcome page's Sign in goes to /signin; once signed in, that's just the app's home.
+  useEffect(() => {
+    if (me && me !== "signed-out" && location.pathname === "/signin") history.replaceState(null, "", `/${location.search}`);
+  }, [me]);
   // The sign-in window an installed app opened: say it's done (whatever the session state here).
   const sp = new URLSearchParams(location.search).get("signin") ?? "";
   if (sp === "done" || sp.startsWith("done-")) return <SignInDone error={sp === "done" ? null : sp.slice(5)} />;

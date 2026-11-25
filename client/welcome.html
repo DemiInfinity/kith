@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Kith: an AI companion for kids that lives at home</title>
+    <meta name="description" content="Kith is a free, open-source AI companion for young people that runs on your family's own server, helps with homework and keeps everyday chats private." />
+    <link rel="canonical" href="https://ai.hearthstream.xyz/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#140E10" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Kith" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:url" content="https://ai.hearthstream.xyz/" />
+    <meta property="og:title" content="Kith: an AI companion for kids that lives at home" />
+    <meta property="og:description" content="A free, open-source AI friend for young people that runs on your family's own server, under your rules, with everyday chats kept private." />
+    <meta property="og:image" content="https://ai.hearthstream.xyz/welcome/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Kith's Buddy logo beside the words: An AI friend that lives at home." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Kith: an AI companion for kids that lives at home" />
+    <meta name="twitter:description" content="A free, open-source AI friend for young people that runs on your family's own server, under your rules, with everyday chats kept private." />
+    <meta name="twitter:image" content="https://ai.hearthstream.xyz/welcome/og.png" />
+    <meta name="twitter:image:alt" content="Kith's Buddy logo beside the words: An AI friend that lives at home." />
+
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="/welcome/chat-phone.webp" type="image/webp" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Kith",
+        "url": "https://ai.hearthstream.xyz/",
+        "description": "A free, open-source AI companion for young people that runs on the family's own home server, with safety built in and everyday chats kept private.",
+        "applicationCategory": "EducationalApplication",
+        "applicationSubCategory": "LifestyleApplication",
+        "operatingSystem": "Web, macOS, iOS",
+        "isAccessibleForFree": true,
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+        "image": "https://ai.hearthstream.xyz/welcome/og.png",
+        "screenshot": "https://ai.hearthstream.xyz/welcome/chat-desktop.jpg",
+        "codeRepository": "https://github.com/DemiInfinity/kith",
+        "inLanguage": "en-GB"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "Will it replace their friends?", "acceptedAnswer": { "@type": "Answer", "text": "No. It always says it's an AI, never guilt-trips them into staying, and nudges them back to real friends and family." } },
+          { "@type": "Question", "name": "Can I read their chats?", "acceptedAnswer": { "@type": "Answer", "text": "No, and that's on purpose. You get reports when something matters and a weekly summary you both see." } },
+          { "@type": "Question", "name": "What does it cost?", "acceptedAnswer": { "@type": "Answer", "text": "Kith is free. You pay Anthropic for what it uses, capped by limits you set; everyday use fits inside $50 a month." } },
+          { "@type": "Question", "name": "Are chats used to train AI?", "acceptedAnswer": { "@type": "Answer", "text": "No. Kith uses the Claude API under commercial terms, and chats stay on your server for 30 days at most." } }
+        ]
+      }
+    </script>
+    <script type="module" src="/src/welcome/welcome.ts"></script>
+  </head>
+  <body class="kw">
+    <a class="kw-skip" href="#main">Skip to the main content</a>
+
+    <header class="kw-head">
+      <nav class="kw-nav" aria-label="Main">
+        <a class="kw-brand" href="#top" aria-label="Kith, back to the top">
+          <svg width="42" height="42" viewBox="0 0 1024 1024" aria-hidden="true" focusable="false"><defs><linearGradient id="nt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A2434"/><stop offset="1" stop-color="#1C1219"/></linearGradient><linearGradient id="nb" x1="0.15" y1="0.05" x2="0.85" y2="1"><stop offset="0" stop-color="#E7B4EE"/><stop offset="0.55" stop-color="#EFA6B8"/><stop offset="1" stop-color="#F7A055"/></linearGradient></defs><rect width="1024" height="1024" fill="url(#nt)"/><path d="M512 246 C706 246 794 382 794 548 C794 712 680 794 512 794 C344 794 230 712 230 548 C230 382 318 246 512 246 Z" fill="url(#nb)"/><ellipse cx="432" cy="512" rx="40" ry="62" fill="#2A1C27"/><ellipse cx="592" cy="512" rx="40" ry="62" fill="#2A1C27"/><circle cx="382" cy="612" r="30" fill="#FFF4FB" fill-opacity="0.55"/><circle cx="642" cy="612" r="30" fill="#FFF4FB" fill-opacity="0.55"/></svg>
+          <span>Kith</span>
+        </a>
+        <ul class="kw-links">
+          <li><a href="#what">What it is</a></li>
+          <li><a href="#safety">Safety</a></li>
+          <li><a href="#grownups">For grown-ups</a></li>
+          <li><a href="#get">Get Kith</a></li>
+        </ul>
+        <span class="kw-nav-cta">
+          <a class="btn ghost small" href="https://github.com/DemiInfinity/kith">Open source</a>
+          <a class="btn primary small" href="/signin" data-signin>Sign in</a>
+        </span>
+      </nav>
+    </header>
+
+    <main id="main">
+      <!-- hero -->
+      <section id="top" class="kw-hero" aria-labelledby="hero-title">
+        <div class="kw-hero-text">
+          <p class="hand">a companion that grows up with you</p>
+          <h1 id="hero-title">An AI friend<br />that lives <span class="grad">at home.</span></h1>
+          <p class="lede">Kith is a companion for young people that talks, remembers, helps with homework, makes things with them and checks in kindly. It runs on your family's own server, under your rules, and your child always knows what you can see.</p>
+          <div class="kw-actions">
+            <a class="btn primary" href="/signin" data-signin>Sign in to your Kith <span aria-hidden="true">→</span></a>
+            <a class="btn ghost" href="#get">Get Kith for your family</a>
+          </div>
+          <p class="kw-fine">Free and open source · your own Claude key · nothing sold, nothing used for training</p>
+        </div>
+        <div class="kw-phone">
+          <picture>
+            <source srcset="/welcome/chat-phone.webp" type="image/webp" />
+            <img src="/welcome/chat-phone.jpg" width="720" height="1558" fetchpriority="high"
+              alt="Kith on a phone: Pip helps Sam add fractions step by step, then offers to make a quiz and set a revision reminder." />
+          </picture>
+          <p class="hand kw-phone-note" aria-hidden="true">it says it's an AI,<br />every time</p>
+        </div>
+      </section>
+
+      <!-- why -->
+      <section id="what" class="kw-sec" aria-labelledby="why-title">
+        <p class="hand">why Kith exists</p>
+        <h2 id="why-title">Kids are going to talk to AI.<br />So we built one that's on their side.</h2>
+        <p class="lede">Most AI apps weren't made for young people: they run on servers you'll never see, keep conversations you'll never read, and are designed to keep anyone hooked. Kith started with one parent asking, "what if I built my teenager one of their own?"</p>
+        <ul class="kw-grid three" role="list">
+          <li class="card"><span class="dot lilac" aria-hidden="true">🫧</span><h3>Theirs</h3><p>They name it, choose its personality and voice, and it remembers what matters to them: the test on Thursday, the story they're writing, the character they're drawing.</p></li>
+          <li class="card"><span class="dot rose" aria-hidden="true">🏡</span><h3>Yours to run</h3><p>It lives on your own home server, behind your own sign-in, on your own Claude API key with a spending limit you choose. Chats are deleted after 30 days.</p></li>
+          <li class="card"><span class="dot ember" aria-hidden="true">🤝</span><h3>Honest</h3><p>Everyday chats stay private. If something's worrying, Kith tells your child what it will share with you, and why, before it does. No secret reports, ever.</p></li>
+        </ul>
+      </section>
+
+      <!-- what it's like -->
+      <section class="kw-sec" aria-labelledby="like-title">
+        <h2 id="like-title">What it's like to have one</h2>
+        <ul class="kw-grid four" role="list">
+          <li class="card small"><p class="hand">revision</p><h3>GCSE help that teaches</h3><p>Recall first, gentle hints, practice questions and flashcards. Coursework always stays theirs.</p></li>
+          <li class="card small"><p class="hand">stories</p><h3>Write with a friend</h3><p>Co-write a story with every part credited to whoever wrote it, saved to their own Google Drive.</p></li>
+          <li class="card small"><p class="hand">art</p><h3>Art and characters</h3><p>Practice ideas, honest feedback and character sheets for their originals. It never makes the art for them.</p></li>
+          <li class="card small"><p class="hand">languages</p><h3>Spanish, Japanese and more</h3><p>Practice chats at their level, a kana trainer, and new languages added with a grown-up's OK.</p></li>
+          <li class="card small"><p class="hand">calls</p><h3>Talk out loud</h3><p>Voice calls with an animated face. Speech is processed at home and recordings aren't kept.</p></li>
+          <li class="card small"><p class="hand">its desk</p><h3>It makes things</h3><p>Quizzes, comics and small games on its own little computer, which they can watch it work on.</p></li>
+          <li class="card small"><p class="hand">plans</p><h3>A week that works</h3><p>Realistic revision plans around school, clubs and friends, with rest built in.</p></li>
+          <li class="card small"><p class="hand">wellbeing</p><h3>Kind check-ins</h3><p>At most two a day, never at night, never guilt-tripping, and a calm wind-down at bedtime.</p></li>
+        </ul>
+      </section>
+
+      <!-- screenshots -->
+      <section class="kw-sec" aria-labelledby="see-title">
+        <p class="hand">see it for yourself</p>
+        <h2 id="see-title">The real app, on a laptop and a phone</h2>
+        <figure class="kw-laptop">
+          <div class="kw-laptop-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+          <picture>
+            <source srcset="/welcome/chat-desktop.webp" type="image/webp" />
+            <img src="/welcome/chat-desktop.jpg" width="1600" height="1000" loading="lazy" decoding="async"
+              alt="Kith on a computer: the chat with side chats on the left and the companion's picture at the top." />
+          </picture>
+        </figure>
+        <div class="kw-gallery">
+          <figure class="phone">
+            <picture><source srcset="/welcome/wizard-personality-phone.webp" type="image/webp" /><img src="/welcome/wizard-personality-phone.jpg" width="600" height="1298" loading="lazy" decoding="async" alt="Setting up the companion on a phone: choosing up to three personality traits." /></picture>
+            <figcaption><b>Make it theirs.</b> Name, look, personality and voice.</figcaption>
+          </figure>
+          <figure class="phone">
+            <picture><source srcset="/welcome/help-phone.webp" type="image/webp" /><img src="/welcome/help-phone.jpg" width="600" height="1298" loading="lazy" decoding="async" alt="The help centre written for young people, on a phone." /></picture>
+            <figcaption><b>Help written for them,</b> and Grown-up? on every screen.</figcaption>
+          </figure>
+          <div class="kw-gallery-col">
+            <figure>
+              <picture><source srcset="/welcome/profile-desktop.webp" type="image/webp" /><img src="/welcome/profile-desktop.jpg" width="1200" height="750" loading="lazy" decoding="async" alt="The companion's profile on a computer, with its desk of things it has made." /></picture>
+              <figcaption><b>Its profile and desk:</b> what it's made, what's scheduled, and what it remembers.</figcaption>
+            </figure>
+            <figure>
+              <picture><source srcset="/welcome/commands-desktop.webp" type="image/webp" /><img src="/welcome/commands-desktop.jpg" width="1200" height="750" loading="lazy" decoding="async" alt="Typing a slash in the chat shows a menu of commands and skills." /></picture>
+              <figcaption><b>Type / for shortcuts</b> like /revise, /story and /winddown.</figcaption>
+            </figure>
+          </div>
+        </div>
+        <p class="kw-note">Screenshots use made-up sample data.</p>
+      </section>
+
+      <!-- safety -->
+      <section id="safety" class="kw-sec kw-split" aria-labelledby="safety-title">
+        <div class="kw-split-main">
+          <p class="hand">safety, built in, not bolted on</p>
+          <h2 id="safety-title">Safety sits under the personality, and nothing changes it.</h2>
+          <ul class="kw-ticks" role="list">
+            <li><span><b>Every message is checked, both ways,</b> by a separate safety check. If it can't run, the reply waits.</span></li>
+            <li><span><b>Personal details are removed</b> before anything leaves your home, and it never asks for them.</span></li>
+            <li><span><b>No romance, nothing sexual, no money, no meet-ups.</b> Ever.</span></li>
+            <li><span><b>"Grown-up?" on every screen:</b> one tap to message you, Childline, Samaritans or 999.</span></li>
+            <li><span><b>Told first, then shared.</b> Your child sees the exact words before you get them.</span></li>
+            <li><span><b>Designed with the UK's Age Appropriate Design Code in mind.</b></span></li>
+          </ul>
+        </div>
+        <aside class="card kw-example" aria-label="An example of what your child sees before a report">
+          <p class="kw-eyebrow ember">What your child sees before a report</p>
+          <blockquote>"That sounds really heavy, and I'm glad you told me. Because it's about feeling unsafe, I'm going to let Mum know today. Here's exactly what she'll see. You're not in trouble."</blockquote>
+          <div class="kw-sent">
+            <p class="kw-eyebrow">Sent to Mum · today</p>
+            <p>Something at school is making them feel unsafe. Worth a gentle chat this evening.</p>
+          </div>
+        </aside>
+      </section>
+
+      <!-- grown-ups -->
+      <section id="grownups" class="kw-sec" aria-labelledby="parent-title">
+        <p class="hand">kith parent</p>
+        <h2 id="parent-title">Everything a grown-up needs. None of the snooping.</h2>
+        <div class="kw-grid two">
+          <div class="card">
+            <h3 class="flush">You see</h3>
+            <ul class="kw-ticks tight" role="list">
+              <li><span>Reports when something matters: right now, today, or just so you know</span></li>
+              <li><span>A weekly summary at topic level, the same one your child sees</span></li>
+              <li><span>Spending against a weekly allowance and a hard monthly limit</span></li>
+              <li><span>Every tool and connection it used, and everything on its desk</span></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3 class="flush">You never see</h3>
+            <ul class="kw-ticks tight" role="list">
+              <li><span>Their everyday chats</span></li>
+              <li><span>Their memories, which are theirs to read and delete</span></li>
+            </ul>
+            <h3>You decide</h3>
+            <p>Budgets, quiet hours, helplines, which websites its browser may visit, the safeguards document, skills, and connections to Google, your calendar or your smart home, each one look-only or allowed to act.</p>
+          </div>
+        </div>
+        <div class="kw-grid two kw-shots">
+          <figure>
+            <picture><source srcset="/welcome/parent-overview.webp" type="image/webp" /><img src="/welcome/parent-overview.jpg" width="1200" height="750" loading="lazy" decoding="async" alt="Kith Parent's overview: this month's spending against the hard stop, the set-up checklist and reports." /></picture>
+            <figcaption><b>Kith Parent:</b> spending, set-up and reports at a glance.</figcaption>
+          </figure>
+          <figure>
+            <picture><source srcset="/welcome/parent-skills.webp" type="image/webp" /><img src="/welcome/parent-skills.jpg" width="1200" height="750" loading="lazy" decoding="async" alt="Kith Parent's skills page, where a grown-up writes skills the companion can use." /></picture>
+            <figcaption><b>Skills:</b> teach it how your family does things.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- platforms -->
+      <section class="kw-sec" aria-labelledby="platforms-title">
+        <div class="card kw-platforms">
+          <div>
+            <h2 id="platforms-title" class="h3">On their phone, your Mac and any browser</h2>
+            <p>Add it to an iPhone's Home Screen, install the Kith and Kith Parent apps on a Mac, or just open it in a browser on Windows, Android or a Chromebook.</p>
+          </div>
+          <ul class="kw-pills" role="list">
+            <li><span class="pill">iPhone &amp; iPad</span></li>
+            <li><a class="pill" href="https://github.com/DemiInfinity/kith/releases/tag/mac-v0.1.0">Mac apps</a></li>
+            <li><span class="pill">Any browser</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- get kith -->
+      <section id="get" class="kw-sec" aria-labelledby="get-title">
+        <p class="hand">get kith for your family</p>
+        <h2 id="get-title">Free, open source, and yours.</h2>
+        <p class="lede">Kith is for families comfortable running a small home server. Setup takes an afternoon, and a guided script keeps your keys hidden as you type them.</p>
+        <ol class="kw-grid three kw-steps" role="list">
+          <li class="card"><span class="num n1" aria-hidden="true">1</span><h3>A home server</h3><p>Any always-on computer that runs Docker. Light mode is happy on an old Mac mini.</p></li>
+          <li class="card"><span class="num n2" aria-hidden="true">2</span><h3>Your own Claude key</h3><p>From your own Anthropic organisation, with a monthly limit. Defaults are built for heavy daily use inside $50 a month.</p></li>
+          <li class="card"><span class="num n3" aria-hidden="true">3</span><h3>A family sign-in</h3><p>A sign-in provider such as Pocket ID, so only your family gets in.</p></li>
+        </ol>
+        <div class="kw-actions">
+          <a class="btn primary" href="https://github.com/DemiInfinity/kith">View Kith on GitHub <span aria-hidden="true">→</span></a>
+          <a class="btn ghost" href="https://github.com/DemiInfinity/kith/releases/tag/mac-v0.1.0">Download the Mac apps</a>
+          <a class="btn ghost" href="https://github.com/DemiInfinity/kith/blob/main/docs/setup.md">Read the setup guide</a>
+        </div>
+        <p class="kw-fine">Early software, made with love and in daily use by its author's family. Licensed AGPL-3.0.</p>
+      </section>
+
+      <!-- faq -->
+      <section class="kw-sec" aria-labelledby="faq-title">
+        <h2 id="faq-title">Questions parents ask</h2>
+        <dl class="kw-grid two kw-faq">
+          <div class="card"><dt>Will it replace their friends?</dt><dd>No. It always says it's an AI, never guilt-trips them into staying, and nudges them back to real friends and family.</dd></div>
+          <div class="card"><dt>Can I read their chats?</dt><dd>No, and that's on purpose. You get reports when something matters and a weekly summary you both see.</dd></div>
+          <div class="card"><dt>What does it cost?</dt><dd>Kith is free. You pay Anthropic for what it uses, capped by limits you set; everyday use fits inside $50 a month.</dd></div>
+          <div class="card"><dt>Are chats used to train AI?</dt><dd>No. Kith uses the Claude API under commercial terms, and chats stay on your server for 30 days at most.</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <footer class="kw-foot">
+      <span class="kw-foot-name">Kith</span>
+      <span class="kw-fine">A companion, kept at home · <a href="https://github.com/DemiInfinity/kith">Open source</a> · Not made by or affiliated with Anthropic</span>
+      <a class="btn primary small" href="/signin" data-signin>Sign in</a>
+    </footer>
+  </body>
+</html>
