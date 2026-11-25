@@ -33,6 +33,7 @@ use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, DragDropEvent, Emitter, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_window_state::StateFlags;
 
 const MAIN: &str = "main";
 /// Used when neither a saved address nor a built-in one is set: a Kith server on this Mac
@@ -286,7 +287,9 @@ fn save_server(app: AppHandle, state: tauri::State<'_, State>, server: String) -
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Size and position only: closing hides the window (Kith stays in the menu bar), and it
+        // must still open visible next time.
+        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(StateFlags::all() - StateFlags::VISIBLE).build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -443,6 +446,7 @@ fn main() {
                 })
                 .build()?;
 
+            let _ = window.show();
             let drop_app = handle.clone();
             window.on_window_event(move |ev| match ev {
                 // Closing the window keeps Kith running in the menu bar (Quit from the menu to stop).
