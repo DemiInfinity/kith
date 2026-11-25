@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Character, type DeskItem, type DeskView, type Energy, type Me } from "../api";
+import { api, type Character, type CloudLink, type DeskItem, type DeskView, type Energy, type Me } from "../api";
 import { EnergyCard, Markdown } from "../components/bits";
 
 const KIND_LABEL: Record<string, string> = {
@@ -24,7 +24,7 @@ function subtitle(it: DeskItem) {
 }
 
 /** A desk item, opened. Interactive things run in a locked sandbox: no network, no storage, no access to the app. */
-export function ItemViewer({ id, canEdit, onClose, onChanged }: { id: string; canEdit: boolean; onClose: () => void; onChanged: () => void }) {
+export function ItemViewer({ id, canEdit, onClose, onChanged, links = [] }: { id: string; canEdit: boolean; onClose: () => void; onChanged: () => void; links?: CloudLink[] }) {
   const [item, setItem] = useState<{ meta: DeskItem; content: string; versions: number[] } | null>(null);
   const [v, setV] = useState<number | undefined>();
   const [change, setChange] = useState("");
@@ -62,7 +62,18 @@ export function ItemViewer({ id, canEdit, onClose, onChanged }: { id: string; ca
     onClose();
   };
 
+  const toGoogle = async () => {
+    try {
+      const r = await api<{ url: string }>(`/api/desk/items/${encodeURIComponent(id)}/google`, { body: {} });
+      setMsg("Saved to your Google Drive ✓");
+      window.open(r.url, "_blank", "noopener");
+      onChanged();
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
   const m = item?.meta;
+  const mine = links.filter((l) => l.item_id === id);
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -75,6 +86,9 @@ export function ItemViewer({ id, canEdit, onClose, onChanged }: { id: string; ca
               {item.versions.map((n) => <option key={n} value={n}>v{n}</option>)}
             </select>
           )}
+          {mine[0] && <a className="btn ghost small" href={mine[0].url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>Open in Google ↗</a>}
+          {mine[0]?.extra && <a className="btn ghost small" href={mine[0].extra} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>Sheet ↗</a>}
+          {canEdit && !mine[0] && <button className="btn ghost small" onClick={toGoogle}>Save to Google</button>}
           {canEdit && <button className="btn ghost small" onClick={fav} aria-pressed={m?.favourite}>{m?.favourite ? "★ Favourite" : "☆ Favourite"}</button>}
           <button className="x" aria-label="Close" onClick={onClose}>✕</button>
         </div>
@@ -179,7 +193,7 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
         {items.map((it) => (
           <button key={it.id} className="made" onClick={() => setOpen(it.id)}>
             {it.favourite && <span className="fav" aria-label="favourite">★</span>}
-            <span className="ic">{it.icon}</span><b>{it.title}</b><span>{subtitle(it)}</span>
+            <span className="ic">{it.icon}</span><b>{it.title}</b><span>{subtitle(it)}{desk?.links.some((l) => l.item_id === it.id) ? " · in Google ☁︎" : ""}</span>
           </button>
         ))}
       </div>
@@ -191,7 +205,7 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
       )}
       {desk && <span className="small">Desk energy this month: {desk.energy.percent}%.</span>}
       <span className="small">{name}’s desk is a little computer of its own at home. {name} can write, draw and make things there, but it can’t go on the internet by itself or touch the rest of the house. You and {me.parentLabel} can always see what’s on it.</span>
-      {open && <ItemViewer id={open} canEdit={canEdit} onClose={() => setOpen(null)} onChanged={reload} />}
+      {open && <ItemViewer id={open} canEdit={canEdit} links={desk?.links} onClose={() => setOpen(null)} onChanged={reload} />}
       {making && <MakeSheet me={me} onClose={() => setMaking(false)} onStarted={reload} />}
     </div>
   );
@@ -251,7 +265,7 @@ export function DeskAside({ me, go }: { me: Me; go: (to: string) => void }) {
         </div>
       )}
       <span className="small">{name}’s desk is a small sandboxed computer on the home server (a container). {name} can write, draw and build little things there in its own time. It can’t browse the internet by itself, install apps or touch the rest of the house, and you and {me.parentLabel} can always see everything on it.</span>
-      {open && <ItemViewer id={open} canEdit onClose={() => setOpen(null)} onChanged={reload} />}
+      {open && <ItemViewer id={open} canEdit links={desk?.links} onClose={() => setOpen(null)} onChanged={reload} />}
     </aside>
   );
 }

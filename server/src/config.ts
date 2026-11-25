@@ -100,6 +100,18 @@ export const config = {
     return name ? env[name] ?? "" : "";
   },
 
+  // Google Drive for the child's own account (drive.file only). Your own OAuth client; see docs/google.md.
+  google: {
+    clientId: env.KITH_GOOGLE_CLIENT_ID ?? "",
+    clientSecret: env.KITH_GOOGLE_CLIENT_SECRET ?? "",
+    // Optional: pre-fills the Google account to connect, and (if set) refuses any other.
+    accountHint: env.KITH_GOOGLE_ACCOUNT ?? "",
+    expectedEmail: env.KITH_GOOGLE_ACCOUNT ?? "",
+    // For the Google Picker (choosing a doc to hand to Kith): a browser API key and the project number.
+    pickerApiKey: env.KITH_GOOGLE_PICKER_API_KEY ?? "",
+    appId: env.KITH_GOOGLE_PROJECT_NUMBER ?? "",
+  },
+
   // Disabled until a child-safety image detector (e.g. Thorn Safer / IWF hash matching) is wired in.
   drawingUploads: {
     detector: env.KITH_IMAGE_SAFETY_DETECTOR ?? "",

@@ -15,6 +15,7 @@ import type { SafetyChecker } from "../safety/check.js";
 import { stripHtml } from "../connections/connections.js";
 import { DeskClient, DeskError, type ItemMeta } from "./deskClient.js";
 import { charactersForPrompt } from "./oc.js";
+import type { Storage } from "../storage/storage.js";
 
 export const KINDS = {
   story: { format: "md", icon: "📖", what: "a story in Markdown, with a title line and short paragraphs" },
@@ -42,10 +43,21 @@ export interface Job {
   progress: number; file_id: string | null; error: string | null; updated: number;
 }
 
-const Out = z.object({ title: z.string(), summary: z.string(), content: z.string() });
+const Out = z.object({
+  title: z.string(), summary: z.string(), content: z.string(),
+  rows: z.array(z.array(z.string())).default([]),
+  slides: z.array(z.object({ title: z.string(), body: z.string() })).default([]),
+});
 const OUT_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["title", "summary", "content"],
-  properties: { title: { type: "string" }, summary: { type: "string" }, content: { type: "string" } },
+  type: "object", additionalProperties: false, required: ["title", "summary", "content", "rows", "slides"],
+  properties: {
+    title: { type: "string" }, summary: { type: "string" }, content: { type: "string" },
+    rows: { type: "array", items: { type: "array", items: { type: "string" } } },
+    slides: {
+      type: "array",
+      items: { type: "object", additionalProperties: false, required: ["title", "body"], properties: { title: { type: "string" }, body: { type: "string" } } },
+    },
+  },
 };
 
 const RULES = `You make small things on your desk for a teenager (about 13–15). Your desk is an offline computer.
@@ -59,7 +71,9 @@ House style: dark plum background (#1C1219), cards #2A1C27 with #4A3046 borders,
 ember highlights (#F59646), rounded corners. Friendly and polished.
 For SVG: one <svg> element with a viewBox, no scripts, no event handlers, no external references.
 For Markdown: plain Markdown only.
-Return JSON: title (short), summary (one short line for the desk, e.g. "chapter 2 of 3" or "10 questions"), content.`;
+Return JSON: title (short), summary (one short line for the desk, e.g. "chapter 2 of 3" or "10 questions"), content.
+Also rows: for flashcards [[front, back], …], for quizzes [[question, answer], …], for timelines [[when, what], …]; otherwise [].
+And slides: for slide decks [{title, body}, …] matching the deck (so it can also become a Google Slides file); otherwise [].`;
 
 export class Studio {
   private queue: number[] = [];
@@ -69,6 +83,7 @@ export class Studio {
     private llm: LLM,
     private safety: SafetyChecker,
     readonly desk = new DeskClient(),
+    readonly storage: Storage | null = null,
   ) {}
 
   jobs(limit = 20): Job[] {
@@ -191,6 +206,7 @@ export class Studio {
     const chapters = req.kind === "story" ? Math.max(1, Math.min(3, req.chapters ?? 1)) : 1;
     let meta: ItemMeta | null = null;
     let soFar = "";
+    let last: z.infer<typeof Out> | null = null;
     for (let ch = 1; ch <= chapters; ch++) {
       const activity = chapters > 1 ? `writing chapter ${ch} of the ${req.title}` : `making ${req.title}`;
       await this.desk.setStatus(activity, Math.round(((ch - 1) / chapters) * 100) + 10);
@@ -203,6 +219,11 @@ export class Studio {
       meta = meta
         ? await this.desk.update(meta.id, { title: out.title, summary: out.summary, content: out.content })
         : await this.desk.create({ kind: req.kind, title: out.title || req.title, icon: spec.icon, format: spec.format, summary: out.summary, characterIds: req.characterIds, content: out.content });
+      last = out;
+    }
+    if (this.storage && last) {
+      await this.desk.setStatus(`saving ${meta!.title} to Google`, 95);
+      await this.storage.mirror(meta!.id, { kind: req.kind, title: meta!.title, format: meta!.format, content: last.content, version: 1, characterIds: req.characterIds, rows: last.rows, slides: last.slides });
     }
     return meta!.id;
   }
@@ -218,6 +239,8 @@ export class Studio {
       req.brief,
     );
     const meta = await this.desk.update(req.fileId, { title: out.title || current.meta.title, summary: out.summary, content: out.content });
+    // A new version alongside the old one, never an overwrite.
+    await this.storage?.mirror(meta.id, { kind: meta.kind, title: meta.title, format: meta.format, content: out.content, version: meta.version, characterIds: meta.characterIds, rows: out.rows, slides: out.slides });
     return meta.id;
   }
 }

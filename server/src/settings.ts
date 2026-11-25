@@ -30,7 +30,7 @@ export const Helpline = z.object({
 export const ConnectionLevel = z.enum(["look", "act"]);
 export const Connection = z.object({
   id: z.string().regex(/^[a-z0-9-]{2,32}$/),
-  kind: z.enum(["home-assistant", "kin", "jellyfin", "calculator", "dictionary", "web", "mcp"]),
+  kind: z.enum(["home-assistant", "kin", "jellyfin", "calculator", "dictionary", "web", "mcp", "google-drive"]),
   name: z.string().min(1).max(60),
   enabled: z.boolean().default(false),
   level: ConnectionLevel.default("look"),
@@ -43,7 +43,8 @@ export const Connection = z.object({
   entities: z.array(z.string().regex(/^[a-z_]+\.[a-z0-9_]+$/)).max(50).default([]),
   // Web: the only sites the companion may read.
   sites: z.array(z.string().max(120)).max(50).default([]),
-  // Jellyfin: the user id that playlists are made for.
+  // Jellyfin: the user id that playlists are made for. Google Drive: the parent's Google email the
+  // Kith folder is shared with, view-only (empty = not shared).
   account: z.string().max(80).default(""),
 });
 export type Connection = z.infer<typeof Connection>;
@@ -75,6 +76,8 @@ export function defaultConnections(): Connection[] {
       url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
     { id: "dictionary", kind: "dictionary", name: "Dictionary", enabled: false, level: "look",
       url: "https://api.dictionaryapi.dev/api/v2/entries/en/", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
+    { id: "google", kind: "google-drive", name: "Google Drive (their own account)", enabled: false, level: "act",
+      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
     { id: "web", kind: "web", name: "Allowed websites", enabled: false, level: "look",
       url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
   ];
@@ -115,7 +118,10 @@ export type CompanionProfile = z.infer<typeof CompanionProfile>;
 
 export function loadParentSettings(db: DB): ParentSettings {
   const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'parent'");
-  return ParentSettings.parse(row ? JSON.parse(row.json) : {});
+  const s = ParentSettings.parse(row ? JSON.parse(row.json) : {});
+  // Connections added in later versions appear (switched off) for existing installs too.
+  for (const d of defaultConnections()) if (!s.connections.some((c) => c.kind === d.kind)) s.connections.push(d);
+  return s;
 }
 export function saveParentSettings(db: DB, s: ParentSettings) {
   const valid = ParentSettings.parse(s);

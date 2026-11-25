@@ -1,0 +1,320 @@
+// Google Drive as a storage backend for the child's OWN Google account.
+//
+// Least privilege: only the `drive.file` scope (files Kith created, or files the child picks with
+// the Google Picker), plus `openid email` to show which account is connected. Kith never reads the
+// rest of their Drive, Gmail or Photos.
+//
+// Kith only ever CREATES files and folders. It never deletes or overwrites anything: a change is a
+// new file next to the old one. The only share it ever makes is the Kith folder, view-only, to the
+// parent's Google account (optional, configured by the parent). It never emails or makes anything
+// public. Every write is logged for the parent view.
+
+import crypto from "node:crypto";
+import type { DB } from "../db.js";
+import { get, run } from "../db.js";
+import { config } from "../config.js";
+
+export const SCOPES = ["openid", "email", "https://www.googleapis.com/auth/drive.file"];
+export const FOLDERS = ["Stories", "Revision", "Presentations", "Games & artifacts", "OCs"] as const;
+export type Folder = (typeof FOLDERS)[number];
+
+const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+const DRIVE = "https://www.googleapis.com/drive/v3";
+const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink";
+const SLIDES = "https://slides.googleapis.com/v1/presentations";
+
+export const MIME = {
+  folder: "application/vnd.google-apps.folder",
+  doc: "application/vnd.google-apps.document",
+  sheet: "application/vnd.google-apps.spreadsheet",
+  slides: "application/vnd.google-apps.presentation",
+};
+
+// ── Token encryption (AES-256-GCM with KITH_SECRET_KEY) ─────────────────────────────────────
+
+function key(): Buffer {
+  const hex = process.env.KITH_SECRET_KEY ?? "";
+  if (!/^[0-9a-f]{64}$/i.test(hex)) throw new Error("KITH_SECRET_KEY must be 64 hex characters (openssl rand -hex 32).");
+  return Buffer.from(hex, "hex");
+}
+export function seal(plain: string, k = key()): string {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", k, iv);
+  const enc = Buffer.concat([c.update(plain, "utf8"), c.final()]);
+  return [iv, c.getAuthTag(), enc].map((b) => b.toString("base64url")).join(".");
+}
+export function unseal(sealed: string, k = key()): string {
+  const [iv, tag, enc] = sealed.split(".").map((s) => Buffer.from(s, "base64url"));
+  const d = crypto.createDecipheriv("aes-256-gcm", k, iv);
+  d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString("utf8");
+}
+
+// ── Stored state ────────────────────────────────────────────────────────────────────────────
+
+export interface GoogleState {
+  email: string;
+  refresh: string;                 // sealed refresh token
+  connectedAt: number;
+  folders: Partial<Record<Folder | "root", string>>;
+  sharedWith: string;              // parent email the Kith folder is shared with ("" if none)
+}
+
+export function loadGoogle(db: DB): GoogleState | null {
+  const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'google'");
+  return row ? (JSON.parse(row.json) as GoogleState) : null;
+}
+export function saveGoogle(db: DB, s: GoogleState | null) {
+  if (!s) run(db, "DELETE FROM settings WHERE key = 'google'");
+  else run(db, "INSERT INTO settings(key, json) VALUES('google', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(s));
+}
+
+export const googleConfigured = () => Boolean(config.google.clientId && config.google.clientSecret);
+
+// ── OAuth (child connects their own account once) ───────────────────────────────────────────
+
+export function redirectUri() {
+  return `${config.publicUrl}/auth/google/callback`;
+}
+
+export function authUrl(state: string, challenge: string): string {
+  const q = new URLSearchParams({
+    client_id: config.google.clientId,
+    redirect_uri: redirectUri(),
+    response_type: "code",
+    scope: SCOPES.join(" "),
+    access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: "false",
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  });
+  if (config.google.accountHint) q.set("login_hint", config.google.accountHint);
+  return `${AUTH_URL}?${q}`;
+}
+
+type Fetch = typeof fetch;
+
+export async function exchangeCode(code: string, verifier: string, f: Fetch = fetch) {
+  const res = await f(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code, code_verifier: verifier, client_id: config.google.clientId, client_secret: config.google.clientSecret,
+      redirect_uri: redirectUri(), grant_type: "authorization_code",
+    }),
+  });
+  const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; id_token?: string; scope?: string; error?: string };
+  if (!res.ok || !j.refresh_token) throw new Error(j.error ?? "Google didn't give Kith offline access.");
+  const granted = (j.scope ?? "").split(" ");
+  const extra = granted.filter((s) => !SCOPES.includes(s) && s !== "https://www.googleapis.com/auth/userinfo.email");
+  if (!granted.includes("https://www.googleapis.com/auth/drive.file")) throw new Error("Drive access wasn't granted.");
+  if (extra.length) throw new Error(`Google granted more than Kith asked for (${extra.join(", ")}); not keeping it.`);
+  // The id_token came straight from Google's token endpoint over TLS, so its claims can be read.
+  const claims = JSON.parse(Buffer.from((j.id_token ?? "..").split(".")[1] ?? "", "base64url").toString("utf8") || "{}") as { email?: string; email_verified?: boolean };
+  if (!claims.email || !claims.email_verified) throw new Error("Couldn't confirm which Google account this is.");
+  const expected = config.google.expectedEmail.toLowerCase();
+  if (expected && claims.email.toLowerCase() !== expected) throw new Error(`Please connect ${expected}, not ${claims.email}.`);
+  return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600 };
+}
+
+export async function revoke(refresh: string, f: Fetch = fetch) {
+  await f(`${REVOKE_URL}?token=${encodeURIComponent(refresh)}`, { method: "POST" }).catch(() => undefined);
+}
+
+// ── Drive client ────────────────────────────────────────────────────────────────────────────
+
+export interface WriteLog { (tool: string, args: string, result: string, ok: boolean): void }
+
+export class GoogleDrive {
+  private access: { token: string; expires: number } | null = null;
+
+  constructor(private db: DB, private log: WriteLog, private f: Fetch = fetch) {}
+
+  state() { return loadGoogle(this.db); }
+
+  private async token(): Promise<string> {
+    if (this.access && this.access.expires > Date.now() + 60_000) return this.access.token;
+    const s = this.state();
+    if (!s) throw new Error("Google isn't connected.");
+    const res = await this.f(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ refresh_token: unseal(s.refresh), client_id: config.google.clientId, client_secret: config.google.clientSecret, grant_type: "refresh_token" }),
+    });
+    const j = (await res.json()) as { access_token?: string; expires_in?: number; error?: string };
+    if (!res.ok || !j.access_token) {
+      throw new Error(j.error === "invalid_grant" ? "Google needs connecting again (the sign-in expired or was removed)." : `Google said ${j.error ?? res.status}`);
+    }
+    this.access = { token: j.access_token, expires: Date.now() + (j.expires_in ?? 3600) * 1000 };
+    return j.access_token;
+  }
+
+  /** A short-lived token for the Google Picker in the child's browser (drive.file only). */
+  async pickerToken() { return this.token(); }
+
+  private async call<T>(url: string, init: RequestInit = {}): Promise<T> {
+    const method = (init.method ?? "GET").toUpperCase();
+    // Belt and braces: Kith never deletes, overwrites or patches anyone's files.
+    if (method === "DELETE" || method === "PATCH" || method === "PUT") throw new Error("Kith never changes or deletes files in Google Drive.");
+    const res = await this.f(url, { ...init, headers: { Authorization: `Bearer ${await this.token()}`, ...(init.headers ?? {}) } });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Google answered ${res.status}: ${text.slice(0, 200)}`);
+    return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  private async createFolder(name: string, parent?: string): Promise<string> {
+    const r = await this.call<{ id: string }>(`${DRIVE}/files?fields=id`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mimeType: MIME.folder, ...(parent ? { parents: [parent] } : {}) }),
+    });
+    this.log("create_folder", name, r.id, true);
+    return r.id;
+  }
+
+  /** The Kith folder and its subfolders, created once (only folders Kith made are ever used). */
+  async folder(name: Folder): Promise<string> {
+    const s = this.state();
+    if (!s) throw new Error("Google isn't connected.");
+    if (!s.folders.root) {
+      s.folders.root = await this.createFolder("Kith");
+      saveGoogle(this.db, s);
+    }
+    if (!s.folders[name]) {
+      s.folders[name] = await this.createFolder(name, s.folders.root);
+      saveGoogle(this.db, s);
+    }
+    return s.folders[name]!;
+  }
+
+  /** Shares the Kith folder view-only with the parent's Google account, once. No other sharing, ever. */
+  async shareWithParent(email: string) {
+    const s = this.state();
+    if (!s || !email || s.sharedWith.toLowerCase() === email.toLowerCase()) return;
+    await this.folder("Stories");
+    const root = this.state()!.folders.root!;
+    await this.call(`${DRIVE}/files/${root}/permissions?sendNotificationEmail=false&fields=id`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "reader", type: "user", emailAddress: email }),
+    });
+    const now = this.state()!;
+    now.sharedWith = email;
+    saveGoogle(this.db, now);
+    this.log("share_kith_folder", `view-only with ${email}`, "shared", true);
+  }
+
+  /** Uploads a new file (optionally converting it to a Google Doc or Sheet). Never replaces anything. */
+  async upload(opts: { name: string; folder: Folder; body: string; bodyType: string; convertTo?: string }): Promise<{ id: string; url: string }> {
+    const parent = await this.folder(opts.folder);
+    const boundary = `kith${crypto.randomBytes(8).toString("hex")}`;
+    const meta = { name: opts.name, parents: [parent], ...(opts.convertTo ? { mimeType: opts.convertTo } : {}) };
+    const body = [
+      `--${boundary}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(meta),
+      `--${boundary}`, `Content-Type: ${opts.bodyType}; charset=UTF-8`, "", opts.body, `--${boundary}--`, "",
+    ].join("\r\n");
+    const r = await this.call<{ id: string; webViewLink: string }>(UPLOAD, {
+      method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body,
+    });
+    this.log("create_file", `${opts.folder}/${opts.name}`, r.webViewLink ?? r.id, true);
+    return { id: r.id, url: r.webViewLink ?? `https://drive.google.com/file/d/${r.id}/view` };
+  }
+
+  /** A new Slides presentation in Kith/Presentations: created empty by Drive, then filled with the Slides API. */
+  async slides(title: string, slides: { title: string; body: string }[]): Promise<{ id: string; url: string }> {
+    const parent = await this.folder("Presentations");
+    const created = await this.call<{ id: string }>(`${DRIVE}/files?fields=id`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: title, mimeType: MIME.slides, parents: [parent] }),
+    });
+    const id = created.id;
+    const requests: unknown[] = [];
+    slides.slice(0, 30).forEach((sl, i) => {
+      const sid = `kith_s${i}`, t = `kith_t${i}`, b = `kith_b${i}`;
+      requests.push(
+        { createSlide: { objectId: sid, slideLayoutReference: { predefinedLayout: "TITLE_AND_BODY" }, placeholderIdMappings: [
+          { layoutPlaceholder: { type: "TITLE" }, objectId: t }, { layoutPlaceholder: { type: "BODY" }, objectId: b }] } },
+        { insertText: { objectId: t, text: sl.title.slice(0, 200) || " " } },
+        { insertText: { objectId: b, text: sl.body.slice(0, 2000) || " " } },
+      );
+    });
+    if (requests.length) {
+      await this.call(`${SLIDES}/${id}:batchUpdate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requests }) });
+    }
+    const url = `https://docs.google.com/presentation/d/${id}/edit`;
+    this.log("create_slides", `Presentations/${title}`, url, true);
+    return { id, url };
+  }
+
+  /** Reads a Google Doc the child picked with the Picker (drive.file grants access to just that file). */
+  async readPickedDoc(fileId: string): Promise<string> {
+    if (!/^[a-zA-Z0-9_-]{10,100}$/.test(fileId)) throw new Error("bad file id");
+    const res = await this.f(`${DRIVE}/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${await this.token()}` } });
+    if (!res.ok) throw new Error(`Couldn't read that document (${res.status}).`);
+    this.log("read_picked_doc", fileId, "read", true);
+    return (await res.text()).slice(0, 100_000);
+  }
+}
+
+// ── Desk item → Google file ─────────────────────────────────────────────────────────────────
+
+export function folderFor(kind: string, characterIds: number[] = []): Folder {
+  if (characterIds.length || kind === "character" || kind === "oc") return "OCs";
+  if (["story", "adventure", "comic", "shared-story"].includes(kind)) return "Stories";
+  if (["notes", "flashcards", "quiz", "timer", "timeline", "revision-plan", "practice"].includes(kind)) return "Revision";
+  if (["slides", "poster"].includes(kind)) return "Presentations";
+  return "Games & artifacts";
+}
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Markdown → simple HTML for Google Docs import (headings, lists, bold, italics, paragraphs). */
+export function markdownToHtml(md: string): string {
+  const inline = (s: string) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(\*|_)([^*_]+)\1/g, "<i>$2</i>");
+  const blocks = md.replace(/\r/g, "").split(/\n{2,}/).map((b) => {
+    const h = /^(#{1,3})\s+(.*)$/.exec(b);
+    if (h) return `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`;
+    if (/^\s*([-*]|\d+\.)\s+/.test(b)) {
+      return `<ul>${b.split("\n").filter(Boolean).map((l) => `<li>${inline(l.replace(/^\s*([-*]|\d+\.)\s+/, ""))}</li>`).join("")}</ul>`;
+    }
+    return `<p>${b.split("\n").map(inline).join("<br>")}</p>`;
+  });
+  return `<!doctype html><html><head><meta charset="utf-8"></head><body>${blocks.join("\n")}</body></html>`;
+}
+
+export function rowsToCsv(rows: string[][]): string {
+  const cell = (c: string) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
+  return rows.map((r) => r.map((c) => cell(String(c ?? ""))).join(",")).join("\n");
+}
+
+export interface MirrorInput {
+  kind: string; title: string; format: "html" | "md" | "svg" | "json"; content: string; version: number;
+  characterIds?: number[]; rows?: string[][]; slides?: { title: string; body: string }[];
+}
+
+/** Saves a desk item into the child's Drive in the right shape. Returns the main link. */
+export async function saveToDrive(drive: GoogleDrive, it: MirrorInput): Promise<{ url: string; extra?: string }> {
+  const folder = folderFor(it.kind, it.characterIds);
+  const name = it.version > 1 ? `${it.title} (v${it.version})` : it.title;
+  if (it.kind === "slides" && it.slides?.length) {
+    const s = await drive.slides(name, it.slides);
+    return { url: s.url };
+  }
+  if (it.format === "md") {
+    return { url: (await drive.upload({ name, folder, body: markdownToHtml(it.content), bodyType: "text/html", convertTo: MIME.doc })).url };
+  }
+  if (it.format === "json") {
+    return { url: (await drive.upload({ name: `${name}.json`, folder, body: it.content, bodyType: "application/json" })).url };
+  }
+  // Interactive things and drawings: the file itself, plus a Sheet for flashcards/quizzes when there are rows.
+  const main = await drive.upload({ name: `${name}.${it.format}`, folder, body: it.content, bodyType: it.format === "svg" ? "image/svg+xml" : "text/html" });
+  if (it.rows?.length && ["flashcards", "quiz", "timeline"].includes(it.kind)) {
+    const sheet = await drive.upload({ name: `${name} (cards)`, folder, body: rowsToCsv(it.rows), bodyType: "text/csv", convertTo: MIME.sheet });
+    return { url: main.url, extra: sheet.url };
+  }
+  return { url: main.url };
+}

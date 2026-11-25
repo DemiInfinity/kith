@@ -136,6 +136,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       status,
       jobs: studio.jobs(10),
       journal: all(db, "SELECT day, text FROM journal ORDER BY day DESC LIMIT 14"),
+      links: studio.storage?.links() ?? [],
       energy: { percent: studio.deskEnergy().percent, canWork: studio.deskEnergy().canWork },
     };
   });

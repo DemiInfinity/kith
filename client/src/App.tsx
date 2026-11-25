@@ -12,6 +12,7 @@ import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
 import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
+import { Google } from "./screens/Google";
 
 function SignIn() {
   const [info, setInfo] = useState<{ oidc: boolean; label: string; dev: boolean } | null>(null);
@@ -47,6 +48,7 @@ const NAV = (name: string, parent: string) => [
   { to: "/memory", icon: "🧠", label: `What ${name} remembers` },
   { to: "/me", icon: "✨", label: "Personality" },
   { to: "/shared", icon: "👀", label: `What ${parent} sees` },
+  { to: "/google", icon: "☁️", label: "Google Drive" },
 ];
 const TABS = [
   { to: "/", icon: "💬", label: "Chat" },
@@ -63,7 +65,7 @@ function YouMenu({ me, go }: { me: Me; go: (to: string) => void }) {
     <div className="screen narrow">
       <span className="hand">yours</span>
       <h2 className="screen-title">You and {name}</h2>
-      {[["/me", "✨", "Personality", "Name, look, traits and voice"], ["/memory", "🧠", `What ${name} remembers`, "See and delete memories, check-ins"], ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"]].map(([to, ic, t, d]) => (
+      {[["/me", "✨", "Personality", "Name, look, traits and voice"], ["/memory", "🧠", `What ${name} remembers`, "See and delete memories, check-ins"], ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"], ["/google", "☁️", "Google Drive", "Save what you make to your own Drive"]].map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
           <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
         </button>
@@ -103,6 +105,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
   else if (path === "/shared") screen = <Shared me={me} />;
   else if (path === "/you") screen = <YouMenu me={me} go={go} />;
+  else if (path === "/google") screen = <Google me={me} />;
   else screen = <Chat me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
 
   return (
@@ -134,7 +137,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         {screen}
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
-            const on = t.to === path || (t.to === "/you" && ["/me", "/memory", "/shared"].includes(path));
+            const on = t.to === path || (t.to === "/you" && ["/me", "/memory", "/shared", "/google"].includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><span aria-hidden>{t.icon}</span><span>{t.label}</span></button>;
           })}
         </nav>

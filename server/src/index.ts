@@ -15,16 +15,21 @@ import { registerAuth } from "./auth.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
 import { startScheduler } from "./scheduler.js";
+import { DeskClient } from "./desk/deskClient.js";
+import { GoogleBackend, Storage } from "./storage/storage.js";
+import { registerGoogle } from "./routes-google.js";
 
+// The Google Picker (choosing a doc to hand to Kith) loads from Google; only allowed when it's set up.
+const PICKER = config.google.pickerApiKey && config.google.appId;
 const APP_CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  PICKER ? "script-src 'self' https://apis.google.com" : "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob: data:",
   "font-src 'self' data:",
-  "connect-src 'self'",
-  "frame-src 'self'",
+  PICKER ? "connect-src 'self' https://*.googleapis.com" : "connect-src 'self'",
+  PICKER ? "frame-src 'self' https://docs.google.com https://drive.google.com https://accounts.google.com" : "frame-src 'self'",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
@@ -43,7 +48,8 @@ async function main() {
   const llm = new AnthropicLLM(db, config.anthropic.apiKey);
   const safety = new Safety(llm);
   const reporters = makeReporters();
-  const studio = new Studio(db, llm, safety);
+  const storage = new Storage(db, [new GoogleBackend(db)]);
+  const studio = new Studio(db, llm, safety, new DeskClient(), storage);
   studio.resume();
 
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: true, bodyLimit: 2_000_000 });
@@ -70,6 +76,7 @@ async function main() {
 
   registerAuth(app, db);
   registerRoutes(app, { db, llm, safety, reporters, studio });
+  registerGoogle(app, db, storage, studio);
 
   const clientDir = path.resolve(config.clientDir);
   if (fs.existsSync(clientDir)) {

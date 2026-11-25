@@ -28,6 +28,7 @@ const KIND_HELP: Record<string, string> = {
   calculator: "Runs on the server. No network.",
   dictionary: "Looks words up at the URL below.",
   web: "Reads pages only from the sites listed. Nothing else on the internet.",
+  "google-drive": "Saves what the companion makes into a Kith folder in the child's own Google Drive (drive.file: only files Kith made). The child connects their account on the Google Drive screen. Put your Google email below to get view-only access to the Kith folder; leave it empty to share nothing.",
 };
 
 function money(n: number, cap: number) {
@@ -118,11 +119,12 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
             <label className="field">Level
               <select className="select" value={c.level} onChange={(e) => setC(i, { level: e.target.value as Connection["level"] })}><option value="look">Look only</option><option value="act">Can act</option></select>
             </label>
-            {!["calculator", "web"].includes(c.kind) && <label className="field">URL<input className="input" value={c.url} onChange={(e) => setC(i, { url: e.target.value })} placeholder="https://" /></label>}
+            {!["calculator", "web", "google-drive"].includes(c.kind) && <label className="field">URL<input className="input" value={c.url} onChange={(e) => setC(i, { url: e.target.value })} placeholder="https://" /></label>}
             {["home-assistant", "kin", "mcp", "jellyfin"].includes(c.kind) && <label className="field">Token environment variable<input className="input" value={c.tokenEnv} onChange={(e) => setC(i, { tokenEnv: e.target.value })} /></label>}
             {["kin", "mcp"].includes(c.kind) && <label className="field">Allowed tools (comma-separated)<input className="input" value={c.allowedTools.join(", ")} onChange={(e) => setC(i, { allowedTools: list(e.target.value) })} /></label>}
             {c.kind === "home-assistant" && <label className="field">Their room’s entities (comma-separated)<input className="input" value={c.entities.join(", ")} onChange={(e) => setC(i, { entities: list(e.target.value) })} placeholder="light.bedroom, switch.fairy_lights" /></label>}
             {c.kind === "web" && <label className="field">Allowed sites (comma-separated)<input className="input" value={c.sites.join(", ")} onChange={(e) => setC(i, { sites: list(e.target.value) })} placeholder="bbc.co.uk/bitesize, wikipedia.org" /></label>}
+            {c.kind === "google-drive" && <label className="field">Your Google email (view-only access to the Kith folder, optional)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} placeholder="you@gmail.com" /></label>}
             {c.kind === "jellyfin" && <label className="field">Jellyfin user id (for playlists)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} /></label>}
           </details>
         ))}

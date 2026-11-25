@@ -42,6 +42,11 @@ It's a phone web app (installable PWA) and the same app laid out for a laptop or
   - Look-only or can-act, all off by default: the child's room devices in Home Assistant, Kin (calendar and chores),
     Jellyfin, a calculator, a dictionary, and allow-listed websites.
   - Never anything that spends money, messages people or posts online. Every use is logged.
+- **Google Drive (optional)**:
+  - The child connects their own account, and things the companion makes are also saved to a Kith folder: Docs,
+    Sheets, Slides and HTML.
+  - Only the `drive.file` scope. It never deletes, overwrites or shares, except the folder, view-only, with the parent if
+    you choose.
 - **Parent view**: money, reports, the weekly summary (which the child sees too), the desk, tool use, and settings. No
   everyday chats.
 
@@ -99,6 +104,7 @@ hot reload (Vite on :5173, server on :8787).
 
 - [Setup](docs/setup.md): API organisation and spend limits, Pocket ID / OIDC, voice, the Home Assistant reporter,
   check-ins, reverse proxy.
+- [Google Drive](docs/google.md): your own OAuth client, `drive.file`, Family Link, testing-mode token expiry.
 - [Safety and privacy](docs/safety.md): how the safety check, reports, retention and connections work.
 - [Architecture](docs/architecture.md): how the pieces fit together.
 - [Mac app](docs/macos.md): wrapping the same app with Tauri.

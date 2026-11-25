@@ -62,7 +62,9 @@ export interface DeskItem {
 export interface DeskView {
   reachable: boolean; items: DeskItem[]; status: { activity: string; progress: number; updatedAt: number };
   jobs: Job[]; journal: { day: string; text: string }[]; energy: { percent: number; canWork: boolean };
+  links: CloudLink[];
 }
+export interface CloudLink { item_id: string; version: number; provider: string; url: string; extra: string | null }
 export interface Sheet {
   name: string; icon: string; look: string; personality: string; powers: string; backstory: string; likes: string; dislikes: string;
   palette: string[]; themeSong: string; relationships: { with: string; kind: string; note: string }[];
