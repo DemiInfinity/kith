@@ -91,11 +91,50 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
   `connect-src 'none'`. They get an opaque origin, so they can't see the app, its cookies or storage. That is the first
   lock.
 
+## Pip's browser
+
+- **Only for a task the child asked for.** The task is shown as "Why Pip is here", and browsing counts against the desk
+  budget.
+- **Two locks on where it can go:**
+  - The desk browser checks every request against the safe list (https only, path prefixes respected).
+  - The egress proxy allows only safe-listed hosts and never private addresses.
+  - The desk itself has no other way to the internet.
+- **Read-only:** JavaScript is off; there are no downloads, uploads, form posts, sign-ins or cookies, and a fresh browser
+  context is used for every page.
+- **Page text is untrusted data.** It's wrapped as `<untrusted_web_page>` with explicit rules not to follow anything it
+  says, and it goes through the safety check. Unsuitable pages are skipped and the skip is logged.
+- **Every visit is logged** with its URL, time and the task it was for, and shown to the child and the parent. "Watch
+  live" shows a screenshot of what it's reading.
+
+## Coursework (academic integrity)
+
+- **For anything marked as coursework (non-exam assessment), the companion is a tutor only.** It explains, asks
+  questions and gives feedback, and never writes, draws or produces the work. This follows JCQ rules: AI misuse in
+  coursework is malpractice, and GCSE Art is mostly coursework.
+- **Desk tools are removed in coursework mode**, so it can't "make" anything.
+- **It reminds the child** that the work must be their own and that AI help should be acknowledged.
+- **Every coursework conversation is noted in a help log** the child can print for their teacher.
+
+## Writing with a friend
+
+- **The friend's writing comes in only the way the child chooses**: pasted in, or a Google Doc they pick.
+- **The companion never contacts the friend.** It keeps nothing about them except the label the child chose, and uses
+  their writing only for that story.
+- **Every passage is credited**, and the companion's suggestions go in only if the child accepts them.
+
+## Study wellbeing
+
+- **No study nudges late at night** (after the latest study time, or in quiet hours). It suggests rest instead.
+- **Encouragement, not pressure**, and breaks after focus sessions.
+- **If stress shows up**, the normal safety rules apply: kindness, "Need a grown-up?", and reports when it's more than a
+  bad day.
+
 ## Images
 
 - **No photo or drawing uploads, and no photo-real image generation.** "Drawings" are simple SVG made by the model,
   shown as images (scripts can't run in them).
-- **The upload hook is wired and switched off.** `POST /api/uploads/drawing` (in `server/src/routes.ts`) always refuses.
+- **The upload hooks are wired and switched off.** `POST /api/uploads/drawing` and `POST /api/uploads/artwork` always
+  refuse, and the art screen's photo button is shown disabled.
   It stays off until a child-safety image detector (e.g. Thorn Safer or IWF hash matching) checks every upload before
   it's stored or sent anywhere.
 

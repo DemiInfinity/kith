@@ -17,14 +17,26 @@ It's a phone web app (installable PWA) and the same app laid out for a laptop or
   - The child calls the companion; it never calls them.
 - **Full power 🔥 / Low power 🔋**:
   - Full power uses Claude Sonnet 5.5; Low power uses Claude Haiku 5.5.
-  - The server enforces a weekly budget and a rolling 5-hour budget.
-  - The child sees an energy bar; the grown-up sees money.
-  - When energy runs low it switches to Low power by itself.
+  - The money is spread evenly through the month: a weekly budget, rolling 5-hour windows with rollover, and a desk slice.
+  - When Full power runs out it switches smoothly to Low power. It only stops at a hard monthly ceiling ($48 by
+    default).
+  - The child sees an energy bar; the grown-up sees money and a monthly projection.
 - **Theirs to shape**:
   - Name, look (fox, cat, dragon, robot, star, frog, owl, panda), traits, how chatty, silly and detailed it is, and a
     voice.
   - An animated SVG face that breathes, blinks, shows moods (happy, thinking, sleepy on Low power) and moves its mouth
     with its voice.
+- **GCSE study**:
+  - Subjects with exam boards and dates, and a revision planner that counts back to the exams.
+  - Spaced-repetition flashcards, exam-style practice with mark-scheme feedback, and focus sessions.
+  - A wellbeing guard: no nagging late at night.
+  - Coursework is tutor-only, with a help log they can show their teacher.
+- **Art companion**: challenges, technique tips, a sketchbook log, a mood board, and kind, specific feedback on work
+  they describe. Photo uploads stay off until image moderation exists.
+- **Stories with a friend**: every passage credited, suggestions only when accepted, a story bible, and export to Google
+  Docs. The companion never contacts the friend.
+- **The companion's profile**: tap its face to see its desk, what's scheduled, and its `soul.md`, `personality.md` and
+  `memory.md`.
 - **Memory they control**: the companion remembers what matters (a test on Wednesday, loves dragons). The child sees
   and can delete every memory.
 - **Gentle check-ins**:
@@ -34,7 +46,9 @@ It's a phone web app (installable PWA) and the same app laid out for a laptop or
     themselves, flashcards, revision timers, mini games, comics, slides, posters, cards, sketches, palettes, maps and
     timelines.
   - Interactive things run in a locked sandbox (no network, no storage, no access to the app).
-  - The child can ask for changes ("make it harder"). The desk has its own monthly budget.
+  - The child can ask for changes ("make it harder"). The desk has its own daily slice of the budget.
+  - **Pip's browser** reads safe-listed sites only, read-only, behind an egress proxy. Every page is logged and can be
+    watched live.
 - **OC workshop**:
   - Original characters: sheets, relationships, a world, and a gallery on the desk.
   - Friendships, rivalries and adventures yes; romance no.

@@ -10,6 +10,7 @@
    ├─ budgets: spend ledger (every call costed) → energy (child) / money (parent)
    ├─ connections: parent-approved tools (HA REST, Kin/MCP, Jellyfin, calculator, dictionary, websites)
    ├─ studio: desk jobs (desk budget) ──────────────▶ desk container (internal network, no internet)
+   │                                                    └─ read-only Chromium ─▶ egress proxy ─▶ safe-listed sites only
    ├─ voice: Wyoming client ─▶ whisper (speech-to-text), piper (text-to-speech)
    ├─ scheduler: check-ins (web push), journal, weekly summary, retention, report retries
    └─ reporters: console, Home Assistant AI board, …
@@ -30,7 +31,10 @@
 | `server/src/voice/` | the Wyoming protocol client |
 | `server/src/checkins/` | check-in rules and web push |
 | `server/src/reporting/` | reporters |
-| `desk/` | the desk service (file store + safety scan), no dependencies |
+| `desk/` | the desk service: file store, safety scan, and the read-only browser (Playwright) |
+| `egress/` | the desk browser's only way out: an allow-list proxy, no dependencies |
+| `server/src/study/` | GCSE study, the art companion, shared stories |
+| `server/src/storage/` | storage backends (Google Drive) |
 | `client/` | the React app (Vite), phone and Mac layouts in one |
 
 ## Claude API notes

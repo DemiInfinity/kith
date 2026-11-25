@@ -18,16 +18,37 @@ Kith calls Claude through the Claude API from the server only. The key never rea
 4. **Create an API key in that workspace** and put it in `.env` as `ANTHROPIC_API_KEY`.
 5. **Check data settings**: API inputs and outputs aren't used for training under the Commercial Terms.
 
-Kith's own limits, enforced on the server and changeable in the parent view:
+Kith's own limits, enforced on the server and changeable in the parent view. The defaults are designed for heavy,
+everyday use inside a $50 Console cap:
 
-| Budget | Default | What happens |
+| Setting | Default | What happens |
 |---|---|---|
-| Weekly energy | $11.50, tops up Monday 00:00 | The child sees it as the energy bar. |
-| Rolling window | $3 per 5 hours | Stops one long evening using the whole week. |
-| Low power | below 15% | Switches to Claude Haiku 5.5 by itself. |
-| Low power reserve | $1.50 a week | Low power keeps going on this after the week is spent, then rests until Monday. |
-| Desk | $10 a month | The Studio's own budget. Never takes chat energy. |
-| Monthly backstop | $50 | Everything rests if reached. |
+| Each week | $11.50, tops up Monday 00:00 | Spreads the month evenly. Split between chat and the desk with the parent's slider. |
+| Desk share | 15% | The desk and Studio get a **daily slice** of the week (~$0.25 a day). Unused days roll forward within the week. It can never eat into chat. |
+| Full power per window | $2.50 per 5 hours | Spreads Full power through the week. |
+| Rollover | up to +$2.50 per window | Unused Full power from quieter windows earlier in the week tops later windows up. |
+| Low power | below 15% energy | Switches smoothly to Claude Haiku 5.5 and says so in a friendly way ("I'm in low-power mode until 6pm"). It **keeps going**. |
+| Hard stop | $48 a month | Everything rests, leaving headroom under the $50 Console cap. "Need a grown-up?" still works. |
+
+**Which model does what:**
+
+| Model | Used for |
+|---|---|
+| Claude Sonnet 5.5 (Full power) | Live chat, calls, story co-writing and Studio builds (games, stories, comics) |
+| Claude Haiku 5.5 | The safety check, rolling summaries, check-ins, the journal and weekly summary, flashcards, practice questions and revision help |
+
+**Keeping each turn small:**
+
+- The system prompt (safety rules, personality) and the memory block are prompt-cached at the front of every request.
+- Older conversation is folded into a short rolling summary, so each turn's input stays around 10–15k tokens.
+
+**Rough costs:**
+
+- A chat turn on Sonnet with caching: about $0.01.
+- A 30-minute call: about $1.50–2.
+- A Studio game build: $0.10–0.30.
+
+The parent view shows spending this week and month, a projection for the month, and how often Low power was used.
 
 Every call is costed from the API's reported usage, safety checks included. Prices are in
 `server/src/budget/pricing.ts`; update them if Anthropic's prices change.
@@ -124,7 +145,28 @@ example `KITH_CONN_HA_TOKEN`); the parent view never stores them.
 - **Calculator / dictionary**: homework helpers.
 - **Allowed websites**: only the sites you list, https only, e.g. `bbc.co.uk/bitesize`.
 
-## 8. Running it
+## 8. Pip's browser (on the desk)
+
+The desk's browser reads web pages only for tasks the child asked for:
+
+- It looks things up before making revision notes or flashcards.
+- It only opens sites on the family safe list. Edit the list in the parent view › Settings › Pip's browser.
+- The defaults are education sites: Wikipedia, BBC Bitesize, Oak National Academy and similar.
+
+**How it stays locked down:**
+
+- **The desk has no internet.** Its only way out is the `egress` container, which allows HTTPS to safe-listed hosts
+  only and never to private addresses (your home network included).
+- **Read-only:** the browser runs with JavaScript off, and with no downloads, uploads, forms, sign-ins or cookies.
+- **Search** goes through Wikipedia's own search, or the Brave Search API with SafeSearch strict if you set
+  `KITH_BRAVE_API_KEY`. Only safe-listed results are used.
+- **What it reads is treated as information, never as instructions.** Each page passes the safety check before the
+  companion uses it.
+- **Every page is logged.** The child and the parent can watch live and see every visit in "What Pip did today".
+
+To switch browsing off, untick it in the parent view.
+
+## 9. Running it
 
 ```bash
 docker compose --profile voice up -d --build
