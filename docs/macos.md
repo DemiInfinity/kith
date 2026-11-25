@@ -117,13 +117,16 @@ They install side by side, so you can keep both in the Dock.
 **Signing in.** Pocket ID signs in with passkeys, and macOS only lets passkeys run in a real browser (or in an app
 Apple has approved for that site). So "Sign in with Pocket ID" in the app works like this (`mac/src-tauri/src/signin.rs`):
 
-1. The app starts a one-time handoff with the server (`/auth/login?handoff=<random id>`) and opens Pocket ID's page in
-   your browser.
-2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half.
+1. The app starts a one-time handoff with the server (`POST /auth/handoff/start` → an id and a secret), asks
+   `/auth/login?handoff=<id>&json=1` where Pocket ID's page is, and opens it in your browser.
+2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half,
+   sending the secret in the `X-Kith-Handoff-Secret` header. The id can show up in URLs and logs; the secret never
+   does, so the id alone can't collect the session.
 3. Once you've used your passkey, the browser shows "You're signed in". The server hands the session to the app once,
    and Kith comes back to the front.
 
-The handoff lapses after two minutes, and the server only stores a hash of the id. The polling script is only added
+The handoff lapses after two minutes, and the server only stores hashes of the id and secret. (A server from before
+the secret answers 404 to `/auth/handoff/start`; the app then uses the older handoff with its own random id.) The polling script is only added
 to the window while it's showing the Kith server itself. Nothing else loads in the window during sign-in: there's no
 "anything while signing in" allowance, only the server and `signInHosts`. Pop-ups (`window.open`,
 `target="_blank"`) never open a second app window: Kith pages load in the main window, and anything else goes to the
