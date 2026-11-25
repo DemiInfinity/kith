@@ -100,6 +100,11 @@ h2.screen-title { font-size: 1.875rem; line-height: 1.05; margin-top: -6px; }
 .topbar.slim .tb-right { grid-column: 3; }
 .iconbtn.call { background: var(--lilac); color: var(--ink); border-color: var(--lilac); }
 
+/* Phones: less empty space at the very bottom (the tab bar still clears the home indicator). */
+@media (max-width: 1099px) {
+  .main > .screen { padding-bottom: 10px; }
+  .tabbar { padding-bottom: max(6px, calc(var(--safe-bottom) - 14px)) !important; }
+}
 .tabbar {
   display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line-soft); background: var(--side);
   padding-bottom: var(--safe-bottom);
@@ -1031,14 +1036,15 @@ dialog.sheet h3:focus { outline: none; }
 @media (max-width: 1299px) { .mk-hint { display: none; } }
 @media (max-width: 899px) {
   .maker { grid-template-columns: minmax(0, 1fr); min-height: 0; gap: 10px; }
-  .mk-stage { position: sticky; top: 0; z-index: 3; min-height: 0; height: min(40dvh, 380px); }
-  .mk-tabs { position: sticky; top: calc(min(40dvh, 380px) + 6px); z-index: 2; }
+  /* On a phone the 3D stage scrolls away with the page; only the tabs stay at the top. */
+  .mk-stage { position: relative; min-height: 0; height: min(46dvh, 400px); }
+  .mk-tabs { position: sticky; top: 0; z-index: 2; }
   .mk-body { overflow: visible; flex: none; }
   .mk-name b { font-size: 1.5rem; }
   .mk-hint { display: none; }
   .mk-say { top: 62px; max-width: 92%; font-size: 0.875rem; }
   .mk-head .hand { font-size: 1.125rem; }
-  .mk-foot { flex-wrap: nowrap; padding: 8px 10px; }
+  .mk-foot { flex-wrap: nowrap; padding: 8px 10px; bottom: 4px; }
   .mk-foot .btn { min-height: 42px; padding: 0 14px; font-size: 0.875rem; }
   .mk-long { display: none; }
 }
