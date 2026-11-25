@@ -51,6 +51,10 @@ It's a phone web app (installable PWA) and the same app laid out for a laptop or
 
 <sub>Screenshots use made-up sample data.</sub>
 
+> **Early software.** Kith works and is in daily use by its author's family, but it's young. Each family that runs it
+> is responsible for its own setup and use; please read [Safety and privacy](docs/safety.md) first, and report
+> problems privately (see [SECURITY.md](SECURITY.md)).
+
 ## What it does
 
 **For the young person**
@@ -166,4 +170,7 @@ Node 22.13 or newer (Kith uses the built-in `node:sqlite`).
 
 ## Licence
 
-Not chosen yet.
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). You can run, study, change and share Kith. If you run a
+modified version as a service for other people, you must share your changes under the same licence.
+
+Copyright (C) 2026 DemiInfinity and contributors.

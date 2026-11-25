@@ -3,6 +3,7 @@ name = "kith-mac"
 version = "0.1.0"
 description = "Kith for the Mac: a thin window around your own Kith server"
 edition = "2021"
+license = "AGPL-3.0-only"
 publish = false
 
 [build-dependencies]
