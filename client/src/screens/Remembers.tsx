@@ -1,7 +1,6 @@
 import { Icon, IL } from "../components/Icons";
 import { useEffect, useState } from "react";
 import { api, type Me, type Memory, type Profile } from "../api";
-import { Toggle } from "../components/bits";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 
 /** What the companion remembers (the child is in charge) and gentle check-ins. */
@@ -20,11 +19,6 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
   const forget = async (id: number) => {
     setMems((m) => (m ?? []).filter((x) => x.id !== id));
     await api(`/api/memories/${id}`, { method: "DELETE" }).catch(() => undefined);
-  };
-  const setCheckin = async (k: keyof Profile["checkins"], v: boolean) => {
-    const next = { ...p, checkins: { ...p.checkins, [k]: v } };
-    setP(next);
-    try { onSaved(await api<Profile>("/api/profile", { method: "PUT", body: { checkins: next.checkins } })); } catch (e) { setErr((e as Error).message); }
   };
   const togglePush = async () => {
     setErr("");
@@ -53,10 +47,12 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
       </div>
 
       <b style={{ marginTop: 8 }}>Check-ins</b>
+      {/* Check-ins are changed by asking in chat ("stop the morning hellos"), so here they're only shown. */}
       <div className="stack" style={{ gap: 2 }}>
-        <Toggle label="Ask how big things went (tests, shows)" checked={p.checkins.askHowThingsWent} onChange={(v) => setCheckin("askHowThingsWent", v)} />
-        <Toggle label="A morning hello on school days" checked={p.checkins.morningHello} onChange={(v) => setCheckin("morningHello", v)} />
-        <Toggle label="Remind me to drink water while revising" checked={p.checkins.waterWhileRevising} onChange={(v) => setCheckin("waterWhileRevising", v)} />
+        {([["askHowThingsWent", "Asks how big things went (tests, shows)"], ["morningHello", "A morning hello on school days"], ["waterWhileRevising", "Water reminders while revising"]] as const).map(([k, label]) => (
+          <span key={k} className="row" style={{ fontSize: "0.875rem", gap: 8 }}><Icon name={p.checkins[k] ? "check" : "close"} size={16} />{label}<span className="small">{p.checkins[k] ? "on" : "off"}</span></span>
+        ))}
+        <span className="small">To change these, just ask {me.profile.name} in chat.</span>
       </div>
       {me.push.ready && push !== "unsupported" && (
         <button className="btn ghost small" onClick={togglePush} disabled={push === "blocked" || push === "…"}>

@@ -3,6 +3,7 @@ import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { CompanionPic } from "../components/CompanionPic";
 import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
+import { DeskBudgetCard, DeskRules, TodayList, useDeskToday } from "../components/DeskBits";
 import { action } from "../lib/action";
 
 // The desk is big (a whole little computer), so it loads the first time it's opened.
@@ -44,7 +45,7 @@ interface Schedule {
   routines: { icon: string; what: string; when: string }[];
 }
 
-type Tab = "desk" | "scheduled" | "who";
+type Tab = "desk" | "today" | "scheduled" | "who";
 
 /** A section the child can read nicely, and edit. */
 function Section({ icon, title, hint, text, editable, onSave, placeholder }: { icon: IconName; title: string; hint: string; text: string; editable?: boolean; onSave?: (t: string) => Promise<void>; placeholder?: string }) {
@@ -80,8 +81,6 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
   const [sched, setSched] = useState<Schedule | null>(null);
   const [mine, setMine] = useState<Mine[]>([]);
   const [beat, setBeat] = useState<Heartbeat | null>(null);
-  const [form, setForm] = useState({ title: "", when: "", repeat: "none" });
-  const [schedErr, setSchedErr] = useState("");
   const loadMine = () => api<{ schedules: Mine[] }>("/api/schedules").then((r) => setMine(r.schedules)).catch(() => undefined);
   const name = me.profile.name;
   useEffect(() => {
@@ -90,13 +89,28 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
   }, [tab, files]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
-  const tabs: [Tab, IconName, string][] = [["desk", "desk", "Desk"], ["scheduled", "calendar", "Scheduled"], ["who", "heart", `Who ${name} is`]];
+  const tabs: [Tab, IconName, string][] = [["desk", "desk", "Desk"], ["today", "clock", "Today"], ["scheduled", "calendar", "Scheduled"], ["who", "heart", `Who ${name} is`]];
   const [newMem, setNewMem] = useState("");
   const saveSoul = async (text: string) => setFiles(await api<Files>("/api/pip/soul", { method: "PUT", body: { text } }));
   const saveNotes = async (notes: string) => setFiles(await api<Files>("/api/pip/identity", { method: "PUT", body: { notes } }));
   const reloadFiles = () => api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
   const on = (t: Tab) => (t === "desk" ? "/pip" : `/pip/${t}`);
   const c = sched?.checkins;
+  type Item = { key: string; t: number; icon: IconName; title: string; when: string; dim?: boolean; mine?: Mine };
+  const REPEAT: Record<string, string> = { daily: "every day", weekdays: "school days", weekly: "every week" };
+  const when = (t: number) => new Date(t).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const LATER = Number.MAX_SAFE_INTEGER; // repeating things without one set time go after the dated ones
+  const items: Item[] = [
+    ...mine.map((m): Item => ({ key: `m${m.id}`, t: m.active ? m.at : LATER, icon: m.kind === "reminder" ? "alarm" : "sparkle", title: m.title, dim: !m.active, mine: m,
+      when: (m.active ? when(m.at) : "paused") + (m.repeat !== "none" ? ` · ${REPEAT[m.repeat] ?? m.repeat}` : "") })),
+    ...(sched?.jobs ?? []).filter((j) => j.status !== "done" && j.status !== "failed").map((j): Item => ({ key: `j${j.id}`, t: j.ts, icon: j.status === "working" ? "hourglass" : "clock", title: j.title,
+      when: j.status === "working" ? `${name} is making it · ${j.progress}%` : `${name} will make it · ${clock(j.ts)}` })),
+    ...(c?.upcoming ?? []).map((u): Item => ({ key: `u${u.date}${u.text}`, t: Date.parse(u.date) || LATER - 1, icon: "chat", title: `Ask how ${u.text} went`, when: `${u.date} · after school` })),
+    ...(c?.toggles.morningHello ? [{ key: "hello", t: LATER, icon: "bell" as IconName, title: "A morning hello", when: "school days" }] : []),
+    ...(c?.toggles.waterWhileRevising ? [{ key: "water", t: LATER, icon: "bell" as IconName, title: "Water reminders", when: "while you revise" }] : []),
+    ...(sched?.routines ?? []).map((r, i): Item => ({ key: `r${i}`, t: LATER, icon: "sparkle", title: r.what, when: r.when })),
+  ];
+  const sorted = items.sort((x, y) => x.t - y.t);
 
   return (
     <div className="screen" style={panel ? { width: "100%" } : { maxWidth: 1400, margin: "0 auto", width: "100%" }}>
@@ -116,65 +130,26 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
 
       {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={me} go={go} /></Suspense>}
 
+      {tab === "today" && <TodayTab name={name} parentLabel={me.parentLabel} />}
       {tab === "scheduled" && (
         <div className="stack" style={{ maxWidth: 760, gap: 12 }}>
           <HeartbeatCard beat={beat} name={name} />
+          {/* One list of everything coming up (her reminders, desk jobs, check-ins, routines), soonest first.
+              Things are added or changed by asking in chat; here she can only pause or delete her own. */}
           <div className="card">
-            <b>You asked for</b>
-            {mine.length === 0 && <span className="small">Nothing yet. Ask {name} in chat (“remind me at 7 to revise”, “every Sunday make me a quiz”) or add one here.</span>}
-            {mine.map((m) => (
-              <div key={m.id} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
-                <span className="hic"><Icon name={m.kind === "reminder" ? "alarm" : "sparkle"} size={18} /></span>
-                <span style={{ flex: 1 }}>{m.title}<br /><span className="small">{m.active ? new Date(m.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}{m.repeat !== "none" ? ` · ${m.repeat}` : ""}</span></span>
-                <button className="btn ghost small" onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }, "change that")}>{m.active ? "Pause" : "Resume"}</button>
-                <button className="x" aria-label={`Delete ${m.title}`} onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }, "delete that")}><Icon name="close" size={16} /></button>
+            <b>Coming up</b>
+            {sorted.length === 0 && <span className="small">Nothing yet. Ask {name} in chat: “remind me at 7 to revise”, or “every Sunday make me a quiz”.</span>}
+            {sorted.map((it) => (
+              <div key={it.key} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: it.dim ? 0.55 : 1 }}>
+                <span className="hic"><Icon name={it.icon} size={18} /></span>
+                <span style={{ flex: 1 }}>{it.title}<br /><span className="small">{it.when}</span></span>
+                {it.mine && <>
+                  <button className="btn ghost small" onClick={action(async () => { await api(`/api/schedules/${it.mine!.id}`, { method: "PATCH", body: { active: !it.mine!.active } }); void loadMine(); }, "change that")}>{it.mine.active ? "Pause" : "Resume"}</button>
+                  <button className="x" aria-label={`Delete ${it.title}`} onClick={action(async () => { await api(`/api/schedules/${it.mine!.id}`, { method: "DELETE" }); void loadMine(); }, "delete that")}><Icon name="close" size={16} /></button>
+                </>}
               </div>
             ))}
-            <form className="stack" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }} onSubmit={async (e) => {
-              e.preventDefault();
-              try { await api("/api/schedules", { body: { title: form.title, kind: "reminder", when: form.when, repeat: form.repeat } }); setForm({ title: "", when: "", repeat: "none" }); setSchedErr(""); void loadMine(); }
-              catch (err) { setSchedErr((err as Error).message); }
-            }}>
-              <b style={{ fontSize: "0.875rem" }}>Add a reminder</b>
-              <input className="input" placeholder="What? e.g. Revise fractions" value={form.title} maxLength={120} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-              <div className="grid2">
-                <input className="input" type="datetime-local" aria-label="When" value={form.when} onChange={(e) => setForm({ ...form, when: e.target.value })} />
-                <select className="select" aria-label="Repeat" value={form.repeat} onChange={(e) => setForm({ ...form, repeat: e.target.value })}>
-                  <option value="none">Just once</option><option value="daily">Every day</option><option value="weekdays">School days</option><option value="weekly">Every week</option>
-                </select>
-              </div>
-              {schedErr && <span className="small" style={{ color: "var(--ember)" }}>{schedErr}</span>}
-              <button className="btn primary small" type="submit" disabled={!form.title.trim() || !form.when}>Add</button>
-            </form>
-          </div>
-          <div className="card">
-            <b>On the desk</b>
-            {sched?.jobs.length === 0 && <span className="small">Nothing queued. Ask {name} to make something!</span>}
-            {sched?.jobs.map((j) => (
-              <div key={j.id} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6 }}>
-                <span className="hic"><Icon name={j.status === "done" ? "check" : j.status === "working" ? "hourglass" : j.status === "failed" ? "warn" : "clock"} size={18} /></span>
-                <span style={{ flex: 1 }}>{j.title}</span>
-                <span className="small">{j.status === "working" ? `${j.progress}%` : j.status} · {clock(j.ts)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="card">
-            <b>Check-ins</b>
-            {c && (
-              <>
-                <span style={{ fontSize: "0.875rem" }}>{[c.toggles.askHowThingsWent && "Asks how big things went", c.toggles.morningHello && "A morning hello on school days", c.toggles.waterWhileRevising && "Water reminders while revising"].filter(Boolean).join(" · ") || "All check-ins are off."}</span>
-                <span className="small">At most {Math.min(2, c.maxPerDay)} a day · never {c.quietHours.start}–{c.quietHours.end} · never guilt-tripping · {name} never calls you</span>
-                {c.upcoming.length > 0 && <b style={{ fontSize: "0.875rem", marginTop: 4 }}>Coming up</b>}
-                {c.upcoming.map((u) => <span key={u.date + u.text} style={{ fontSize: "0.875rem" }}>{u.icon} {u.text} · {u.date} <span className="small">(I’ll ask how it went, after school)</span></span>)}
-                {c.recent.length > 0 && <b style={{ fontSize: "0.875rem", marginTop: 4 }}>Recent</b>}
-                {c.recent.map((r) => <span key={r.ts} className="small">{new Date(r.ts).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })} · {r.text}</span>)}
-              </>
-            )}
-            <button className="btn ghost small" style={{ alignSelf: "flex-start" }} onClick={() => go("/memory")}>Change check-ins</button>
-          </div>
-          <div className="card">
-            <b>Every day and week</b>
-            {sched?.routines.map((r) => <div key={r.what} className="row" style={{ fontSize: "0.875rem" }}><span>{r.icon}</span><span style={{ flex: 1 }}>{r.what}</span><span className="small">{r.when}</span></div>)}
+            {c && <span className="small" style={{ marginTop: 6 }}>Check-ins: at most {Math.min(2, c.maxPerDay)} a day, never {c.quietHours.start}–{c.quietHours.end}, never guilt-tripping, and {name} never calls you. To add or change anything here, just ask {name} in chat.</span>}
           </div>
         </div>
       )}
@@ -221,12 +196,13 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
 /** Settings: everything about you and the companion, including usage (energy). */
 export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; state: AppState | null }) {
   const name = me.profile.name;
+  const deskToday = useDeskToday();
   const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
   const rows: [string, IconName, string, string][] = [
-    ["/pip", "idcard", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
+    ["/pip", "idcard", `${name}’s profile`, `Its desk, today, what’s scheduled, and who ${name} is (soul, personality, memory)`],
     ["/me", "pencil", `Edit ${name}`, "Name, look, personality and voice"],
     ["/notifications", "bell", "Notifications", "Turn on, test, and choose what reaches your phone"],
-    ["/memory", "brain", `What ${name} remembers`, "See and delete memories; check-ins"],
+    ["/memory", "brain", `What ${name} remembers`, "See and delete memories; see check-ins"],
     ["/shared", "eye", `What ${me.parentLabel} sees`, "Nothing secret here"],
     ["/connectors", "sparkle", "Connectors and skills", `What ${me.parentLabel} has connected ${name} to, and its /commands`],
     ["/google", "cloud", "Google", "Connect your Google account: Drive, and more if your grown-up switches it on"],
@@ -238,7 +214,9 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
       <h2 className="screen-title">Settings</h2>
       <b>Usage</b>
       {state && <EnergyCard energy={state.energy} />}
-      {state && <span className="small">{name}’s desk has its own energy for today: {state.desk.percent}%, so making things never uses up your chats.</span>}
+      <DeskBudgetCard today={deskToday} name={name} />
+      <b style={{ marginTop: 6 }}>{name}’s desk</b>
+      <DeskRules name={name} />
       <b style={{ marginTop: 6 }}>You and {name}</b>
       {rows.map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
@@ -268,4 +246,10 @@ export function ProfilePanel({ open, tab = "desk", me, state, mood, go, onClose 
       <div className="pp-inner">{seen && <Profile me={me} state={state} mood={mood} go={go} panel onClose={onClose} initialTab={tab} live={open} />}</div>
     </aside>
   );
+}
+
+/** The Today tab: what the companion did today (the parent sees this too). */
+function TodayTab({ name, parentLabel }: { name: string; parentLabel: string }) {
+  const today = useDeskToday();
+  return <div className="stack" style={{ maxWidth: 760, gap: 12 }}><TodayList today={today} name={name} parentLabel={parentLabel} /></div>;
 }

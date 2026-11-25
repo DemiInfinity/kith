@@ -210,6 +210,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     return () => clearInterval(t);
   }, [awake, driving]);
   useEffect(() => { if (driving) setAwake(true); }, [driving]);
+  const sleepNow = () => { setAwake(false); void api("/api/desk/browser/sleep", { body: {} }).catch(() => undefined); };
 
   const items = desk?.items ?? [];
   const links = desk?.links ?? [];
@@ -363,8 +364,6 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   }
 
   const power = today?.power;
-  const spent = (today?.budget.full ?? 0) + (today?.budget.low ?? 0);
-  const slice = today?.budget.slice || 1;
   const monitor = (
         <div className="pmonitor" ref={full ? undefined : monRef} style={full ? { height: MON.h * scale, width: MON.w * scale, transform: turned ? "rotate(90deg)" : undefined, flex: "none" } : { height: MON.h * scale }}>
         <div className="pcomp" style={{ width: MON.w, height: MON.h, transform: `scale(${scale})` }}>
@@ -452,7 +451,11 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
           <button className="pmonitor-away" onClick={() => setFull(false)} style={{ height: 160 }}>{name}’s computer is open full screen. Click to bring it back here.</button>
         ) : (
           <div className="pmonitor-wrap">
-            <button className="pfull" onClick={() => setFull(true)} aria-label={`Open ${name}’s computer full screen`}><Icon name="expand" size={16} /><span>Full screen</span></button>
+            <div className="pbtns">
+              {/* Put the screen (and its browser) to sleep now, rather than waiting two quiet minutes. */}
+              {awake && !driving && <button className="pfull" onClick={sleepNow} aria-label={`Put ${name}’s computer to sleep`}><Icon name="moon" size={16} /><span>Sleep</span></button>}
+              <button className="pfull" onClick={() => setFull(true)} aria-label={`Open ${name}’s computer full screen`}><Icon name="expand" size={16} /><span>Full screen</span></button>
+            </div>
             {monitor}
           </div>
         )}
@@ -466,32 +469,6 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
       </div>
 
       <aside className="deskside">
-        <div className="card">
-          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>Desk budget today</b><span className="small">{today ? `${today.budget.percent}% left` : ""}</span></div>
-          <span className="bar" style={{ display: "flex", height: 10 }}>
-            <span style={{ width: `${Math.min(100, (today?.budget.full ?? 0) / slice * 100)}%`, background: "var(--lilac)", borderRadius: 0 }} />
-            <span style={{ width: `${Math.min(100, (today?.budget.low ?? 0) / slice * 100)}%`, background: "var(--ember)", borderRadius: 0 }} />
-          </span>
-          <span className="small"><span style={{ color: "var(--lilac)" }}>●</span> Full power {Math.round((today?.budget.full ?? 0) / slice * 100)}% <span style={{ color: "var(--ember)" }}>●</span> Low power {Math.round((today?.budget.low ?? 0) / slice * 100)}%{spent > slice ? " (using days saved up this week)" : ""}</span>
-          <span className="small">Flashcards, summaries and planning always run on Low power. Stories and games you ask for get Full power, and the desk can never eat into your chat.</span>
-        </div>
-        <div className="card">
-          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>What {name} did today</b><span className="small" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Icon name="eye" size={14} /> {me.parentLabel} sees this too</span></div>
-          {(today?.activity ?? []).length === 0 && <span className="small">Nothing yet today.</span>}
-          {today?.activity.slice(0, 12).map((a) => (
-            <div key={a.id} className="row" style={{ fontSize: "0.8438rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, alignItems: "flex-start" }}>
-              <b style={{ width: 44, flex: "none", color: "var(--faint)" }}>{new Date(a.ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>
-              <span style={{ flex: 1 }}>{a.text}</span><span>{a.icon}</span>
-            </div>
-          ))}
-        </div>
-        <div className="card">
-          <b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>Desk rules</b>
-          <div className="grid2" style={{ fontSize: "0.8125rem" }}>
-            <div className="stack" style={{ gap: 3 }}><b style={{ color: "var(--ok)" }}>{name} can</b><span>write, draw and build little things</span><span>read websites that aren’t blocked</span><span>save new files to Kith on Drive</span><span>make flashcards and plans</span><span>keep its own journal</span></div>
-            <div className="stack" style={{ gap: 3 }}><b style={{ color: "var(--ember)" }}>{name} can’t</b><span>do coursework for you</span><span>sign in, fill forms, download or pass robot checks</span><span>share, email or post anything</span><span>delete or overwrite your files</span><span>contact your friends</span></div>
-          </div>
-        </div>
         {desk?.journal[0] && (
           <div className="card"><span className="journal">“{desk.journal[0].text}”</span><span style={{ fontSize: "0.7188rem", fontWeight: 800, color: "var(--faint)" }}>{name.toUpperCase()}’S JOURNAL</span></div>
         )}
