@@ -9,7 +9,7 @@ export type IconName = "chat" | "study" | "create" | "settings" | "grownup" | "c
   | "shield" | "bulb" | "question" | "brush" | "landmark" | "map" | "mask" | "trash" | "plus" | "arrow" | "back" | "play"
   | "speaker" | "joystick" | "eye" | "cards" | "timer" | "note" | "siren" | "phone" | "bell" | "brain" | "cloud" | "idcard"
   | "calendar" | "heart" | "pencil" | "compass" | "folder" | "journal" | "cap" | "gamepad" | "people" | "sparkle" | "laptop"
-  | "music" | "breath" | "chat2" | "star" | "home" | "expand" | "shrink" | "globe";
+  | "music" | "breath" | "chat2" | "star" | "home" | "expand" | "shrink" | "globe" | "micoff";
 
 const P: Record<IconName, (on: boolean) => ReactNode> = {
   // a speech bubble with three dots
@@ -77,6 +77,13 @@ const P: Record<IconName, (on: boolean) => ReactNode> = {
     <>
       <rect x="9" y="3.5" width="6" height="11" rx="3" fill={on ? "currentColor" : "none"} fillOpacity={on ? 0.25 : 0} />
       <path d="M6 11.5a6 6 0 0 0 12 0" /><path d="M12 17.5v3" /><path d="M9 20.5h6" />
+    </>
+  ),
+  // the mic, crossed out: muted
+  micoff: () => (
+    <>
+      <path d="M15 9.5V6.5a3 3 0 0 0-5.6-1.5M9 9v2.5a3 3 0 0 0 4.6 2.5" />
+      <path d="M6 11.5a6 6 0 0 0 9.6 4.8M18 11.5c0 .7-.1 1.4-.3 2" /><path d="M12 17.5v3" /><path d="M9 20.5h6" /><path d="M4.5 4.5l15 15" />
     </>
   ),
   // a paper plane heading up
