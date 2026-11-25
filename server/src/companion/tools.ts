@@ -15,6 +15,7 @@ import { addSchedule, scheduleProblem } from "./schedules.js";
 import { config } from "../config.js";
 import { askForLanguage } from "../study/languageRequests.js";
 import type { Pending } from "../storage/googleWork.js";
+import { get } from "../db.js";
 
 export interface TurnEffects {
   /** Kept for older clients: always empty now (memories are only saved after her yes). */
@@ -38,6 +39,8 @@ export interface TurnEffects {
   untrusted?: string[];
   /** Her own message this turn (what she said is hers, even if outside text says it too). */
   childSaid?: string;
+  /** Talk mode: the companion said goodbye and ends the call once the reply is spoken. Set only on commit. */
+  endCall?: boolean;
 }
 
 export interface Staged {
@@ -275,4 +278,40 @@ export async function characterFields(
     fields.model = { ...NEW_CHARACTER, name };
   }
   return { ok: true, fields, note };
+}
+
+/** How far back a worry still counts as "in this call". */
+export const CALL_WORRY_MS = 45 * 60_000;
+
+/**
+ * True when a worry is live, so the companion must stay on the call: a report this turn, the
+ * "Grown-up?" help opened during the call, or any real report (a worry, or asking for a grown-up)
+ * in the last 45 minutes. The quiet "safety check was down" note and parent tests don't count.
+ */
+export function worryInCall(db: DB, turn: { report: boolean; helpOpened?: boolean }, now = Date.now()): boolean {
+  if (turn.report || turn.helpOpened) return true;
+  return !!get(db, "SELECT 1 AS x FROM reports WHERE ts > ? AND category NOT IN ('safety_unavailable', 'test') LIMIT 1", now - CALL_WORRY_MS);
+}
+
+/**
+ * Voice calls only: the companion can hang up kindly (after saying goodbye). It's staged like every
+ * other tool, so the call only ends if the goodbye passes the safety check. Never while a worry is
+ * being talked about: then it's refused and the companion stays.
+ */
+export function endCallTool(db: DB, effects: TurnEffects, turn: { report: boolean; helpOpened?: boolean }): ToolDef {
+  return {
+    name: "end_call", connection: "companion", level: "act",
+    description:
+      "End this voice call, kindly. Only when it's right: they've said bye or goodnight, they've asked you to hang up, it's very late and they've agreed it's time to go, or the call has gone quiet for a long time. " +
+      "Always say a warm goodbye in this same reply first. Never use it to get out of a hard or worrying conversation, or while they're upset.",
+    input_schema: obj({ goodbye: { type: "string", description: "Why you're ending it, in a few words (e.g. 'they said goodnight')" } }, ["goodbye"]),
+    run: async (input) => {
+      const v = z.object({ goodbye: z.string().max(200).default("") }).parse(input);
+      if (worryInCall(db, turn)) {
+        return "Not hanging up: something important has come up in this call. Stay with them, listen, and keep the call open. They can end it themselves whenever they like.";
+      }
+      await stage(effects, { label: "end call", text: v.goodbye, commit: () => { effects.endCall = true; } });
+      return `The call ends after your goodbye is spoken. Make sure this reply says goodbye warmly. ${HELD}`;
+    },
+  };
 }

@@ -25,7 +25,8 @@ export function prefersLowPower(mode: Mode) {
 
 export function modeNote(db: DB, mode: Mode, ctx: ModeCtx = {}): string {
   switch (mode) {
-    case "talk": return "This is a voice call: your reply is spoken aloud. Keep it short and natural, no emoji, no lists, no markdown.";
+    case "talk": return "This is a voice call: your reply is spoken aloud. Keep it short and natural, no emoji, no lists, no markdown. " +
+      "You can hang up with end_call when it's right: they've said bye or goodnight, they've asked you to, it's very late and they've agreed it's time, or it's gone quiet for a long time. Always say a warm goodbye in the same reply first. Never hang up to get away from something hard: if they're upset or telling you about a worry, stay on the call.";
     case "oc": return ocWorkshopNote(db);
     case "study": return studyNote(db, ctx);
     case "art": return artNote(db);
