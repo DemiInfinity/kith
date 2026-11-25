@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kith</title>
+<style>
+  :root { --hearth: #1c1219; --card: #2a1c27; --line: #4a3046; --text: #fbeaf6; --muted: #c9a9d1; --faint: #9c8098; --lilac: #d9a3e0; --lilac-soft: #e4b8ec; --ember: #f59646; --ember-ink: #2a170c; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--hearth); color: var(--text); font: 16px/1.45 Nunito, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; display: grid; place-items: center; -webkit-user-select: none; user-select: none; }
+  .drag { position: fixed; inset: 0 0 auto 0; height: 28px; }
+  main { width: min(440px, 90vw); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+  img { width: 88px; height: 88px; border-radius: 22px; }
+  h1 { font: 600 30px/1.1 "Fraunces", Georgia, serif; margin: 4px 0 0; letter-spacing: -0.01em; }
+  p { margin: 0; color: var(--muted); }
+  .hand { font-family: Caveat, "Comic Sans MS", cursive; font-size: 22px; color: var(--lilac-soft); }
+  form { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 6px; }
+  input { font: inherit; color: inherit; width: 100%; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); -webkit-user-select: text; user-select: text; }
+  input:focus { outline: 2.5px solid var(--lilac); outline-offset: 2px; }
+  button { font: inherit; font-weight: 800; cursor: pointer; padding: 11px 20px; border-radius: 999px; border: none; background: var(--ember); color: var(--ember-ink); }
+  button.ghost { background: transparent; color: var(--lilac-soft); border: 1px solid var(--line); font-weight: 700; }
+  .small { font-size: 13px; color: var(--faint); }
+  .err { color: #f3a08f; font-size: 14px; min-height: 1.2em; }
+  .dots { display: inline-flex; gap: 6px; }
+  .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--lilac); opacity: .35; animation: b 1.2s infinite; }
+  .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes b { 50% { opacity: 1; transform: translateY(-3px); } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="drag" data-tauri-drag-region></div>
+<main>
+  <img src="buddy.png" alt="">
+
+  <section id="checking" hidden>
+    <div class="dots" aria-label="Connecting"><i></i><i></i><i></i></div>
+  </section>
+
+  <section id="offline" hidden>
+    <h1>Can’t reach home right now</h1>
+    <p style="margin-top:10px">Kith lives on a computer at home, and it isn’t answering. Check you’re online, or try again in a minute.</p>
+    <p class="small" id="offline-server" style="margin-top:8px"></p>
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:16px">
+      <button id="retry">Try again</button>
+      <button class="ghost" id="change">Change server</button>
+    </div>
+    <p class="small" style="margin-top:12px">Trying again by itself every 15 seconds.</p>
+  </section>
+
+  <section id="setup" hidden>
+    <h1>Welcome to Kith</h1>
+    <span class="hand">a companion that grows up with you, kept at home</span>
+    <form id="form">
+      <p>What’s the address of your Kith at home?</p>
+      <input id="server" placeholder="ai.example.com" autocomplete="url" autocapitalize="off" spellcheck="false" required>
+      <div class="err" id="err" role="alert"></div>
+      <button type="submit">Continue</button>
+      <p class="small">The grown-up who set Kith up knows it. You can change it later from the Kith menu.</p>
+    </form>
+  </section>
+</main>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const q = new URLSearchParams(location.search);
+  // Only paths on the server itself ("/chat", not "//elsewhere").
+  const rawPath = q.get("path") || "/";
+  const path = rawPath.startsWith("/") && !rawPath.startsWith("//") ? rawPath : "/";
+  const show = (id) => { for (const s of document.querySelectorAll("section")) s.hidden = s.id !== id; };
+  let server = null, timer = null;
+
+  async function reachable(origin) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      // An opaque reply is enough: it means something answered. Kith's public sign-in info is tiny.
+      await fetch(origin + "/api/public/signin", { mode: "no-cors", cache: "no-store", credentials: "omit", signal: ctrl.signal });
+      return true;
+    } catch { return false; } finally { clearTimeout(t); }
+  }
+
+  async function go() {
+    clearTimeout(timer);
+    show("checking");
+    if (await reachable(server)) { location.replace(server + path); return; }
+    document.getElementById("offline-server").textContent = server.replace(/^https:\/\//, "");
+    show("offline");
+    timer = setTimeout(go, 15000);
+  }
+
+  function setup() {
+    clearTimeout(timer);
+    show("setup");
+    const input = document.getElementById("server");
+    if (server) input.value = server.replace(/^https:\/\//, "");
+    input.focus();
+  }
+
+  document.getElementById("retry").onclick = go;
+  document.getElementById("change").onclick = setup;
+  window.addEventListener("online", () => { if (!document.getElementById("offline").hidden) go(); });
+  document.getElementById("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("err");
+    err.textContent = "";
+    try { server = await invoke("save_server", { server: document.getElementById("server").value }); go(); }
+    catch (x) { err.textContent = String(x); }
+  };
+
+  invoke("setup_info").then((s) => { server = s.server; if (!server || q.get("setup")) setup(); else go(); });
+</script>
+</body>
+</html>
