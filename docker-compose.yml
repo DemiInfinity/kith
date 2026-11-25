@@ -93,7 +93,7 @@ services:
   # Local speech-to-text (Wyoming protocol). Audio is processed in memory and never stored.
   whisper:
     image: rhasspy/wyoming-whisper:latest
-    command: ["--model", "${KITH_WHISPER_MODEL:-base-int8}", "--language", "${KITH_STT_LANGUAGE:-en}", "--beam-size", "1", "--initial-prompt", "${KITH_WHISPER_PROMPT:-Hey Pip,}"]
+    command: ["--model", "${KITH_WHISPER_MODEL:-base-int8}", "--language", "${KITH_STT_LANGUAGE:-en}", "--beam-size", "1", "--initial-prompt", "${KITH_WHISPER_PROMPT:-A chat with Pip, an AI companion.}"]
     volumes:
       - whisper-data:/data
     networks: [default]

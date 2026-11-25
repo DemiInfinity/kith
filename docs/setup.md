@@ -115,8 +115,9 @@ On first start they download their models. After that, speech never leaves the h
   a named voice the first time it's asked for. Browse voices at https://rhasspy.github.io/piper-samples/.
 - **Accuracy vs speed:** `KITH_WHISPER_MODEL` trades the two. `base-int8` (the default) is accurate and keeps up on an
   old Mac mini (about 4.5 s for 10 s of speech); `tiny-int8` is quicker but mishears a lot; `small-int8` is the most
-  accurate but too slow for calls on older machines. `KITH_WHISPER_PROMPT` (default "Hey Pip,") helps it spell your
-  companion's name: change it if you rename them.
+  accurate but too slow for calls on older machines. `KITH_WHISPER_PROMPT` (default "A chat with Pip, an AI companion.")
+  helps it spell your companion's name: put the new name in if you rename them, keeping it a description rather
+  than the start of a sentence (a prompt like "Hey Pip," makes Whisper drop those words from what it hears).
 
 ## 5. Reports to the grown-up
 
