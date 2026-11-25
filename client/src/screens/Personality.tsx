@@ -1,6 +1,7 @@
 import { Icon, IL } from "../components/Icons";
 import { useEffect, useRef, useState } from "react";
-import { api, type Me, type Profile } from "../api";
+import { api, type AppState, type Me, type PipChange, type Profile } from "../api";
+import { ChangeCard } from "../components/ChangeCard";
 import { Avatar, LookIcon } from "../components/Avatar";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
@@ -26,9 +27,21 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
   const [pose, setPose] = useState<"around" | "talking" | "laptop" | "thinking" | "sleepy">("around");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const first = useRef(true);
+  // Set when the profile comes from the server (Pip tweaked it, or an Undo): shown, not saved again.
+  const fromServer = useRef(false);
+  const [recent, setRecent] = useState<PipChange[]>([]);
+  const showServer = (q: Profile) => { fromServer.current = true; setP(q); onSaved(q); };
+
+  useEffect(() => {
+    api<{ changes: PipChange[] }>("/api/pip/changes?kind=personality").then((r) => setRecent(r.changes.slice(0, 5))).catch(() => undefined);
+    // Pip may have tweaked itself since this page's copy was loaded: start from what's saved.
+    api<AppState>("/api/state").then((s) => { if (JSON.stringify(s.profile) !== JSON.stringify(me.profile)) showServer(s.profile); }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (first.current) { first.current = false; return; }
+    if (fromServer.current) { fromServer.current = false; return; }
     clearTimeout(timer.current);
     setSaving("saving");
     timer.current = setTimeout(async () => {
@@ -109,6 +122,14 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
           </label>
         ))}
       </div>
+
+      {recent.length > 0 && (
+        <div className="stack">
+          <b>Recent changes {p.name} made</b>
+          {recent.map((c) => <ChangeCard key={c.id} c={c} name={p.name} onProfile={showServer} onChange={(n) => setRecent((l) => l.map((x) => (x.id === n.id ? n : x)))} />)}
+          <span className="small">{p.name} can make small tweaks to how it talks when it helps. Undo puts it back, or change it yourself above.</span>
+        </div>
+      )}
 
       <div className="stack">
         <b>Voice</b>
