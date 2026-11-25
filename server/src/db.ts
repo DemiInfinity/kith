@@ -205,6 +205,18 @@ export const MIGRATIONS: ((db: DB) => void)[] = [
     if (!cols.includes("sid")) db.exec("ALTER TABLE push_subs ADD COLUMN sid TEXT");
     db.exec("CREATE INDEX IF NOT EXISTS push_subs_sid ON push_subs(sid)");
   },
+  // 4: what the companion changed or asked to change about itself from chat: soul and memory
+  // proposals (waiting for her yes) and tweaks to how it talks and check-ins (with what they were
+  // before, for Undo). See companion/selfEdit.ts.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS pip_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL,
+        payload TEXT NOT NULL, decided INTEGER, result TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX IF NOT EXISTS pip_changes_kind ON pip_changes(kind, status, ts);
+    `);
+  },
 ];
 
 export function migrate(db: DB) {

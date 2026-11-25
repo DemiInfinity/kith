@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfirmCard } from "../components/ConfirmCard";
+import { ChangeCard } from "../components/ChangeCard";
 import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type ReportInfo, type Turn } from "../api";
 import { dayLabel, EnergyCard } from "../components/bits";
-import type { AppState, Memory } from "../api";
+import type { AppState, Memory, PipChange, Profile } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
 import { hasKana, parseLesson, say, voiceFor } from "../lib/kana";
@@ -22,6 +23,8 @@ interface Props {
   onMood: (m: Mood) => void;
   openHelp: () => void;
   go: (to: string) => void;
+  /** Pip's Undo on a tweak changed the profile. */
+  onProfile?: (p: Profile) => void;
 }
 
 const SESSION_GAP = 6 * 3_600_000;
@@ -62,7 +65,12 @@ const QUICK: Record<string, string[][]> = {
   oc: [["sparkle", "Help me make a new OC"], ["art", "Make a palette for my OC"], ["map", "Let's build their world"], ["mask", "Let's play a scene"]],
 };
 
-export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onMood, openHelp, go }: Props) {
+export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onMood, openHelp, go, onProfile }: Props) {
+  // What Pip asked to change or changed about itself, by id (cards under its replies, with their outcome).
+  const [changes, setChanges] = useState<Record<number, PipChange>>({});
+  const loadChanges = () => api<{ changes: PipChange[] }>("/api/pip/changes")
+    .then((r) => setChanges(Object.fromEntries(r.changes.map((c) => [c.id, c])))).catch(() => undefined);
+  useEffect(() => { void loadChanges(); }, []);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [made, setMade] = useState<Record<number, Turn["effects"]>>({});
   // Only one character preview animates at a time ("message id:character id"); the newest by default.
@@ -199,6 +207,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     try {
       const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
+      if (turn.effects.changes?.length) loadChanges();
       if (turn.effects.jobs.length || turn.effects.confirms?.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
       // A character made or changed: its card comes to life (and shows the new look).
       if (turn.effects.characters.length) { refreshCharacters(); setLiveCard(`${turn.reply.id}:${turn.effects.characters[0]}`); }
@@ -253,7 +262,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         {shown.map((m, i) => {
           const prev = shown[i - 1];
           const newDay = !prev || new Date(prev.ts).toDateString() !== new Date(m.ts).toDateString();
-          const meta = m.meta ? (JSON.parse(m.meta) as { report?: ReportInfo; checkin?: string; characters?: number[] }) : null;
+          const meta = m.meta ? (JSON.parse(m.meta) as { report?: ReportInfo; checkin?: string; characters?: number[]; changes?: number[] }) : null;
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {newDay && <span className="daymark">{dayLabel(m.ts)}</span>}
@@ -282,6 +291,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
                 const k = `${m.id}:${cid}`;
                 return <CharacterCard key={k} id={cid} live={(liveCard ?? newestCard) === k} onWake={() => setLiveCard(k)} go={go} />;
               })}
+              {m.role === "companion" && Array.isArray(meta?.changes) && meta.changes.map((id) => changes[id] && (
+                <ChangeCard key={`c${id}`} c={changes[id]} name={name} onProfile={onProfile} onChange={(c) => setChanges((x) => ({ ...x, [c.id]: c }))} />
+              ))}
               {made[m.id]?.confirms?.map((p) => <ConfirmCard key={p.id} p={p} />)}
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>

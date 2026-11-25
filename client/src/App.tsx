@@ -289,7 +289,13 @@ function ChildApp({ me: initialMe }: { me: Me }) {
 
   const energy = state?.energy;
   const baseMood: Mood = mood !== "happy" ? mood : energy?.mode === "low" ? "sleepy" : energy?.mode === "resting" ? "resting" : "happy";
-  const onTurn = (t: Turn) => { setState((s) => (s ? { ...s, energy: t.energy } : s)); void load(); void checkNativeActions(); };
+  const onTurn = (t: Turn) => {
+    setState((s) => (s ? { ...s, energy: t.energy } : s));
+    void load();
+    void checkNativeActions();
+    // Pip tweaked how it talks or a check-in: keep the profile in step, so Personality shows it.
+    if (t.effects.changes?.length) void api<AppState>("/api/state").then((s) => onSaved(s.profile)).catch(() => undefined);
+  };
   const name = me.profile.name;
   const working = state?.desk.working;
   const doing = doingText(state, baseMood);
@@ -337,7 +343,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           if (thread !== 1 && threadLang) { await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang: null } }); setThreadLang(null); }
           else go("/");
         }, "switch back to English")} onSplit={pickThread}
-        onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
+        onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} onProfile={onSaved} />
     </>
   );
 

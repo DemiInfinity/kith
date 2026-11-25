@@ -72,7 +72,7 @@ export function KidHelp({ me, go }: { me: Me; go: (to: string) => void }) {
     { icon: "chat2", title: "Chatting", items: [
       { q: "What are side chats?", a: <>A separate chat for a different topic, so you don’t lose your place. Tap any message › Side chat from here, or type <b>/new</b>.</>, words: "thread split" },
       { q: "What can I type after /?", a: <>Type <b>/</b> in chat to see everything: <b>/usage</b>, <b>/skills</b>, <b>/connectors</b>, <b>/memory</b>, <b>/help</b> and any commands {g} made for you.</>, words: "commands slash" },
-      { q: `Can ${n} remember things?`, a: <>Yes, things that matter, like a test coming up. See and delete them in Settings › What {n} remembers, or type <b>/memory</b>.</>, words: "memory forget" },
+      { q: `Can ${n} remember things?`, a: <>Yes, things that matter, like a test coming up, but {n} always asks first and only remembers it if you tap yes. {n} can’t change or forget memories itself: you can see and delete them in Settings › What {n} remembers, or type <b>/memory</b>.</>, words: "memory forget" },
       { q: "Can we talk out loud?", a: <>Yes: tap the phone button to call {n}. It listens, and talks back in the voice you picked.</>, words: "call voice talk" },
     ] },
     { icon: "desk", title: `${n}’s desk`, items: [

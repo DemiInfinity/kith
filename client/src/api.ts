@@ -108,7 +108,16 @@ export interface Message { id: number; ts: number; role: "child" | "companion"; 
 export interface ReportInfo { level: "now" | "today" | "fyi"; childNotice: string; parentText: string }
 export interface Turn {
   child: Message; reply: Message; mood: Mood; energy: Energy; report: ReportInfo | null; openHelp: boolean;
-  effects: { memories: string[]; jobs: { id: number; title: string; kind: string }[]; characters: number[]; confirms?: GooglePending[] };
+  effects: { memories: string[]; jobs: { id: number; title: string; kind: string }[]; characters: number[]; confirms?: GooglePending[]; changes?: number[] };
+}
+/**
+ * Something the companion asked to change about itself (its soul, a memory: waiting for her yes) or
+ * changed (how it talks, check-ins: with Undo). Shown as a card under the reply, and on Personality.
+ */
+export interface PipChange {
+  id: number; ts: number; kind: "soul" | "memory" | "personality" | "checkins";
+  status: "pending" | "accepted" | "declined" | "expired" | "replaced" | "failed" | "applied" | "undone";
+  title: string; lines: { op: "+" | "-" | "~" | "·"; text: string }[]; why: string; result: string; canUndo: boolean;
 }
 /** A Google change waiting for the child's yes, with a short diff-like summary (+ added, - removed, ~ changed, · note). */
 export interface GooglePending { id: number; ts: number; kind: string; title: string; lines: { op: "+" | "-" | "~" | "·"; text: string }[]; status: string; result: string }
