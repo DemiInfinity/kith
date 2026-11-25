@@ -4,5 +4,5 @@
   "description": "The app's own start page (bundled, local) may read and save the server address. The Kith server's pages get only the native commands granted at runtime (main.rs, grant_native).",
   "windows": ["main"],
   "local": true,
-  "permissions": ["core:default", "allow-setup-info", "allow-save-server"]
+  "permissions": ["core:default", "allow-setup-info", "allow-save-server", "allow-wrong-app-info", "allow-switch-account", "allow-open-other-app"]
 }

@@ -40,14 +40,15 @@ fn base64url(bytes: &[u8]) -> String {
 }
 
 /// Where the provider's sign-in page is for this handoff (the server's redirect), without following it.
-fn provider_url(server: &str, id: &str) -> Option<String> {
+fn provider_url(server: &str, id: &str, hint: &str) -> Option<String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .max_redirects(0)
         .http_status_as_error(false)
         .timeout_global(Some(Duration::from_secs(15)))
         .build()
         .into();
-    let login = format!("{server}/auth/login?handoff={id}");
+    // app= tells the server which person this app is for; it refuses the other one.
+    let login = format!("{server}/auth/login?handoff={id}&app={hint}");
     let resp = agent.get(&login).call().ok()?;
     if !resp.status().is_redirection() {
         return None;
@@ -99,9 +100,9 @@ pub fn start(app: &AppHandle, server: String) {
     let app = app.clone();
     std::thread::spawn(move || {
         let Some(id) = random_id() else { return };
-        let Some(provider) = provider_url(&server, &id) else {
+        let Some(provider) = provider_url(&server, &id, crate::who::hint(&app)) else {
             // Sign-in isn't set up on this server (or it can't be reached): show its own answer.
-            if let (Some(w), Ok(u)) = (app.get_webview_window(crate::MAIN), Url::parse(&format!("{server}/auth/login?handoff={id}"))) {
+            if let (Some(w), Ok(u)) = (app.get_webview_window(crate::MAIN), Url::parse(&format!("{server}/auth/login?handoff={id}&app={}", crate::who::hint(&app)))) {
                 let _ = w.navigate(u);
             }
             return;

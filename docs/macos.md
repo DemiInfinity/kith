@@ -60,35 +60,45 @@ How it fits together:
 
 These need the server to be on the version with `server/src/native.ts`. An older server just ignores them.
 
-## Kith Parent
+## Kith and Kith Parent: one app each
 
-The same app works for the grown-up. It checks who's signed in every 30 seconds by asking the server's `/api/me` with
-the window's own sign-in cookie, which stays in memory and is never logged (`mac/src-tauri/src/who.rs`). For the parent:
+There are two Mac apps, built from the same code:
 
-- **Names:** the window title, the menu-bar item ("Open Kith Parent", "Quit Kith Parent") and its tooltip say "Kith
-  Parent".
-- **Child-only items are off:** Share Calendar & Reminders and Call Pip.
-- **The parent's notifications show as Mac notifications,** including with the window closed:
-  - The app asks the server's `/api/native/parent-inbox` every 30 seconds and shows exactly what the server would
-    send the parent by web push.
-  - The server applies the parent's choices: which report levels, quiet hours (urgent ones still come through), and
-    generic lock-screen text unless summaries are on.
-  - Nothing from the child's chats is ever included.
-  - Urgent ones play a sound.
-  - Until the server has that route, the app gets "not found" and stays quiet.
+| | **Kith.app** | **Kith Parent.app** |
+| --- | --- | --- |
+| For | the child | the grown-up |
+| Name in Applications, Launchpad, Spotlight, the Dock and notifications | Kith | Kith Parent |
+| Bundle id | `app.kith.mac` | `app.kith.parent` |
+| Icon | Buddy | Buddy with an ember heart badge (`mac/icons-parent/`, made by `make.py` there) |
+| Sign-in and settings | its own | its own |
+| Extras | Calendar & Reminders, documents, ⌃⌥Space to call Pip, the child's notifications | the parent's notifications |
 
-**A separate "Kith Parent" app.** The Dock name and the app menu's name come from the app bundle and can't change
-while it runs, so there's a second build from the same code: **Kith Parent.app**. It has its own bundle id
-(`app.kith.parent`), name, sign-in and settings, and the Buddy icon with an ember heart badge
-(`mac/icons-parent/`, made by `make.py` there). Keep both in the Dock: Kith signed in as the child, Kith Parent signed
-in as you. The parent build never registers ⌃⌥Space and has no Call Pip.
+They install side by side, so you can keep both in the Dock.
 
-```bash
-cd mac/src-tauri
-cargo tauri build --bundles app --config tauri.parent.conf.json
-```
+**Each app only lets in its own person.**
 
-This makes `mac/src-tauri/target/release/bundle/macos/Kith Parent.app`.
+- The app tells the server which one it is:
+  - on sign-in, `?app=child` or `?app=parent`;
+  - on its own requests, `X-Kith-App: child|parent`;
+  - to the page, `window.__KITH_APP__`, which the web app uses to send the same header.
+- The server refuses the other person, and a parent is never let into Kith, even if they're also in the child's group.
+- If the wrong person is signed in, the app shows:
+  - "This is the kids' Kith. Grown-ups use Kith Parent." (or, in Kith Parent, "This is the grown-ups' app. Kids use
+    Kith."), or the server's own words when it gives them;
+  - **Sign out and switch**, which signs out of Kith and of Pocket ID in the browser and clears the app's data;
+  - **Open Kith Parent** (or **Open Kith**), when the other app is installed.
+- The app checks who's signed in when a page loads and every 30 seconds after. It asks the server's `/api/me` with
+  the window's own sign-in cookie, which stays in memory and is never logged (`mac/src-tauri/src/who.rs`).
+
+**The parent's notifications** show as Mac notifications in Kith Parent, including with the window closed:
+
+- The app asks the server's `/api/native/parent-inbox` every 30 seconds and shows exactly what the server would send
+  the parent by web push.
+- The server applies the parent's choices: which report levels, quiet hours (urgent ones still come through), and
+  generic lock-screen text unless summaries are on.
+- Nothing from the child's chats is ever included.
+- Urgent ones (`report-now`) play a sound.
+- Kith.app never asks for them.
 
 ## Where links open
 
@@ -150,20 +160,25 @@ once:
 cargo install tauri-cli --version "^2" --locked
 ```
 
-Then build:
+Then build both apps:
 
 ```bash
-cd mac/src-tauri
-cargo tauri build
+mac/build-all.sh
 ```
 
-The output is:
+This puts all four files in `mac/dist/` (git-ignored):
 
-- `mac/src-tauri/target/release/bundle/macos/Kith.app`;
-- `mac/src-tauri/target/release/bundle/dmg/Kith_0.1.0_aarch64.dmg`.
+- `Kith.app` and `Kith_0.1.0_aarch64.dmg`;
+- `Kith Parent.app` and `Kith Parent_0.1.0_aarch64.dmg`.
 
-Building the `.dmg` briefly mounts it and opens a Finder window to lay it out. For just the app, use
-`cargo tauri build --bundles app`.
+It runs `cargo tauri build` twice, the second time with `--config tauri.parent.conf.json` (the parent build's name, id
+and icon). It copies each result out, because Tauri empties its `dmg` folder on every build. `CI=true` skips the
+Finder window the `.dmg` step would otherwise open.
+
+To build just one app without the `.dmg`, run this from `mac/src-tauri`:
+
+- Kith: `cargo tauri build --bundles app`
+- Kith Parent: `cargo tauri build --bundles app --config tauri.parent.conf.json`
 
 For a quick run while working on the shell, use `cargo tauri dev` from the same folder. To see where each page goes
 (window or browser), start the app with `KITH_DEBUG=1`. It logs origins and paths only, never query strings, since
@@ -175,17 +190,18 @@ open -n --env KITH_DEBUG=1 --stderr /tmp/kith.log mac/src-tauri/target/release/b
 
 ## Install
 
-Open the `.dmg` and drag Kith to Applications.
+Open each `.dmg` and drag the app to Applications: **Kith** for the child, **Kith Parent** for you. They have different
+names and bundle ids, so one never replaces the other. On the child's Mac you only need Kith.
 
-The build isn't signed, so the first time macOS says it can't check the app:
+The builds aren't signed, so the first time macOS says it can't check the app:
 
 1. Open it once (it'll be blocked).
-2. Go to System Settings › Privacy & Security and choose **Open Anyway** next to Kith.
+2. Go to System Settings › Privacy & Security and choose **Open Anyway**.
 
-Or, for an app you built yourself on this Mac, clear the download flag instead:
+Or, for apps you built yourself on this Mac, clear the download flag instead:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Kith.app
+xattr -dr com.apple.quarantine /Applications/Kith.app "/Applications/Kith Parent.app"
 ```
 
 A build made on the same Mac and never downloaded usually opens without either step.
@@ -213,8 +229,6 @@ needs.
 - **Parent view of the shared calendar.** The parent sees when sharing is switched on or off, not the events.
 - **"Time Sensitive" notifications.** macOS only allows these for signed apps with Apple's entitlement, so urgent
   parent notifications use a sound instead. With signing, they could break through Focus.
-- **The app menu's name** ("Kith" next to the Apple menu) follows the app bundle, so in Kith.app it stays "Kith" even
-  for the parent. Use Kith Parent.app for "Kith Parent" everywhere.
 - **Signing and notarising** (see above).
 - **Universal build.** `cargo tauri build` builds for the Mac you're on. For Intel and Apple silicon in one app, add
   the other target (`rustup target add x86_64-apple-darwin`) and build with `--target universal-apple-darwin`.

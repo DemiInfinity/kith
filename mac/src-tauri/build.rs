@@ -14,6 +14,9 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
         "setup_info",
         "save_server",
+        "wrong_app_info",
+        "switch_account",
+        "open_other_app",
         "native_info",
         "native_notify",
         "native_calendar_snapshot",

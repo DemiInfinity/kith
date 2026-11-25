@@ -34,4 +34,5 @@ objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSDate", "NSString", "NSArray", "NSCalendar", "NSError", "NSURL", "NSObject", "NSPredicate", "NSCalendar", "NSDate", "block2"] }
 objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "EKCalendar", "EKCalendarItem", "EKEvent", "EKEventStore", "EKObject", "EKReminder", "EKTypes", "EKSource"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
 objc2-pdf-kit = { version = "0.3", default-features = false, features = ["std", "PDFDocument"] }

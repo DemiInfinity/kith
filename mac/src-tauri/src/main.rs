@@ -69,6 +69,8 @@ pub struct Shell {
     granted: Vec<String>,
     /// A sign-in going on in her browser (signin.rs): bring Kith forward when it's done.
     handoff: Option<Instant>,
+    /// Signed in as the other person (who.rs): what the wrong-app screen says.
+    wrong: Option<String>,
 }
 
 pub type State = Arc<Mutex<Shell>>;
@@ -103,6 +105,26 @@ pub fn apply_role(app: &AppHandle, role: who::Role) {
             let _ = ui.share.set_enabled(child_things);
         }
     });
+}
+
+/// The other person's session is in this app: show the start page's wrong-app screen (once).
+pub fn show_wrong_app(app: &AppHandle, words: String) {
+    let Some(st) = app.try_state::<State>() else { return };
+    st.lock().unwrap().wrong = Some(words);
+    // Already showing it? Leave it be; otherwise (first time, or after ⌘R) show it.
+    let showing = app
+        .get_webview_window(MAIN)
+        .and_then(|w| w.url().ok())
+        .is_some_and(|u| u.scheme() == "tauri" && u.query().is_some_and(|q| q.contains("wrong=1")));
+    if !showing {
+        go_via_launcher(app, "?wrong=1");
+    }
+}
+
+pub fn clear_wrong_app(app: &AppHandle) {
+    if let Some(st) = app.try_state::<State>() {
+        st.lock().unwrap().wrong = None;
+    }
 }
 
 pub fn mark_handoff(app: &AppHandle) {
@@ -318,13 +340,15 @@ fn set_share_calendar(app: &AppHandle, state: &State, on: bool) {
 // ── Commands for the bundled start page only (see capabilities/default.json) ──────────────
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Setup {
     server: Option<String>,
+    app_name: &'static str,
 }
 
 #[tauri::command]
-fn setup_info(state: tauri::State<'_, State>) -> Setup {
-    Setup { server: state.lock().unwrap().config.server.clone() }
+fn setup_info(app: AppHandle, state: tauri::State<'_, State>) -> Setup {
+    Setup { server: state.lock().unwrap().config.server.clone(), app_name: who::name_for(&app, who::Role::SignedOut) }
 }
 
 #[tauri::command]
@@ -338,6 +362,62 @@ fn save_server(app: AppHandle, state: tauri::State<'_, State>, server: String) -
     save_config(&app, &cfg)?;
     grant_native(&app, state.inner(), &origin);
     Ok(origin)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WrongApp {
+    words: Option<String>,
+    /// The other app's name, if it's installed on this Mac.
+    other: Option<String>,
+}
+
+#[tauri::command]
+fn wrong_app_info(app: AppHandle, state: tauri::State<'_, State>) -> WrongApp {
+    let (id, name) = who::other_app(&app);
+    WrongApp { words: state.lock().unwrap().wrong.clone(), other: installed(id).then(|| name.to_string()) }
+}
+
+fn installed(bundle_id: &str) -> bool {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+    NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&NSString::from_str(bundle_id)).is_some()
+}
+
+#[tauri::command]
+fn open_other_app(app: AppHandle) -> Result<(), String> {
+    let (id, _) = who::other_app(&app);
+    std::process::Command::new("/usr/bin/open").args(["-b", id]).status().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Signs out here (and of the sign-in provider in her browser, so the next sign-in can be someone
+/// else), clears this app's web data, then the start page carries on to sign-in.
+#[tauri::command]
+async fn switch_account(app: AppHandle, state: tauri::State<'_, State>) -> Result<(), String> {
+    let server = state.lock().unwrap().config.server.clone().ok_or("No server.")?;
+    let app2 = app.clone();
+    let redirect = tauri::async_runtime::spawn_blocking(move || {
+        let sid = who::session_cookie(&app2, &server)?;
+        let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(Duration::from_secs(15))).build().into();
+        let mut r = agent.post(&format!("{server}/auth/logout")).header("Cookie", &format!("kith_sid={sid}")).header("X-Kith", "1").send_empty().ok()?;
+        #[derive(Deserialize)]
+        struct Out {
+            redirect: Option<String>,
+        }
+        let out: Out = serde_json::from_str(&r.body_mut().read_to_string().ok()?).ok()?;
+        out.redirect
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if let Some(w) = app.get_webview_window(MAIN) {
+        let _ = w.clear_all_browsing_data();
+    }
+    state.lock().unwrap().wrong = None;
+    if let Some(url) = redirect.filter(|u| u.starts_with("https://") || u.starts_with("http://")) {
+        let _ = app.opener().open_url(url, None::<&str>);
+    }
+    Ok(())
 }
 
 fn main() {
@@ -360,6 +440,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             setup_info,
             save_server,
+            wrong_app_info,
+            switch_account,
+            open_other_app,
             native::native_info,
             native::native_notify,
             native::native_calendar_snapshot,
@@ -478,6 +561,8 @@ fn main() {
             let win_app = handle.clone();
             let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
                 .title(app_name)
+                // Tells Kith's page which app this is, so it sends X-Kith-App (each app lets in only its own person).
+                .initialization_script(format!("window.__KITH_APP__ = {:?};", who::hint(&handle)))
                 .inner_size(1500.0, 920.0)
                 // The web app's desktop layout (sidebar, chat, Pip's desk) starts at 1100px.
                 .min_inner_size(1100.0, 640.0)
@@ -486,6 +571,10 @@ fn main() {
                 .hidden_title(true)
                 .background_color(tauri::window::Color(0x1c, 0x12, 0x19, 0xff))
                 .on_page_load(|_w, p| {
+                    // A Kith page just loaded: check who's signed in now, not in up to 30 seconds.
+                    if matches!(p.event(), tauri::webview::PageLoadEvent::Finished) && p.url().scheme().starts_with("http") {
+                        who::nudge();
+                    }
                     if std::env::var_os("KITH_DEBUG").is_some() {
                         eprintln!("[kith] page {:?} {}{}", p.event(), p.url().origin().ascii_serialization(), p.url().path());
                     }

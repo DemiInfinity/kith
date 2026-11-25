@@ -3,3 +3,4 @@ src-tauri/target/
 src-tauri/gen/
 # Your own server address (copy kith.config.example.json); kept out of the repo
 kith.config.json
+dist/
