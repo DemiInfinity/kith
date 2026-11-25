@@ -6,7 +6,8 @@ import { get, run } from "./db.js";
 import { config } from "./config.js";
 import { requireRole, sessionFor } from "./auth.js";
 import { loadParentSettings } from "./settings.js";
-import { authUrl, exchangeCode, googleConfigured, loadGoogle, markdownToHtml, MIME, revoke, saveGoogle, seal, unseal } from "./storage/google.js";
+import { authUrl, CALENDAR_SCOPE, exchangeCode, googleConfigured, loadGoogle, markdownToHtml, MIME, rememberFile, revoke, saveGoogle, scopesFor, seal, TASKS_SCOPE, unseal } from "./storage/google.js";
+import { apply, decline, gLog, googleFeatures, listFiles, pendingList, setCoursework } from "./storage/googleWork.js";
 import type { Storage } from "./storage/storage.js";
 import type { Studio } from "./desk/studio.js";
 import { getCharacter } from "./desk/oc.js";
@@ -29,6 +30,9 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
       sharedWith: s?.sharedWith ?? "",
       picker: googleConfigured() && !!config.google.pickerApiKey && !!config.google.appId,
       expected: config.google.expectedEmail,
+      // What the parent switched on, and whether the sign-in already covers it (else: connect again).
+      features: (({ edit, calendar, tasks }) => ({ edit, calendar, tasks }))(googleFeatures(db)),
+      reconnect: !!s && ((googleFeatures(db).calendar && !(s.scopes ?? []).includes(CALENDAR_SCOPE)) || (googleFeatures(db).tasks && !(s.scopes ?? []).includes(TASKS_SCOPE))),
     };
   });
 
@@ -40,7 +44,9 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
     const verifier = crypto.randomBytes(48).toString("base64url");
     const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
     run(db, "INSERT INTO oidc_state(state, verifier, nonce, created) VALUES (?,?, 'google', ?)", state, verifier, Date.now());
-    return { url: authUrl(state, challenge) };
+    // Calendar and Tasks are only asked for if the parent has switched them on.
+    const f = loadParentSettings(db).connections.find((c) => c.kind === "google-drive")?.features;
+    return { url: authUrl(state, challenge, scopesFor(f)) };
   });
 
   app.get("/auth/google/callback", async (req, reply) => {
@@ -52,10 +58,10 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
     run(db, "DELETE FROM oidc_state WHERE state = ?", q.state);
     if (!row || row.nonce !== "google" || Date.now() - row.created > 15 * 60_000) return reply.redirect("/google?result=expired");
     try {
-      const t = await exchangeCode(q.code, row.verifier);
+      const t = await exchangeCode(q.code, row.verifier, fetch, scopesFor(loadParentSettings(db).connections.find((c) => c.kind === "google-drive")?.features));
       const old = loadGoogle(db);
-      saveGoogle(db, { email: t.email, refresh: seal(t.refresh), connectedAt: Date.now(), folders: old?.email === t.email ? old.folders : {}, sharedWith: old?.email === t.email ? old.sharedWith : "" });
-      toolLogger(db, "Google Drive")("connect", t.email, "connected (drive.file only)", true);
+      saveGoogle(db, { email: t.email, refresh: seal(t.refresh), connectedAt: Date.now(), folders: old?.email === t.email ? old.folders : {}, sharedWith: old?.email === t.email ? old.sharedWith : "", scopes: t.scopes });
+      toolLogger(db, "Google Drive")("connect", t.email, `connected (${t.scopes.filter((x) => x.startsWith("https://")).map((x) => x.split("/").pop()).join(", ")})`, true);
       return reply.redirect("/google?result=connected");
     } catch (err) {
       req.log.warn({ err }, "google connect failed");
@@ -104,7 +110,37 @@ export function registerGoogle(app: FastifyInstance, db: DB, storage: Storage, s
 
   app.post("/api/google/read-picked", { preHandler: child }, async (req, reply) => {
     if (!g?.ready()) return reply.code(409).send({ error: "Google Drive isn't connected." });
-    const { fileId } = z.object({ fileId: z.string() }).parse(req.body);
-    return { text: await g.drive.readPickedDoc(fileId) };
+    const { fileId, name } = z.object({ fileId: z.string(), name: z.string().max(200).optional() }).parse(req.body);
+    const text = await g.drive.readPickedDoc(fileId);
+    rememberFile(db, fileId, name ?? "Picked document", MIME.doc, "picked");
+    return { text };
   });
+
+  // ── Files she hands Kith, and proposals waiting for her yes ─────────────────────────────
+  const PICKABLE = [MIME.doc, MIME.sheet, MIME.slides];
+  app.post("/api/google/picked", { preHandler: child }, async (req, reply) => {
+    if (!g?.ready()) return reply.code(409).send({ error: "Google isn't connected." });
+    const b = z.object({ fileId: z.string().regex(/^[a-zA-Z0-9_-]{10,100}$/), name: z.string().max(200), mimeType: z.string(), coursework: z.boolean().default(false) }).parse(req.body);
+    if (!PICKABLE.includes(b.mimeType)) return reply.code(400).send({ error: "Pick a Google Doc, Sheet or Slides file." });
+    // drive.file: Google itself only lets Kith open a file she really picked, so a made-up id gets nowhere.
+    rememberFile(db, b.fileId, b.name, b.mimeType, "picked");
+    if (b.coursework) setCoursework(db, b.fileId, true);
+    gLog(db, "picked_file", "look", b.name, b.coursework ? "handed to Kith (coursework: read only)" : "handed to Kith");
+    return { ok: true };
+  });
+  app.get("/api/google/files", { preHandler: either }, async () => ({ files: listFiles(db) }));
+  // Marking something as coursework is one-way for the child (the coursework rule wins); only the parent can undo it.
+  app.post("/api/google/files/:id/coursework", { preHandler: either }, async (req, reply) => {
+    const { coursework } = z.object({ coursework: z.boolean() }).parse(req.body);
+    if (!coursework && req.user!.role !== "parent") return reply.code(403).send({ error: "Only your grown-up can take the coursework mark off." });
+    setCoursework(db, (req.params as { id: string }).id, coursework);
+    return { ok: true };
+  });
+  app.get("/api/google/pending", { preHandler: child }, async () => ({ pending: pendingList(db) }));
+  app.post("/api/google/actions/:id/apply", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    if (!g?.ready()) return reply.code(409).send({ error: "Google isn't connected and switched on." });
+    const r = await apply(db, g.drive, Number((req.params as { id: string }).id));
+    return r.ok ? r : reply.code(409).send({ error: r.message });
+  });
+  app.post("/api/google/actions/:id/decline", { preHandler: child }, async (req) => ({ ok: decline(db, Number((req.params as { id: string }).id)) }));
 }

@@ -20,6 +20,8 @@ import { createReport, deliverReport, type Reporter, type ReportLevel } from "..
 import { identity, safeguards, soulText, type PromptCtx } from "./prompt.js";
 import { memoriesForPrompt } from "./memory.js";
 import { builtinTools, type TurnEffects } from "./tools.js";
+import { googleTools } from "./googleTools.js";
+import type { Pending } from "../storage/googleWork.js";
 import { connectionTools, type ToolDef } from "../connections/connections.js";
 import type { Studio } from "../desk/studio.js";
 import { localParts } from "../budget/time.js";
@@ -98,7 +100,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   const settings = loadParentSettings(db);
   const profile = loadProfile(db);
   const parent = config.people.parentLabel;
-  const effects: TurnEffects = { memories: [], jobs: [], characters: [] };
+  const effects: TurnEffects = { memories: [], jobs: [], characters: [], confirms: [] };
 
   const raw = input.text.trim().slice(0, 4000);
   const history = recentMessages(db, 40, thread);
@@ -190,6 +192,7 @@ async function generateReply(
   const tools: ToolDef[] = [
     ...builtinTools(db, deps.studio, a.effects).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...(await connectionTools(db, settings.connections)),
+    ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, a.effects as { confirms: Pending[] }, { coursework }),
     ...nativeTools(db),
   ];
   // Skills the parent wrote: the list is in the prompt; the full text loads only when it's used.

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ConfirmCard } from "../components/ConfirmCard";
 import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type ReportInfo, type Turn } from "../api";
 import { dayLabel, EnergyCard } from "../components/bits";
 import type { AppState, Memory } from "../api";
@@ -184,7 +185,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     try {
       const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
-      if (turn.effects.jobs.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
+      if (turn.effects.jobs.length || turn.effects.confirms?.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
       onTurn(turn);
       onMood(turn.mood);
       if (turn.openHelp) openHelp();
@@ -245,6 +246,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
                   <span className="small" style={{ color: "var(--text-3)" }}>You’re not in trouble. You can see everything that’s shared in “What {me.parentLabel} sees”.</span>
                 </div>
               )}
+              {made[m.id]?.confirms?.map((p) => <ConfirmCard key={p.id} p={p} />)}
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>
                   <span style={{ display: "inline-flex" }}><Icon name="note" size={22} /></span>

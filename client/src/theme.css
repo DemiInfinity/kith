@@ -807,3 +807,12 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .langdot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 13px; font-weight: 900; background: rgba(217,163,224,0.16); color: var(--lilac); flex: none; }
 /* On a phone the picture covers the middle, so the language picker is compact. */
 @media (max-width: 599px) { .threadbar { gap: 8px; padding: 8px 12px; } .threadbar .select { font-size: 13px; padding: 0 22px 0 8px !important; max-width: 84px; background-position: right 6px center; } }
+/* A Google change waiting for her yes */
+.confirmcard { align-self: flex-start; max-width: min(520px, 92%); display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--card); border: 1.5px solid var(--lilac); font-size: 14px; }
+.difflines { display: flex; flex-direction: column; gap: 2px; font-size: 13px; border-radius: 10px; overflow: hidden; }
+.difflines .dl { display: flex; gap: 8px; padding: 4px 8px; white-space: pre-wrap; word-break: break-word; }
+.difflines .dl span { width: 10px; flex: none; font-weight: 900; }
+.difflines .dl-add { background: rgba(120, 200, 140, 0.14); }
+.difflines .dl-del { background: rgba(245, 120, 110, 0.14); text-decoration: line-through; opacity: 0.85; }
+.difflines .dl-chg { background: rgba(217, 163, 224, 0.14); }
+.difflines .dl-note { color: var(--muted); font-style: italic; }

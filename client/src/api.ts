@@ -59,8 +59,10 @@ export interface Message { id: number; ts: number; role: "child" | "companion"; 
 export interface ReportInfo { level: "now" | "today" | "fyi"; childNotice: string; parentText: string }
 export interface Turn {
   child: Message; reply: Message; mood: Mood; energy: Energy; report: ReportInfo | null; openHelp: boolean;
-  effects: { memories: string[]; jobs: { id: number; title: string; kind: string }[]; characters: number[] };
+  effects: { memories: string[]; jobs: { id: number; title: string; kind: string }[]; characters: number[]; confirms?: GooglePending[] };
 }
+/** A Google change waiting for the child's yes, with a short diff-like summary (+ added, - removed, ~ changed, · note). */
+export interface GooglePending { id: number; ts: number; kind: string; title: string; lines: { op: "+" | "-" | "~" | "·"; text: string }[]; status: string; result: string }
 export interface Memory { id: number; ts: number; icon: string; text: string; about_date: string | null }
 export interface DeskItem {
   id: string; kind: string; title: string; icon: string; format: "html" | "md" | "svg" | "json";

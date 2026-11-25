@@ -1,13 +1,15 @@
-// Google Drive as a storage backend for the child's OWN Google account.
+// Google for the child's OWN Google account.
 //
-// Least privilege: only the `drive.file` scope (files Kith created, or files the child picks with
-// the Google Picker), plus `openid email` to show which account is connected. Kith never reads the
-// rest of their Drive, Gmail or Photos.
+// Least privilege: the only Drive scope is `drive.file` (files Kith created, or files the child picks
+// with the Google Picker), plus `openid email` to show which account is connected. When the parent
+// switches them on: `calendar.events` (her primary calendar) and `tasks` (a Homework list). Kith never
+// asks for Gmail, Contacts, Photos, Classroom or the rest of Drive, and refuses a sign-in that grants more.
 //
-// Kith only ever CREATES files and folders. It never deletes or overwrites anything: a change is a
-// new file next to the old one. The only share it ever makes is the Kith folder, view-only, to the
-// parent's Google account (optional, configured by the parent). It never emails or makes anything
-// public. Every write is logged for the parent view.
+// Files: Kith creates files and folders, and (with the parent's "editing" switch) edits Docs, Sheets
+// and Slides she picked or Kith made, through the Docs, Sheets and Slides APIs (batchUpdate), so
+// Google's version history keeps every change. Every edit is confirmed by her first (googleWork.ts).
+// It never deletes, trashes, moves or re-shares files. The only share it ever makes is the Kith
+// folder, view-only, to the parent's Google account (optional). Every read and write is logged.
 
 import crypto from "node:crypto";
 import type { DB } from "../db.js";
@@ -15,6 +17,13 @@ import { get, run } from "../db.js";
 import { config } from "../config.js";
 
 export const SCOPES = ["openid", "email", "https://www.googleapis.com/auth/drive.file"];
+export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+export const TASKS_SCOPE = "https://www.googleapis.com/auth/tasks";
+export interface GoogleFeatures { edit: boolean; calendar: boolean; tasks: boolean }
+/** What to ask Google for: drive.file always; Calendar and Tasks only if the parent switched them on. */
+export function scopesFor(f: Partial<GoogleFeatures> = {}): string[] {
+  return [...SCOPES, ...(f.calendar ? [CALENDAR_SCOPE] : []), ...(f.tasks ? [TASKS_SCOPE] : [])];
+}
 export const FOLDERS = ["Stories", "Revision", "Presentations", "Games & artifacts", "OCs"] as const;
 export type Folder = (typeof FOLDERS)[number];
 
@@ -60,6 +69,7 @@ export interface GoogleState {
   connectedAt: number;
   folders: Partial<Record<Folder | "root", string>>;
   sharedWith: string;              // parent email the Kith folder is shared with ("" if none)
+  scopes?: string[];               // what Google granted (older connections: drive.file only)
 }
 
 export function loadGoogle(db: DB): GoogleState | null {
@@ -79,12 +89,12 @@ export function redirectUri() {
   return `${config.publicUrl}/auth/google/callback`;
 }
 
-export function authUrl(state: string, challenge: string): string {
+export function authUrl(state: string, challenge: string, scopes: string[] = SCOPES): string {
   const q = new URLSearchParams({
     client_id: config.google.clientId,
     redirect_uri: redirectUri(),
     response_type: "code",
-    scope: SCOPES.join(" "),
+    scope: scopes.join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "false",
@@ -98,7 +108,7 @@ export function authUrl(state: string, challenge: string): string {
 
 type Fetch = typeof fetch;
 
-export async function exchangeCode(code: string, verifier: string, f: Fetch = fetch) {
+export async function exchangeCode(code: string, verifier: string, f: Fetch = fetch, requested: string[] = SCOPES) {
   const res = await f(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -110,7 +120,7 @@ export async function exchangeCode(code: string, verifier: string, f: Fetch = fe
   const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; id_token?: string; scope?: string; error?: string };
   if (!res.ok || !j.refresh_token) throw new Error(j.error ?? "Google didn't give Kith offline access.");
   const granted = (j.scope ?? "").split(" ");
-  const extra = granted.filter((s) => !SCOPES.includes(s) && s !== "https://www.googleapis.com/auth/userinfo.email");
+  const extra = granted.filter((s) => !requested.includes(s) && s !== "https://www.googleapis.com/auth/userinfo.email");
   if (!granted.includes("https://www.googleapis.com/auth/drive.file")) throw new Error("Drive access wasn't granted.");
   if (extra.length) throw new Error(`Google granted more than Kith asked for (${extra.join(", ")}); not keeping it.`);
   // The id_token came straight from Google's token endpoint over TLS, so its claims can be read.
@@ -118,7 +128,7 @@ export async function exchangeCode(code: string, verifier: string, f: Fetch = fe
   if (!claims.email || !claims.email_verified) throw new Error("Couldn't confirm which Google account this is.");
   const expected = config.google.expectedEmail.toLowerCase();
   if (expected && claims.email.toLowerCase() !== expected) throw new Error(`Please connect ${expected}, not ${claims.email}.`);
-  return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600 };
+  return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600, scopes: granted };
 }
 
 export async function revoke(refresh: string, f: Fetch = fetch) {
@@ -156,10 +166,13 @@ export class GoogleDrive {
   /** A short-lived token for the Google Picker in the child's browser (drive.file only). */
   async pickerToken() { return this.token(); }
 
-  private async call<T>(url: string, init: RequestInit = {}): Promise<T> {
+  /** Any Google API call, with the guard below. Used by googleWork.ts too. */
+  async call<T>(url: string, init: RequestInit = {}): Promise<T> {
     const method = (init.method ?? "GET").toUpperCase();
-    // Belt and braces: Kith never deletes, overwrites or patches anyone's files.
-    if (method === "DELETE" || method === "PATCH" || method === "PUT") throw new Error("Kith never changes or deletes files in Google Drive.");
+    // Belt and braces: Kith never deletes, overwrites, moves or re-shares files. The only PATCH or
+    // DELETE it ever sends is to a calendar event Kith made (checked by the caller first), or to
+    // tick off a task; file edits are POSTed batchUpdates, which keep Google's version history.
+    if (!allowedCall(method, url)) throw new Error("Kith never changes or deletes files in Google Drive.");
     const res = await this.f(url, { ...init, headers: { Authorization: `Bearer ${await this.token()}`, ...(init.headers ?? {}) } });
     const text = await res.text();
     if (!res.ok) throw new Error(`Google answered ${res.status}: ${text.slice(0, 200)}`);
@@ -221,6 +234,7 @@ export class GoogleDrive {
       method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body,
     });
     this.log("create_file", `${opts.folder}/${opts.name}`, r.webViewLink ?? r.id, true);
+    rememberFile(this.db, r.id, opts.name, opts.convertTo ?? opts.bodyType, "created");
     return { id: r.id, url: r.webViewLink ?? `https://drive.google.com/file/d/${r.id}/view` };
   }
 
@@ -247,6 +261,7 @@ export class GoogleDrive {
     }
     const url = `https://docs.google.com/presentation/d/${id}/edit`;
     this.log("create_slides", `Presentations/${title}`, url, true);
+    rememberFile(this.db, id, title, MIME.slides, "created");
     return { id, url };
   }
 
@@ -258,6 +273,26 @@ export class GoogleDrive {
     this.log("read_picked_doc", fileId, "read", true);
     return (await res.text()).slice(0, 100_000);
   }
+}
+
+/** The only non-GET/POST calls Kith may make: Calendar events and Tasks (never Drive, Docs, Sheets or Slides). */
+export function allowedCall(method: string, url: string): boolean {
+  if (method === "GET" || method === "POST") return !/\/permissions\b/.test(url) || /\/files\/[^/]+\/permissions\?sendNotificationEmail=false/.test(url);
+  if (method === "PATCH" || method === "DELETE") {
+    return /^https:\/\/www\.googleapis\.com\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_-]+(\?|$)/.test(url)
+      || (method === "PATCH" && /^https:\/\/tasks\.googleapis\.com\/tasks\/v1\/lists\/[A-Za-z0-9_-]+\/tasks\/[A-Za-z0-9_-]+$/.test(url));
+  }
+  return false;
+}
+
+/** Files Kith may read and (with the switch on) edit: ones it made, and ones she picked. */
+export interface KnownFile { id: string; name: string; mime: string; source: "created" | "picked"; coursework: number; ts: number }
+export function rememberFile(db: DB, id: string, name: string, mime: string, source: "created" | "picked") {
+  run(db, `INSERT INTO google_files(id, name, mime, source, coursework, ts) VALUES (?,?,?,?,0,?)
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime = excluded.mime`, id, name.slice(0, 200), mime, source, Date.now());
+}
+export function knownFile(db: DB, id: string): KnownFile | undefined {
+  return get<KnownFile>(db, "SELECT * FROM google_files WHERE id = ?", id);
 }
 
 // ── Desk item → Google file ─────────────────────────────────────────────────────────────────

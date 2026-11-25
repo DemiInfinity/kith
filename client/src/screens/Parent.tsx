@@ -10,7 +10,7 @@ import { isMacApp } from "../lib/native";
 import { ParentHelp } from "./HelpCentre";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
-interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
+interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string; features?: { edit: boolean; calendar: boolean; tasks: boolean } }
 type Category = "adult" | "gambling" | "dating" | "social" | "harm" | "proxies";
 interface BrowserSettings { enabled: boolean; mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; categories: Category[]; blockLists: string[]; search: "bing" | "duckduckgo" | "wikipedia" | "brave" }
 const CATEGORIES: [Category, string][] = [
@@ -259,7 +259,7 @@ const KIND_HELP: Record<string, string> = {
   calculator: "Runs on the server. No network.",
   dictionary: "Looks words up at the URL below.",
   web: "Reads pages only from the sites listed. Nothing else on the internet.",
-  "google-drive": "Saves what the companion makes into a Kith folder in the child's own Google Drive (drive.file: only files Kith made). The child connects their account on the Google Drive screen. Put your Google email below to get view-only access to the Kith folder; leave it empty to share nothing.",
+  "google-drive": "Saves what the companion makes into a Kith folder in the child's own Google account (drive.file: only files Kith made or the child picks). The child connects their account on the Google screen. Below, you can also let it edit picked Docs, Sheets and Slides, use their calendar, and keep a Homework list: each is off until you switch it on, every change needs the child's yes first, and nothing is ever deleted, shared or emailed. Put your Google email below to get view-only access to the Kith folder; leave it empty to share nothing.",
 };
 
 function money(n: number, cap: number) {
@@ -569,6 +569,18 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
             {c.kind === "home-assistant" && <label className="field">Their room’s entities (comma-separated)<input className="input" value={c.entities.join(", ")} onChange={(e) => setC(i, { entities: list(e.target.value) })} placeholder="light.bedroom, switch.fairy_lights" /></label>}
             {c.kind === "web" && <label className="field">Allowed sites (comma-separated)<input className="input" value={c.sites.join(", ")} onChange={(e) => setC(i, { sites: list(e.target.value) })} placeholder="bbc.co.uk/bitesize, wikipedia.org" /></label>}
             {c.kind === "google-drive" && <label className="field">Your Google email (view-only access to the Kith folder, optional)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} placeholder="you@gmail.com" /></label>}
+            {c.kind === "google-drive" && (() => {
+              const f = c.features ?? { edit: false, calendar: false, tasks: false };
+              const setF = (patch: Partial<typeof f>) => setC(i, { features: { ...f, ...patch } });
+              return (
+                <div className="stack" style={{ gap: 6 }}>
+                  <Toggle label={<>Edit Docs, Sheets and Slides <span className="small">· only files the child picks or Kith made; each change needs their yes; never coursework; Google keeps every version</span></>} checked={f.edit} onChange={(v) => setF({ edit: v })} />
+                  <Toggle label={<>Their Google Calendar <span className="small">· read events; add ones they confirm; only change or remove Kith’s own; never guests or emails</span></>} checked={f.calendar} onChange={(v) => setF({ calendar: v })} />
+                  <Toggle label={<>A Homework list in Google Tasks <span className="small">· read, add and tick off, with their yes</span></>} checked={f.tasks} onChange={(v) => setF({ tasks: v })} />
+                  <span className="small">Calendar and Tasks need the child to connect Google again after you switch them on, so Google can ask them. Gmail, contacts, photos and Classroom are never used.</span>
+                </div>
+              );
+            })()}
             {c.kind === "jellyfin" && <label className="field">Jellyfin user id (for playlists)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} /></label>}
             {!BUILT_IN.has(c.id) && <button className="btn ghost small" onClick={() => { if (confirm(`Remove ${c.name}?`)) setS({ ...s, connections: s.connections.filter((_, j) => j !== i) }); }}><IL i="trash">Remove this connector</IL></button>}
             </details>

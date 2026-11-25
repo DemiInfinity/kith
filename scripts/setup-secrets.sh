@@ -84,6 +84,7 @@ summary() {
   tick KITH_OIDC_CLIENT_SECRET "only for a confidential client"
   tick KITH_GOOGLE_CLIENT_ID "optional: Google Drive"
   tick KITH_GOOGLE_CLIENT_SECRET "optional: Google Drive"
+  tick KITH_GOOGLE_PICKER_API_KEY "optional: Google Picker"
   tick KITH_BRAVE_API_KEY "optional: web search for the desk"
   tick KITH_HA_TOKEN "optional: reports to Home Assistant"
   if [ "$(get KITH_DEV_LOGIN)" = "true" ]; then
@@ -163,11 +164,13 @@ fi
 # ── 4. Optional extras ───────────────────────────────────────────────────────────────
 echo
 echo "${bold}4. Optional extras${off} ${dim}(Enter skips each one)${off}"
-read -r -p "  Set up Google Drive now? [y/N]: " r || true
+read -r -p "  Set up Google now? (docs/google.md has the steps) [y/N]: " r || true
 case "$r" in y|Y)
   ask KITH_GOOGLE_CLIENT_ID "Google OAuth client ID"
   secret KITH_GOOGLE_CLIENT_SECRET "Google OAuth client secret"
-  ask KITH_GOOGLE_ACCOUNT "The only Google account allowed (optional)";;
+  ask KITH_GOOGLE_ACCOUNT "The only Google account allowed (optional)"
+  secret KITH_GOOGLE_PICKER_API_KEY "Google Picker API key (optional, for picking files)"
+  ask KITH_GOOGLE_PROJECT_NUMBER "Google Cloud project number (optional, for the Picker)";;
 esac
 read -r -p "  Add a Brave Search key for the desk browser? [y/N]: " r || true
 case "$r" in y|Y) secret KITH_BRAVE_API_KEY "Brave Search API key";; esac

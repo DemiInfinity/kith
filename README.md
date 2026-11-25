@@ -88,7 +88,7 @@ You get your own view, with the things a parent needs and none of the snooping:
 - **Peace of mind:** a weekly summary at topic level (the same one your child sees), and reports when something matters: *right now*, *today*, or *just so you know*.
 - **No surprise bills:** a weekly allowance and a hard monthly ceiling. When energy runs low, the companion switches to a lighter model and says so cheerfully, instead of stopping.
 - **Your rules:** an editable safeguards document that always comes first, your own family rules, quiet hours, helplines, and which websites its browser can visit.
-- **Connections you approve:** link it to Home Assistant, a family calendar, your media server, Google Drive and more. Each one can be look-only or allowed to act. Nothing that spends money, messages people or posts online is ever offered.
+- **Connections you approve:** link it to Home Assistant, a family calendar, your media server, your child's own Google account (Drive, and if you switch them on, editing files they pick, their calendar and a Homework list, always with their yes first) and more. Each one can be look-only or allowed to act. Nothing that spends money, messages people or posts online is ever offered.
 - **Skills:** write simple how-tos ("how we do bedtime on school nights") that it uses when they're relevant.
 
 ## Safety is built in, not bolted on
@@ -139,7 +139,7 @@ To look around without a sign-in provider, set `KITH_DEV_LOGIN=true` in `.env`. 
 |---|---|
 | [Setup](docs/setup.md) | Everything from the API key to the reverse proxy, plus light and full modes |
 | [Safety and privacy](docs/safety.md) | How the checks, reports, retention and connections work |
-| [Google Drive](docs/google.md) | Saving stories and art to your child's own Drive |
+| [Google](docs/google.md) | Saving to your child's own Drive; with your switches, editing files they pick, their calendar and a Homework list, each change confirmed by them first |
 | [Mac app](docs/macos.md) | The desktop app (Tauri) |
 | [Architecture](docs/architecture.md) | How the pieces fit together |
 | [Under-18s and the Claude API](docs/minors-policy.md) | The rules Kith follows |

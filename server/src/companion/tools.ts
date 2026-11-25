@@ -11,11 +11,14 @@ import { searchHistory } from "./history.js";
 import { addSchedule } from "./schedules.js";
 import { config } from "../config.js";
 import { askForLanguage } from "../study/languageRequests.js";
+import type { Pending } from "../storage/googleWork.js";
 
 export interface TurnEffects {
   memories: string[];
   jobs: { id: number; title: string; kind: string }[];
   characters: number[];
+  /** Google changes waiting for her yes (shown as cards under the reply). */
+  confirms?: Pending[];
 }
 
 const obj = (properties: Record<string, unknown>, required: string[]) =>

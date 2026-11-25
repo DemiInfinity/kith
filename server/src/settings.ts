@@ -50,8 +50,12 @@ export const Connection = z.object({
   // Jellyfin: the user id that playlists are made for. Google Drive: the parent's Google email the
   // Kith folder is shared with, view-only (empty = not shared).
   account: z.string().max(80).default(""),
+  // Google only: what the companion may do beyond saving what it makes. All off until the parent says.
+  features: z.object({ edit: z.boolean().default(false), calendar: z.boolean().default(false), tasks: z.boolean().default(false) })
+    .default({ edit: false, calendar: false, tasks: false }),
 });
 export type Connection = z.infer<typeof Connection>;
+const NO_FEATURES = { edit: false, calendar: false, tasks: false };
 
 export const BrowserSettings = z.object({
   // Pip's browser on the desk: reading only, every page logged. By default it can reach the whole
@@ -143,19 +147,19 @@ export type ParentSettings = z.infer<typeof ParentSettings>;
 export function defaultConnections(): Connection[] {
   return [
     { id: "room", kind: "home-assistant", name: "Bedroom lights (Home Assistant)", enabled: false, level: "act",
-      url: "", tokenEnv: "KITH_CONN_HA_TOKEN", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "KITH_CONN_HA_TOKEN", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "kin", kind: "kin", name: "Kin (calendar, chores, reminders)", enabled: false, level: "look",
-      url: "", tokenEnv: "KITH_CONN_KIN_TOKEN", allowedTools: ["get_today", "list_events", "list_chores", "list_reminders"], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "KITH_CONN_KIN_TOKEN", allowedTools: ["get_today", "list_events", "list_chores", "list_reminders"], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "jellyfin", kind: "jellyfin", name: "Jellyfin (films and music)", enabled: false, level: "look",
-      url: "", tokenEnv: "KITH_CONN_JELLYFIN_TOKEN", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "KITH_CONN_JELLYFIN_TOKEN", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "calculator", kind: "calculator", name: "Calculator", enabled: false, level: "look",
-      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "dictionary", kind: "dictionary", name: "Dictionary", enabled: false, level: "look",
-      url: "https://api.dictionaryapi.dev/api/v2/entries/en/", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "https://api.dictionaryapi.dev/api/v2/entries/en/", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "google", kind: "google-drive", name: "Google Drive (their own account)", enabled: false, level: "act",
-      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
     { id: "web", kind: "web", name: "Websites", enabled: false, level: "look",
-      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
+      url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "", features: NO_FEATURES },
   ];
 }
 
