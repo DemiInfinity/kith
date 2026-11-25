@@ -81,6 +81,8 @@ export const ParentSettings = z.object({
   retentionDays: z.number().int().min(1).max(30).default(30),
   connections: z.array(Connection).max(20).default(defaultConnections()),
   browser: BrowserSettings.default(BrowserSettings.parse({})),
+  // Family safeguards the parent adds on top of the built-in ones. Not shown on the child's profile.
+  safeguards: z.string().max(4000).default(""),
 });
 export type ParentSettings = z.infer<typeof ParentSettings>;
 
@@ -130,6 +132,9 @@ export const CompanionProfile = z.object({
       waterWhileRevising: z.boolean().default(true),
     })
     .default({ askHowThingsWent: true, morningHello: false, waterWhileRevising: true }),
+  // soul.md and identity.md notes: the child's own words. No safeguards live here; they can't override them.
+  soul: z.string().max(3000).default(""),
+  identityNotes: z.string().max(2000).default(""),
   setupDone: z.boolean().default(false),
 });
 export type CompanionProfile = z.infer<typeof CompanionProfile>;

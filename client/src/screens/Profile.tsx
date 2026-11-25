@@ -4,7 +4,10 @@ import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
 
-interface Files { soul: string; personality: string; memory: string }
+interface Files {
+  soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
+  memories: { id: number; icon: string; text: string; date: string | null }[]; summary: string;
+}
 interface Schedule {
   jobs: Job[];
   checkins: {
@@ -16,13 +19,31 @@ interface Schedule {
   routines: { icon: string; what: string; when: string }[];
 }
 
-type Tab = "desk" | "scheduled" | "soul" | "personality" | "memory";
+type Tab = "desk" | "scheduled" | "who";
 
-function MdFile({ name, text }: { name: string; text: string }) {
+/** A section the child can read nicely, and edit. */
+function Section({ title, hint, text, editable, onSave, placeholder }: { title: string; hint: string; text: string; editable?: boolean; onSave?: (t: string) => Promise<void>; placeholder?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  const [err, setErr] = useState("");
+  useEffect(() => setDraft(text), [text]);
+  const save = async () => {
+    try { await onSave!(draft); setEditing(false); setErr(""); } catch (e) { setErr((e as Error).message); }
+  };
   return (
     <div className="mdfile">
-      <div className="mdname">📄 {name}</div>
-      <Markdown text={text} />
+      <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
+        <span>{title}</span>
+        {editable && !editing && <button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => setEditing(true)}>✏️ Edit</button>}
+      </div>
+      {editing ? (
+        <div className="stack" style={{ padding: 14 }}>
+          <textarea className="textarea" style={{ minHeight: 160 }} value={draft} placeholder={placeholder} maxLength={3000} onChange={(e) => setDraft(e.target.value)} />
+          {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
+          <div className="row"><button className="btn primary small" onClick={save}>Save</button><button className="btn ghost small" onClick={() => { setDraft(text); setEditing(false); }}>Cancel</button></div>
+        </div>
+      ) : text.trim() ? <Markdown text={text} /> : <div className="md small">{placeholder}</div>}
+      <div className="small" style={{ padding: "0 18px 12px" }}>{hint}</div>
     </div>
   );
 }
@@ -34,12 +55,16 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
   const [sched, setSched] = useState<Schedule | null>(null);
   const name = me.profile.name;
   useEffect(() => {
-    if (["soul", "personality", "memory"].includes(tab) && !files) api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
+    if (tab === "who" && !files) api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
     if (tab === "scheduled") api<Schedule>("/api/pip/schedule").then(setSched).catch(() => undefined);
   }, [tab, files]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
-  const tabs: [Tab, string][] = [["desk", "🖥️ Desk"], ["scheduled", "🗓️ Scheduled"], ["soul", "soul.md"], ["personality", "personality.md"], ["memory", "memory.md"]];
+  const tabs: [Tab, string][] = [["desk", "🖥️ Desk"], ["scheduled", "🗓️ Scheduled"], ["who", `💜 Who ${name} is`]];
+  const [newMem, setNewMem] = useState("");
+  const saveSoul = async (text: string) => setFiles(await api<Files>("/api/pip/soul", { method: "PUT", body: { text } }));
+  const saveNotes = async (notes: string) => setFiles(await api<Files>("/api/pip/identity", { method: "PUT", body: { notes } }));
+  const reloadFiles = () => api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
   const on = (t: Tab) => (t === "desk" ? "/pip" : `/pip/${t}`);
   const c = sched?.checkins;
 
@@ -58,9 +83,8 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
           <button className="btn ghost small" onClick={() => go("/me")}>✏️ Edit</button>
         </div>
       </div>
-      {state && <div style={{ maxWidth: 520 }}><EnergyCard energy={state.energy} compact /></div>}
       <div className="chips" role="tablist">
-        {tabs.map(([t, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} style={t.endsWith(".md") ? {} : {}} onClick={() => { setTab(t); history.replaceState(null, "", on(t)); }}>{l}</button>)}
+        {tabs.map(([t, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); history.replaceState(null, "", on(t)); }}>{l}</button>)}
       </div>
 
       {tab === "desk" && <DeskComputer me={me} go={go} />}
@@ -99,24 +123,51 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
         </div>
       )}
 
-      {tab === "soul" && (files ? <div style={{ maxWidth: 820 }}><MdFile name="soul.md" text={files.soul} /></div> : <span className="small">…</span>)}
-      {tab === "personality" && (files ? <div style={{ maxWidth: 820 }}><MdFile name="personality.md" text={files.personality} /></div> : <span className="small">…</span>)}
-      {tab === "memory" && (files ? (
-        <div style={{ maxWidth: 820 }} className="stack">
-          <MdFile name="memory.md" text={files.memory} />
-          <button className="btn ghost small" style={{ alignSelf: "flex-start" }} onClick={() => go("/memory")}>Manage memories</button>
+      {tab === "who" && (files ? (
+        <div className="stack" style={{ maxWidth: 820, gap: 14 }}>
+          <span className="small">This is {name}, the way you’ve made it. You can change any of it. (Safety rules sit underneath all of this and don’t change, whatever’s written here.)</span>
+          <Section title="✨ Soul" text={files.soul} editable onSave={saveSoul}
+            hint={files.soulIsDefault ? `This is a starting point. Rewrite it however you like: who ${name} is, what it cares about, how it sees the world.` : `Written by you.`}
+            placeholder={`Who is ${name}? What does it care about?`} />
+          <div className="mdfile">
+            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
+              <span>🎭 Personality</span><button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => go("/me")}>Change look, traits & voice</button>
+            </div>
+            <Markdown text={files.identity} />
+          </div>
+          <Section title="📝 More about its personality" text={files.identityNotes} editable onSave={saveNotes}
+            hint="Catchphrases, favourite things, how it talks… anything that makes it feel like yours."
+            placeholder={`e.g. ${name} says “brilliant!” a lot, loves rainy days and thinks owls are underrated.`} />
+          <div className="mdfile">
+            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13 }}>🧠 Memory</div>
+            <div className="stack" style={{ padding: 14 }}>
+              {files.memories.length === 0 && <span className="small">Nothing yet.</span>}
+              {files.memories.map((m) => (
+                <div key={m.id} className="memrow">
+                  <span>{m.icon}</span><span className="t">{m.text}{m.date ? <span className="small"> · {m.date}</span> : null}</span>
+                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }}>✕</button>
+                </div>
+              ))}
+              <form className="row" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; try { await api("/api/memories", { body: { text: newMem } }); setNewMem(""); void reloadFiles(); } catch (err) { alert((err as Error).message); } }}>
+                <input className="input" value={newMem} maxLength={140} placeholder={`Tell ${name} something to remember`} onChange={(e) => setNewMem(e.target.value)} />
+                <button className="btn primary small" type="submit" disabled={!newMem.trim()}>Add</button>
+              </form>
+              {files.summary && <><b style={{ fontSize: 14, marginTop: 6 }}>Our recent chats, in short</b><span style={{ fontSize: 14, color: "var(--text-3)" }}>{files.summary}</span></>}
+              <span className="small">You’re in charge: {name} never keeps personal details like your address or school.</span>
+            </div>
+          </div>
         </div>
       ) : <span className="small">…</span>)}
     </div>
   );
 }
 
-/** Settings: everything about you and the companion. */
-export function Settings({ me, go }: { me: Me; go: (to: string) => void }) {
+/** Settings: everything about you and the companion, including usage (energy). */
+export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; state: AppState | null }) {
   const name = me.profile.name;
   const logout = async () => { await api("/auth/logout", { body: {} }).catch(() => undefined); location.href = "/"; };
   const rows: [string, string, string, string][] = [
-    ["/pip", "🪪", `${name}’s profile`, "Its desk, what’s scheduled, soul.md, personality.md, memory.md"],
+    ["/pip", "🪪", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
     ["/me", "✨", "Personality", "Name, look, traits and voice"],
     ["/memory", "🧠", `What ${name} remembers`, "See and delete memories; check-ins and notifications"],
     ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"],
@@ -126,6 +177,10 @@ export function Settings({ me, go }: { me: Me; go: (to: string) => void }) {
     <div className="screen narrow">
       <span className="hand">yours</span>
       <h2 className="screen-title">Settings</h2>
+      <b>Usage</b>
+      {state && <EnergyCard energy={state.energy} />}
+      {state && <span className="small">{name}’s desk has its own energy for today: {state.desk.percent}%, so making things never uses up your chats.</span>}
+      <b style={{ marginTop: 6 }}>You and {name}</b>
       {rows.map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
           <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>

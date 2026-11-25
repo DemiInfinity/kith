@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
-import { EnergyCard, HelpSheet, useRoute } from "./components/bits";
+import { HelpSheet, useRoute } from "./components/bits";
 import { Meet } from "./screens/Meet";
 import { Chat } from "./screens/Chat";
 import { Talk } from "./screens/Talk";
@@ -99,14 +99,14 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   let screen: React.ReactNode;
   if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
   else if (path === "/desk" || path.startsWith("/pip")) {
-    const t = (path.split("/")[2] ?? "desk") as "desk" | "scheduled" | "soul" | "personality" | "memory";
-    screen = <PipProfile me={me} state={state} mood={baseMood} go={go} initialTab={["scheduled", "soul", "personality", "memory"].includes(t) ? t : "desk"} />;
+    const t = path.split("/")[2] ?? "desk";
+    screen = <PipProfile me={me} state={state} mood={baseMood} go={go} initialTab={t === "scheduled" ? "scheduled" : ["who", "soul", "personality", "memory"].includes(t) ? "who" : "desk"} />;
   }
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
   else if (path === "/shared") screen = <Shared me={me} />;
-  else if (path === "/settings" || path === "/you") screen = <Settings me={me} go={go} />;
+  else if (path === "/settings" || path === "/you") screen = <Settings me={me} go={go} state={state} />;
   else if (path === "/google") screen = <Google me={me} />;
   else if (path === "/study") screen = <Study me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
@@ -121,7 +121,6 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" />
           <span><b>{name}</b><span>{moodText}</span></span>
         </button>
-        {energy && <div style={{ margin: "-4px 6px 12px" }}><EnergyCard energy={energy} compact /></div>}
         {NAV.map((n) => {
           const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
           return (

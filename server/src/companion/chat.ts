@@ -17,7 +17,7 @@ import { redactPersonal } from "../safety/rules.js";
 import type { SafetyChecker } from "../safety/check.js";
 import type { InputVerdict } from "../safety/types.js";
 import { createReport, deliverReport, type Reporter, type ReportLevel } from "../reporting/reporter.js";
-import { coreRules, personality, type PromptCtx } from "./prompt.js";
+import { identity, safeguards, soulText, type PromptCtx } from "./prompt.js";
 import { memoriesForPrompt } from "./memory.js";
 import { builtinTools, type TurnEffects } from "./tools.js";
 import { connectionTools, type ToolDef } from "../connections/connections.js";
@@ -181,10 +181,12 @@ async function generateReply(
   const convo = await conversationContext(db, llm, profile.name);
   const now = localParts(Date.now(), config.timezone);
   const system: Anthropic.TextBlockParam[] = [
-    { type: "text", text: `${coreRules(ctx)}\n\n${personality(ctx)}`, cache_control: { type: "ephemeral" } },
+    // 1. Safeguards: always first, and they win over everything after them.
+    { type: "text", text: safeguards(ctx, settings.safeguards), cache_control: { type: "ephemeral" } },
+    // 2. Who the companion is, in the child's words (soul.md, identity.md) and what it remembers (memory.md).
     {
       type: "text",
-      text: [memoriesForPrompt(db), convo.summary ? `Earlier in your conversations (summary):\n${convo.summary}` : ""].filter(Boolean).join("\n\n"),
+      text: [soulText(ctx), identity(ctx), memoriesForPrompt(db), convo.summary ? `Earlier in your conversations (summary):\n${convo.summary}` : ""].filter(Boolean).join("\n\n"),
       cache_control: { type: "ephemeral" },
     },
     {

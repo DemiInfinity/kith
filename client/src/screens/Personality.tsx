@@ -122,7 +122,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <Toggle label="🎵 Music and films to try" checked={p.helpWith.music} onChange={(v) => set({ helpWith: { ...p.helpWith, music: v } })} />
       </div>
 
-      <span className="small">Personality changes how {p.name} talks, never the safety rules underneath. {p.name} is an AI, not a person: it’s here to help and cheer you on, not to replace your friends.</span>
+      <span className="small">Want to say more about who {p.name} is? Tap {p.name}’s picture › Who {p.name} is. Personality changes how {p.name} talks, never the safety rules underneath. {p.name} is an AI, not a person: it’s here to help and cheer you on, not to replace your friends.</span>
     </div>
   );
 }

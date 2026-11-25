@@ -7,7 +7,7 @@ import { DeskComputer } from "./DeskComputer";
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
 interface BrowserSettings { enabled: boolean; sites: string[]; assetHosts: string[]; search: "wikipedia" | "brave" }
-interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings }
+interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
   desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
@@ -48,6 +48,8 @@ function money(n: number, cap: number) {
 function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => void }) {
   const [s, setS] = useState<Settings>(initial);
   const [msg, setMsg] = useState("");
+  const [builtIn, setBuiltIn] = useState("");
+  useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
   const b = s.budgets;
   const setB = (k: keyof Budgets, v: number) => setS({ ...s, budgets: { ...b, [k]: v } });
   const setC = (i: number, patch: Partial<Connection>) => setS({ ...s, connections: s.connections.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
@@ -115,7 +117,19 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
       </div>
 
       <div className="card">
-        <b>Pip’s browser (on the desk)</b>
+        <b>Safeguards</b>
+        <span className="small">These always come first, ahead of the soul, personality and memory your child writes, and nothing they write can override them. They aren’t shown on your child’s profile; it just says safety rules sit underneath. The safety check on every message runs separately as well.</span>
+        <details><summary className="small" style={{ cursor: "pointer" }}>Built-in safeguards (always on)</summary>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: "var(--text-3)", fontFamily: "var(--sans)" }}>{builtIn}</pre>
+        </details>
+        <label className="field">Family safeguards you add (they apply just as strictly)
+          <textarea className="textarea" style={{ minHeight: 120 }} maxLength={4000} value={s.safeguards} onChange={(e) => setS({ ...s, safeguards: e.target.value })}
+            placeholder={"e.g.\n- Only your bedroom lights, never other rooms.\n- No horror stories after 8pm.\n- Encourage time outside at weekends."} />
+        </label>
+      </div>
+
+      <div className="card">
+        <b>The desk’s browser</b>
         <span className="small">Reads websites only for tasks your child asked for, only from this safe list, with JavaScript, sign-ins, forms and downloads off. Every page is logged and can be watched live.</span>
         <Toggle label="Browsing switched on" checked={s.browser.enabled} onChange={(v) => setS({ ...s, browser: { ...s.browser, enabled: v } })} />
         <label className="field">Safe list (one per line; a path limits it, e.g. www.bbc.co.uk/bitesize)

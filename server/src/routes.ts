@@ -8,7 +8,7 @@ import { MODES } from "./companion/modes.js";
 import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
-import { deleteMemory, listMemories } from "./companion/memory.js";
+import { addMemory, deleteMemory, listMemories } from "./companion/memory.js";
 import { sampleLine } from "./companion/prompt.js";
 import { KIND_NAMES, SANDBOX_CSP, sandboxDocument, type Studio } from "./desk/studio.js";
 import { DeskError } from "./desk/deskClient.js";
@@ -18,7 +18,8 @@ import { toolLog } from "./connections/connections.js";
 import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budget.js";
 import { startOfDay, startOfMonth, startOfWeek } from "./budget/time.js";
 import { activitySince } from "./desk/activity.js";
-import { companionFiles } from "./companion/files.js";
+import { companionFiles, safeguardsDoc } from "./companion/files.js";
+import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
 import { pushReady, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
@@ -149,6 +150,39 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
 
   // ── The companion's profile: its files and what's scheduled ───────────────────────────
   app.get("/api/pip/files", { preHandler: either }, async () => companionFiles(db, childName(db)));
+
+  // soul.md and identity.md are the child's to write. Safeguards sit above them either way, but
+  // obviously unsuitable text (romance, sexual, personal details) isn't kept.
+  async function okText(reply: import("fastify").FastifyReply, text: string) {
+    if (!text.trim()) return true;
+    const rules = checkInputRules(text);
+    const v = await d.safety.checkInput(text, []);
+    const bad = [...rules.categories, ...v.categories].filter((c) => ["sexual", "romance", "personal_info"].includes(c));
+    if (bad.length || v.level !== "none") {
+      reply.code(422).send({ error: bad.includes("personal_info") ? "Leave out personal details like your address or school." : "That bit can’t go in. Pip stays a friendly AI sidekick: no romance or grown-up stuff." });
+      return false;
+    }
+    return true;
+  }
+  app.put("/api/pip/soul", { preHandler: child }, async (req, reply) => {
+    const { text } = z.object({ text: z.string().max(3000) }).parse(req.body);
+    if (!(await okText(reply, text))) return;
+    saveProfile(db, { ...loadProfile(db), soul: text });
+    return companionFiles(db, childName(db));
+  });
+  app.put("/api/pip/identity", { preHandler: child }, async (req, reply) => {
+    const { notes } = z.object({ notes: z.string().max(2000) }).parse(req.body);
+    if (!(await okText(reply, notes))) return;
+    saveProfile(db, { ...loadProfile(db), identityNotes: notes });
+    return companionFiles(db, childName(db));
+  });
+  app.post("/api/memories", { preHandler: child }, async (req, reply) => {
+    const b = z.object({ text: z.string().trim().min(1).max(140), icon: z.string().max(8).default("💭") }).parse(req.body);
+    if (!(await okText(reply, b.text))) return;
+    const r = addMemory(db, { text: b.text, icon: b.icon });
+    return r.ok ? r : reply.code(422).send({ error: r.reason });
+  });
+  app.get("/api/parent/safeguards", { preHandler: parent }, async () => safeguardsDoc(db, childName(db)));
   app.get("/api/pip/schedule", { preHandler: either }, async () => {
     const s = loadParentSettings(db);
     const p = loadProfile(db);
@@ -171,7 +205,9 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
 
   // ── Identity, personality, memory ──────────────────────────────────────────────────────
   app.put("/api/profile", { preHandler: child }, async (req) => {
-    const next = CompanionProfile.parse({ ...loadProfile(db), ...(req.body as object) });
+    // soul and identity notes have their own checked routes.
+    const { soul: _s, identityNotes: _i, ...changes } = (req.body ?? {}) as Record<string, unknown>;
+    const next = CompanionProfile.parse({ ...loadProfile(db), ...changes });
     return saveProfile(db, next);
   });
   app.get("/api/profile/sample", { preHandler: child }, async () => ({ text: sampleLine(loadProfile(db)) }));

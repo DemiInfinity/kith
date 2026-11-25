@@ -3,6 +3,21 @@
 These rules sit underneath the companion's personality. The child can change its name, look, traits and voice; none of
 that changes anything here.
 
+## Safeguards vs. who the companion is
+
+- **The child shapes who the companion is**, on its profile under "Who … is":
+  - **Soul:** who it is, in their own words.
+  - **Personality:** look, traits and voice, plus their own notes.
+  - **Memory:** what it remembers; they can add or delete.
+  - None of these contain safety rules, so the child can rewrite them freely. Obvious problems (romance, sexual content,
+    personal details) are still refused.
+- **The safeguards are a separate document**, always first in every request, with an instruction that nothing after it
+  can override it:
+  - The built-in rules are always on.
+  - The parent can add family safeguards in the parent view › Settings › Safeguards.
+  - The child's profile doesn't show them; it only says that safety rules sit underneath.
+- **The separate safety check on every message is independent of all of this.**
+
 ## Every message, both ways
 
 What the child says:
