@@ -117,8 +117,9 @@ They install side by side, so you can keep both in the Dock.
 **Signing in.** Pocket ID signs in with passkeys, and macOS only lets passkeys run in a real browser (or in an app
 Apple has approved for that site). So "Sign in with Pocket ID" in the app works like this (`mac/src-tauri/src/signin.rs`):
 
-1. The app starts a one-time handoff with the server (`POST /auth/handoff/start` → an id and a secret), asks
-   `/auth/login?handoff=<id>&json=1` where Pocket ID's page is, and opens it in your browser.
+1. The app starts a one-time handoff with the server (`POST /auth/handoff/start {"app": "child"}`, or `"parent"` in
+   Kith Parent → an id and a secret, in memory only and never logged) and opens `/auth/login?handoff=<id>&app=<app>`
+   in your browser, which goes on to Pocket ID. If the server gives a short code to match, the Kith window shows it.
 2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half,
    sending the secret in the `X-Kith-Handoff-Secret` header. The id can show up in URLs and logs; the secret never
    does, so the id alone can't collect the session.

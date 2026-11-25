@@ -9,7 +9,9 @@
 // 2. The app starts a handoff: POST <server>/auth/handoff/start {app} → {id, secret}. The id goes
 //    in URLs; the secret never does (only in a header), so an id seen in a log or the browser's
 //    history isn't enough to collect the session.
-// 3. GET <server>/auth/login?handoff=<id>&json=1 → the provider's address, opened in her browser.
+// 3. <server>/auth/login?handoff=<id>&app=<hint> opens in her browser (once, within 15 minutes),
+//    which sends her on to the provider. If the start gave a short code to match, the note in
+//    the window shows it.
 // 4. The Kith page polls <server>/auth/handoff/<id> with the X-Kith-Handoff-Secret header (a small
 //    script added to the page, only while the window shows the server itself). When she's signed
 //    in, the server hands the session over once, the page moves on and Kith comes back to the front.
@@ -45,6 +47,8 @@ fn base64url(bytes: &[u8]) -> String {
 struct Handoff {
     id: String,
     secret: Option<String>,
+    /// A short code the sign-in page may ask her to match, if the server gives one.
+    code: Option<String>,
 }
 
 enum Started {
@@ -68,6 +72,8 @@ fn start_handoff(agent: &ureq::Agent, server: &str, hint: &str) -> Started {
     struct Out {
         id: String,
         secret: String,
+        #[serde(default)]
+        code: Option<String>,
     }
     let body = serde_json::json!({ "app": hint }).to_string();
     let resp = agent.post(&format!("{server}/auth/handoff/start")).header("X-Kith", "1").header("Content-Type", "application/json").send(&body);
@@ -76,7 +82,11 @@ fn start_handoff(agent: &ureq::Agent, server: &str, hint: &str) -> Started {
     let text = r.body_mut().read_to_string().unwrap_or_default();
     match status {
         200 => match serde_json::from_str::<Out>(&text) {
-            Ok(o) if is_id(&o.id) && !o.secret.is_empty() => Started::Handoff(Handoff { id: o.id, secret: Some(o.secret) }),
+            Ok(o) if is_id(&o.id) && !o.secret.is_empty() => {
+                // Shown on the page as text: keep it short and plain.
+                let code = o.code.map(|c| crate::eventkit::clip(c.trim(), 16)).filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == ' '));
+                Started::Handoff(Handoff { id: o.id, secret: Some(o.secret), code })
+            }
             _ => Started::Failed(None),
         },
         404 => Started::Old,
@@ -89,8 +99,8 @@ fn is_id(id: &str) -> bool {
     id.len() == 43 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// Where the provider's sign-in page is for this handoff: `{url}` from ?json=1, or the server's
-/// redirect (an older server), without following it. `Err` carries the server's words, if any.
+/// Where the provider's sign-in page is for an older server's handoff: its redirect (or `{url}`),
+/// without following it. `Err` carries the server's words, if any.
 fn provider_url(agent: &ureq::Agent, server: &str, login: &str) -> Result<String, Option<String>> {
     let mut resp = agent.get(login).call().map_err(|_| None)?;
     let status = resp.status();
@@ -119,10 +129,12 @@ fn page_script(h: &Handoff) -> String {
         Some(secret) => format!("{{ \"X-Kith-Handoff-Secret\": {} }}", serde_json::to_string(secret).unwrap_or_default()),
         None => "{}".to_string(),
     };
+    let code = serde_json::to_string(&h.code).unwrap_or_else(|_| "null".into());
     format!(
         r#"(() => {{
   const id = {id:?};
   const headers = {headers};
+  const code = {code};
   if (window.__kithSignin) window.__kithSignin.stop = true;
   const run = {{ stop: false }};
   window.__kithSignin = run;
@@ -132,6 +144,7 @@ fn page_script(h: &Handoff) -> String {
   box.setAttribute("role", "status");
   box.style.cssText = "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.92);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center";
   box.innerHTML = '<div style="max-width:420px;display:flex;flex-direction:column;gap:12px;align-items:center"><b style="font:600 26px/1.15 Fraunces,Georgia,serif">Finish signing in in your browser</b><span id="kith-signin-msg" style="color:#c9a9d1">Use your passkey there. Kith will carry on here by itself.</span><button id="kith-signin-cancel" style="font:inherit;font-weight:700;padding:9px 18px;border-radius:999px;border:1px solid #4a3046;background:transparent;color:#e4b8ec;cursor:pointer">Cancel</button></div>';
+  if (code) {{ const c = document.createElement("span"); c.textContent = "If it asks, check the code there is " + code + "."; c.style.cssText = "font-weight:800;color:#fbeaf6"; box.firstChild.insertBefore(c, box.querySelector("button")); }}
   document.body.appendChild(box);
   const msg = (t) => {{ const m = document.getElementById("kith-signin-msg"); if (m) m.textContent = t; }};
   document.getElementById("kith-signin-cancel").onclick = () => {{ run.stop = true; box.remove(); }};
@@ -189,25 +202,26 @@ pub fn start(app: &AppHandle, server: String) {
     std::thread::spawn(move || {
         let hint = crate::who::hint(&app);
         let agent = crate::net::agent();
-        let (handoff, login) = match start_handoff(&agent, &server, hint) {
+        let (handoff, open) = match start_handoff(&agent, &server, hint) {
+            // The browser goes to Kith's own sign-in address, which sends it on to the provider
+            // (and shows the server's words there if sign-in can't start).
             Started::Handoff(h) => {
-                let login = format!("{server}/auth/login?handoff={}&json=1", h.id);
-                (h, login)
+                let open = format!("{server}/auth/login?handoff={}&app={hint}", h.id);
+                (h, open)
             }
             Started::Old => {
                 let Some(id) = random_id() else { return };
                 let login = format!("{server}/auth/login?handoff={id}&app={hint}");
-                (Handoff { id, secret: None }, login)
+                match provider_url(&agent, &server, &login) {
+                    Ok(p) => (Handoff { id, secret: None, code: None }, p),
+                    Err(words) => {
+                        // Sign-in isn't set up on this server, or it can't be reached.
+                        eval_on_server(&app, &server, &failure_script(words.as_deref()));
+                        return;
+                    }
+                }
             }
             Started::Failed(words) => {
-                eval_on_server(&app, &server, &failure_script(words.as_deref()));
-                return;
-            }
-        };
-        let provider = match provider_url(&agent, &server, &login) {
-            Ok(p) => p,
-            Err(words) => {
-                // Sign-in isn't set up on this server, or it can't be reached.
                 eval_on_server(&app, &server, &failure_script(words.as_deref()));
                 return;
             }
@@ -218,7 +232,7 @@ pub fn start(app: &AppHandle, server: String) {
             return;
         }
         crate::mark_handoff(&app);
-        let _ = app.opener().open_url(provider, None::<&str>);
+        let _ = app.opener().open_url(open, None::<&str>);
     });
 }
 
@@ -228,12 +242,14 @@ mod tests {
 
     #[test]
     fn the_secret_goes_in_a_header_and_is_quoted_safely() {
-        let h = Handoff { id: "a".repeat(43), secret: Some("s\"; alert(1); //".into()) };
+        let h = Handoff { id: "a".repeat(43), secret: Some("s\"; alert(1); //".into()), code: Some("AB-12".into()) };
         let js = page_script(&h);
         assert!(js.contains(r#"const headers = { "X-Kith-Handoff-Secret": "s\"; alert(1); //" };"#), "{js}");
         assert!(!js.contains("/auth/handoff/\" + id + \"?"), "the secret never goes in the URL");
-        let old = page_script(&Handoff { id: "a".repeat(43), secret: None });
+        let old = page_script(&Handoff { id: "a".repeat(43), secret: None, code: None });
         assert!(old.contains("const headers = {};"));
+        assert!(js.contains(r#"const code = "AB-12";"#));
+        assert!(old.contains("const code = null;"));
     }
 
     #[test]
