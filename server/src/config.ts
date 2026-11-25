@@ -26,6 +26,10 @@ export const config = {
   port: num(env.PORT, 8787),
   host: env.HOST ?? "0.0.0.0",
   publicUrl: (env.KITH_PUBLIC_URL ?? "http://localhost:8787").replace(/\/$/, ""),
+  // Whether this Kith also serves the public marketing pages for search engines (the welcome page
+  // at "/", indexable /parents, /terms, /privacy and /setup, a sitemap). Off by default: a family's
+  // own Kith is just the app, "/" is its sign-in, and nothing on it may be indexed.
+  publicSite: bool(env.KITH_PUBLIC_SITE),
   dataDir: env.KITH_DATA_DIR ?? "./data",
   clientDir: env.KITH_CLIENT_DIR ?? "../client/dist",
   timezone: env.KITH_TIMEZONE ?? "Europe/London",

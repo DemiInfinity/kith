@@ -27,6 +27,8 @@
     <meta name="twitter:image" content="https://ai.hearthstream.xyz/welcome/og.png" />
     <meta name="twitter:image:alt" content="Kith's Buddy logo beside the words: An AI friend that lives at home." />
 
+    <!-- An installed app (Home Screen, Dock or the Mac app) isn't a visitor: straight on to its own sign-in, before anything shows. -->
+    <script>try{var n=window.__KITH_APP__;if(n==="child"||n==="parent"||navigator.standalone===true||matchMedia("(display-mode: standalone)").matches||matchMedia("(display-mode: fullscreen)").matches)location.replace("/signin"+location.search)}catch(e){}</script>
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -47,7 +49,7 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
         "image": "https://ai.hearthstream.xyz/welcome/og.png",
         "screenshot": "https://ai.hearthstream.xyz/welcome/chat-desktop.jpg",
-        "codeRepository": "https://github.com/DemiInfinity/kith",
+        "sameAs": ["https://github.com/DemiInfinity/kith"],
         "inLanguage": "en-GB"
       }
     </script>
@@ -182,7 +184,7 @@
             <li><span><b>Every message is checked, both ways,</b> by a separate safety check. If it can't run, the reply waits.</span></li>
             <li><span><b>Personal details are removed</b> before anything leaves your home, and it never asks for them.</span></li>
             <li><span><b>No romance, nothing sexual, no money, no meet-ups.</b> Ever.</span></li>
-            <li><span><b>"Grown-up?" on every screen:</b> one tap to message you, Childline, Samaritans or 999.</span></li>
+            <li><span><b>"Grown-up?" on every screen:</b> one tap to message you, Childline and 999 (and any helplines you add).</span></li>
             <li><span><b>Told first, then shared.</b> Your child sees the exact words before you get them.</span></li>
             <li><span><b>Designed with the UK's Age Appropriate Design Code in mind.</b></span></li>
           </ul>

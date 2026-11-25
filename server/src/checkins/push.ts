@@ -29,19 +29,37 @@ export function isPushEndpoint(endpoint: string): boolean {
   return PUSH_HOSTS.some((h) => ("exact" in h ? host === h.exact : host.endsWith(h.suffix!) && host.length > h.suffix!.length));
 }
 
-export function saveSubscription(db: DB, sub: { endpoint: string; keys: { p256dh: string; auth: string } }, audience: Audience = "child") {
+/**
+ * Saves a device's subscription for the session that turned it on (`sid`). Signing out, being signed
+ * out everywhere, or the session running out removes it. (Older subscriptions saved without a
+ * session keep working until the app registers them again, which it does each time it opens.)
+ */
+export function saveSubscription(db: DB, sub: { endpoint: string; keys: { p256dh: string; auth: string } }, audience: Audience = "child", sid: string | null = null) {
   if (!isPushEndpoint(sub.endpoint)) throw new Error("bad endpoint");
-  run(db, "INSERT INTO push_subs(endpoint, json, created, audience) VALUES (?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET json = excluded.json, audience = excluded.audience",
-    sub.endpoint, JSON.stringify(sub), Date.now(), audience);
+  run(db, "INSERT INTO push_subs(endpoint, json, created, audience, sid) VALUES (?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET json = excluded.json, audience = excluded.audience, sid = excluded.sid",
+    sub.endpoint, JSON.stringify(sub), Date.now(), audience, sid);
+}
+
+/** Removes subscriptions whose session has ended (signed out, or run out). */
+export function pruneSubscriptions(db: DB, now = Date.now()) {
+  run(db, "DELETE FROM push_subs WHERE sid IS NOT NULL AND sid NOT IN (SELECT id FROM sessions WHERE expires > ?)", now);
+}
+
+/** Removes every subscription a session turned on. */
+export function removeSessionSubscriptions(db: DB, sid: string) {
+  run(db, "DELETE FROM push_subs WHERE sid = ?", sid);
 }
 
 export function deviceCount(db: DB, audience: Audience): number {
+  pruneSubscriptions(db);
   return get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM push_subs WHERE audience = ?", audience)?.n ?? 0;
 }
 
 /** Sends to one audience's devices. Returns how many got it. */
 export async function sendTo(db: DB, audience: Audience, payload: Record<string, unknown>, ttl = 3600): Promise<number> {
   if (!pushReady()) return 0;
+  // Never to a device whose session is gone.
+  pruneSubscriptions(db);
   let sent = 0;
   for (const row of all<{ endpoint: string; json: string }>(db, "SELECT endpoint, json FROM push_subs WHERE audience = ?", audience)) {
     try {

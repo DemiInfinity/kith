@@ -132,6 +132,9 @@ fi
 echo
 echo "${bold}2. Address and sign-in${off} ${dim}(not secret, shown as you type)${off}"
 ask KITH_PUBLIC_URL "Kith's address, e.g. https://kith.example.com"
+if [ "$(get KITH_PUBLIC_SITE)" = "true" ]; then cur_site="Y/n"; else cur_site="y/N"; fi
+read -r -p "  Also show the public pages to search engines at this address? Most families don't [$cur_site]: " r || true
+case "$r" in y|Y) put KITH_PUBLIC_SITE true;; n|N) put KITH_PUBLIC_SITE false;; "") is_set KITH_PUBLIC_SITE || put KITH_PUBLIC_SITE false;; esac
 ask KITH_OIDC_ISSUER "Sign-in provider (Pocket ID address)"
 ask KITH_OIDC_CLIENT_ID "Client ID from the provider's Kith client"
 ask KITH_OIDC_CHILD_GROUP "Group for the child"

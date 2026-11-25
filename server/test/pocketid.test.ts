@@ -130,12 +130,12 @@ describe("signing in with Pocket ID", () => {
   });
   it("keeps everyone else out", async () => {
     const { back } = await signIn({ sub: "u-789", email: "someone@example.com", email_verified: true, groups: ["family"] });
-    expect(back.headers.location).toBe("/?signin=not-allowed");
+    expect(back.headers.location).toBe("/signin?signin=not-allowed");
   });
   it("doesn't trust an unverified email (Pocket ID's default) unless told to", async () => {
     config.people.child = ["kid@example.com"];
     const a = await signIn({ sub: "u-1", email: "kid@example.com", email_verified: false, groups: [] });
-    expect(a.back.headers.location).toBe("/?signin=not-allowed");
+    expect(a.back.headers.location).toBe("/signin?signin=not-allowed");
     config.oidc.trustEmail = true;
     const b = await signIn({ sub: "u-1", email: "kid@example.com", email_verified: false, groups: [] });
     expect(b.back.headers.location).toBe("/");
@@ -164,13 +164,13 @@ describe("signing in with Pocket ID", () => {
     await app.register(cookie);
     registerAuth(app, db);
     const r = await app.inject({ method: "GET", url: "/auth/callback?code=x&state=forged" });
-    expect(r.headers.location).toBe("/?signin=expired");
+    expect(r.headers.location).toBe("/signin?signin=expired");
   });
   describe("each app lets in only its own person (?app=)", () => {
     const both = { sub: "u-both", groups: ["kith-child", "kith-parent"] };
     it("a parent who's also in the child group can't get into the child app", async () => {
       const { back, db } = await signIn(both, undefined, undefined, "child");
-      expect(back.headers.location).toBe("/?signin=use-parent-app&app=child");
+      expect(back.headers.location).toBe("/signin?signin=use-parent-app&app=child");
       expect(String(back.headers["set-cookie"] ?? "")).not.toContain("kith_sid=");
       expect(db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
     });
@@ -181,11 +181,11 @@ describe("signing in with Pocket ID", () => {
     });
     it("the child can't get into the parent app, and can get into theirs", async () => {
       const kid = { sub: "u-123", groups: ["kith-child"] };
-      expect((await signIn(kid, undefined, undefined, "parent")).back.headers.location).toBe("/?signin=use-child-app&app=parent");
+      expect((await signIn(kid, undefined, undefined, "parent")).back.headers.location).toBe("/signin?signin=use-child-app&app=parent");
       expect((await signIn(kid, undefined, undefined, "child")).back.headers.location).toBe("/");
     });
     it("strangers are still not allowed, and no hint behaves as before", async () => {
-      expect((await signIn({ sub: "u-x", groups: [] }, undefined, undefined, "child")).back.headers.location).toBe("/?signin=not-allowed&app=child");
+      expect((await signIn({ sub: "u-x", groups: [] }, undefined, undefined, "child")).back.headers.location).toBe("/signin?signin=not-allowed&app=child");
       expect((await signIn(both)).back.headers.location).toBe("/parent");
     });
     it("hands the error back to an installed app's handoff", async () => {
@@ -202,7 +202,7 @@ describe("signing in with Pocket ID", () => {
       expect((await f.app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&app=parent` })).statusCode).toBe(400);
       // Without ?app= on the login, the start's app still applies.
       const r = await signIn(both, h.id, f);
-      expect(r.back.headers.location).toBe("/?signin=done-use-parent-app");
+      expect(r.back.headers.location).toBe("/signin?signin=done-use-parent-app");
     });
     it("refuses an unknown app name", async () => {
       const app = Fastify(); await app.register(cookie); registerAuth(app, openDb(":memory:"));
@@ -229,7 +229,7 @@ describe("signing in with Pocket ID", () => {
       const first = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" }, h.id, f);
       expect(String(first.back.headers["set-cookie"])).not.toContain("kith_sid=");
       expect((await pollH(f.app, h)).json()).toEqual({ pending: true }); // nothing until Yes
-      expect((await confirm(f.app, first.back)).post.headers.location).toBe("/?signin=done");
+      expect((await confirm(f.app, first.back)).post.headers.location).toBe("/signin?signin=done");
       const poll = await pollH(f.app, h);
       expect(poll.json()).toEqual({ ok: true, redirect: "/" });
       const sid = /kith_sid=([^;]+)/.exec(String(poll.headers["set-cookie"]))![1];
@@ -243,20 +243,26 @@ describe("signing in with Pocket ID", () => {
       const h = await startHandoff(f.app);
       expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
       const r = await signIn({ sub: "u-9", groups: ["family"] }, h.id, f);
-      expect(r.back.headers.location).toBe("/?signin=done-not-allowed");
+      expect(r.back.headers.location).toBe("/signin?signin=done-not-allowed");
       const poll = await pollH(f.app, h);
       expect(poll.statusCode).toBe(403);
       expect(poll.headers["set-cookie"]).toBeUndefined();
     });
-    it("expires after 2 minutes, and rejects malformed ids", async () => {
+    it("keeps the waiting session for the handoff's whole life, then ends it, and rejects malformed ids", async () => {
       const f = await fresh();
       const h = await startHandoff(f.app);
       await confirm(f.app, (await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f)).back);
-      f.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 3 * 60_000);
-      expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
-      // And the started handoff itself after 15 minutes.
+      // Ten minutes after Yes (the app was asleep, say), the session is still there for it.
+      f.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 10 * 60_000);
+      f.db.prepare("UPDATE auth_handoff_start SET created = ?").run(Date.now() - 10 * 60_000);
+      expect((await pollH(f.app, h)).json()).toEqual({ ok: true, redirect: "/" });
+      // A second one, never collected: after 15 minutes it's gone, and so is its session.
+      const h2 = await startHandoff(f.app);
+      await confirm(f.app, (await signIn({ sub: "u-123", groups: ["kith-child"] }, h2.id, f)).back);
+      expect(f.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 2 });
       f.db.prepare("UPDATE auth_handoff_start SET created = ?").run(Date.now() - 16 * 60_000);
-      expect((await pollH(f.app, h)).statusCode).toBe(410);
+      expect((await pollH(f.app, h2)).statusCode).toBe(410);
+      expect(f.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 });
       expect((await f.app.inject({ method: "GET", url: "/auth/handoff/short" })).statusCode).toBe(400);
       expect((await f.app.inject({ method: "GET", url: "/auth/login?handoff=bad!" })).statusCode).toBe(400);
     });
@@ -271,7 +277,7 @@ describe("signing in with Pocket ID", () => {
       const code = crypto.randomBytes(8).toString("hex");
       codes.set(code, { challenge: auth.searchParams.get("code_challenge")!, nonce: auth.searchParams.get("nonce")! });
       const back = await app.inject({ method: "GET", url: `/auth/callback?code=${code}&state=${auth.searchParams.get("state")}&iss=${encodeURIComponent(issuer)}` });
-      expect((await confirm(app, back)).post.headers.location).toBe("/?signin=done");
+      expect((await confirm(app, back)).post.headers.location).toBe("/signin?signin=done");
       expect((await pollH(app, h)).json()).toEqual({ ok: true, redirect: "/" });
       // Without a handoff, json=1 changes nothing.
       expect((await app.inject({ method: "GET", url: "/auth/login?json=1" })).statusCode).toBe(302);
@@ -296,6 +302,33 @@ describe("signing in with Pocket ID", () => {
       const id = newId();
       expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${id}&json=1` })).statusCode).toBe(400);
       expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${id}` })).statusCode).toBe(400);
+    });
+    it("doesn't use up a handoff when the provider can't be reached", async () => {
+      const { app } = await fresh();
+      const h = await startHandoff(app);
+      const real = config.oidc.issuer;
+      config.oidc.issuer = "http://127.0.0.1:1"; // nothing listening
+      resetOidcForTests();
+      try {
+        expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` })).statusCode).toBe(500);
+      } finally { config.oidc.issuer = real; resetOidcForTests(); }
+      expect((await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` })).statusCode).toBe(200);
+    });
+    it("a used handoff opened in a browser is a page with Start again", async () => {
+      const { app } = await fresh();
+      const h = await startHandoff(app);
+      await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}&json=1` });
+      const r = await app.inject({ method: "GET", url: `/auth/login?handoff=${h.id}`, headers: { accept: "text/html" } });
+      expect(r.statusCode).toBe(400);
+      expect(r.body).toContain("Start again");
+    });
+    it("a waiting session that's ended (signed out everywhere) means the app hears at once", async () => {
+      const f = await fresh();
+      const h = await startHandoff(f.app);
+      await confirm(f.app, (await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f)).back);
+      const { signOutEverywhere } = await import("../src/auth.js");
+      expect(signOutEverywhere(f.db)).toBe(1);
+      expect((await pollH(f.app, h)).statusCode).toBe(410);
     });
     it("uses a started handoff for one sign-in only", async () => {
       const { app } = await fresh();
@@ -327,7 +360,8 @@ describe("signing in with Pocket ID", () => {
         const { page } = await confirm(f.app, back);
         expect(page.statusCode).toBe(200);
         expect(page.headers["content-security-policy"]).toContain("default-src 'none'");
-        expect(page.body).toContain(`Finish signing in to Kith on your Mac app?`);
+        expect(page.body).toContain(`Finish signing in to Kith on your Mac?`);
+        expect(page.body).toMatch(/class="code" role="img" aria-label="Code \d \d \d \d"/);
         expect(page.body).toContain(`>${h.code}<`);
         expect(page.body).toContain("If you didn't just open Kith yourself, press No.");
         expect(page.body).toContain("Yes, that's my app");
@@ -343,7 +377,7 @@ describe("signing in with Pocket ID", () => {
         const h = await startHandoff(f.app, "parent");
         const { back } = await signIn({ sub: "u-456", groups: ["kith-parent"] }, h.id, f);
         const { post } = await confirm(f.app, back, "no");
-        expect(post.headers.location).toBe("/?signin=done-cancelled");
+        expect(post.headers.location).toBe("/signin?signin=done-cancelled");
         expect(String(post.headers["set-cookie"])).not.toContain("kith_sid=");
         const poll = await pollH(f.app, h);
         expect(poll.statusCode).toBe(403);
@@ -366,12 +400,20 @@ describe("signing in with Pocket ID", () => {
         expect((await f.app.inject(form("guess"))).statusCode).toBe(403);
         expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
         // Without the cookie (another browser), nothing.
-        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm" })).headers.location).toBe("/?signin=expired");
+        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm" })).headers.location).toBe("/signin?signin=expired");
         // The real page works once.
         const page = await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } });
         const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)![1];
-        expect((await f.app.inject(form(csrf))).headers.location).toBe("/?signin=done");
-        expect((await f.app.inject(form(csrf))).headers.location).toBe("/?signin=expired");
+        const yes = await f.app.inject(form(csrf));
+        expect(yes.headers.location).toBe("/signin?signin=done");
+        // The browser that said Yes gets no session of its own: only the app does.
+        expect(String(yes.headers["set-cookie"])).not.toContain("kith_sid=");
+        // A second press is a small page with a way to start again, not JSON.
+        const again = await f.app.inject(form(csrf));
+        expect(again.statusCode).toBe(410);
+        expect(again.headers["content-type"]).toContain("text/html");
+        expect(again.body).toContain("This sign-in has finished");
+        expect(again.body).toContain("Start again");
       });
       it("expires with the handoff", async () => {
         const f = await fresh();
@@ -379,14 +421,36 @@ describe("signing in with Pocket ID", () => {
         const { back } = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
         f.db.prepare("UPDATE auth_handoff_start SET created = ?").run(Date.now() - 16 * 60_000);
         const token = /kith_confirm=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
-        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } })).headers.location).toBe("/?signin=expired");
+        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } })).headers.location).toBe("/signin?signin=expired");
         expect(f.db.prepare("SELECT COUNT(*) AS n FROM auth_handoff_confirm").get()).toEqual({ n: 0 });
       });
       it("says 'Home Screen app' or just 'app', and Kith Parent for the grown-ups' app", async () => {
         const { confirmPage } = await import("../src/auth.js");
-        expect(confirmPage({ app: "parent", device: "homescreen", code: "0042", csrf: "x" })).toContain("Finish signing in to Kith Parent on your Home Screen app?");
-        expect(confirmPage({ app: null, device: null, code: "0042", csrf: "x" })).toContain("on your app?");
+        expect(confirmPage({ app: "parent", device: "homescreen", code: "0042", csrf: "x" })).toContain("Finish signing in to Kith Parent on your Home Screen?");
+        expect(confirmPage({ app: null, device: null, code: "0042", csrf: "x" })).toContain("Finish signing in to Kith in the app?");
+        expect(confirmPage({ app: "parent", device: "mac", code: "0042", csrf: "x", name: "Jo", role: "parent" })).toContain("Finish signing in as Jo (grown-up) to Kith Parent on your Mac?");
+        expect(confirmPage({ app: "child", device: "mac", code: "0042", csrf: "x", name: "Sam", role: "child" })).toContain("Finish signing in as Sam to Kith on your Mac?");
+        expect(confirmPage({ app: "parent", device: "mac", code: "0042", csrf: "x", name: "<i>", role: "parent" })).not.toContain("<i>");
         expect(confirmPage({ app: null, device: null, code: "<b>", csrf: "\"><script>" })).not.toMatch(/<b>|<script>/);
+      });
+      it("shows who's signing in, by first name", async () => {
+        const f = await fresh();
+        const h = (await f.app.inject({ method: "POST", url: "/auth/handoff/start", payload: { app: "parent", device: "mac" } })).json() as H;
+        const { page } = await confirm(f.app, (await signIn({ sub: "u-456", groups: ["kith-parent"], given_name: "Jo" }, h.id, f)).back);
+        expect(page.body).toContain("Finish signing in as Jo (grown-up) to Kith Parent on your Mac?");
+      });
+      it("too many presses is a friendly page too", async () => {
+        const rateLimit = (await import("@fastify/rate-limit")).default;
+        const db = openDb(":memory:");
+        const app = Fastify();
+        await app.register(cookie);
+        await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+        registerAuth(app, db);
+        let last;
+        for (let i = 0; i < 22; i++) last = await app.inject({ method: "POST", url: "/auth/handoff/confirm", headers: { "content-type": "application/x-www-form-urlencoded" }, payload: "answer=yes" });
+        expect(last!.statusCode).toBe(429);
+        expect(last!.headers["content-type"]).toContain("text/html");
+        expect(last!.body).toContain("Start again");
       });
       it("refuses an unknown device", async () => {
         const { app } = await fresh();

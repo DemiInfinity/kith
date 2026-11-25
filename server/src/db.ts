@@ -198,6 +198,13 @@ export const MIGRATIONS: ((db: DB) => void)[] = [
     const dj = (db.prepare("PRAGMA table_info(desk_jobs)").all() as { name: string }[]).map((c) => c.name);
     if (!dj.includes("attempts")) db.exec("ALTER TABLE desk_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0");
   },
+  // 3: each push subscription belongs to the session that turned it on, so signing out (or being
+  // signed out) stops that device's notifications. Older ones have none until the app re-registers.
+  (db) => {
+    const cols = (db.prepare("PRAGMA table_info(push_subs)").all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("sid")) db.exec("ALTER TABLE push_subs ADD COLUMN sid TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS push_subs_sid ON push_subs(sid)");
+  },
 ];
 
 export function migrate(db: DB) {

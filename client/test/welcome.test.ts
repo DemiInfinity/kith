@@ -23,10 +23,25 @@ describe("the public welcome page (real HTML for search engines)", () => {
     const appLd = blocks.find((b) => b["@type"] === "SoftwareApplication");
     expect(appLd.offers.price).toBe("0");
     expect(appLd.operatingSystem).toBe("Web, macOS, iOS");
+    // codeRepository isn't a SoftwareApplication property; the source is linked with sameAs.
+    expect(appLd.codeRepository).toBeUndefined();
+    expect(appLd.sameAs).toContain("https://github.com/DemiInfinity/kith");
     const faq = blocks.find((b) => b["@type"] === "FAQPage");
     expect(faq.mainEntity).toHaveLength(4);
     // The FAQ on the page says the same as the JSON-LD.
     for (const q of faq.mainEntity) expect(html).toContain(`<dt>${q.name}</dt>`);
+  });
+  it("sends an installed app on to sign-in from <head>, before the page shows", () => {
+    const head = html.slice(0, html.indexOf("</head>"));
+    const inline = /<script>([\s\S]*?)<\/script>/.exec(head)?.[1] ?? "";
+    expect(inline).toContain('location.replace("/signin"+location.search)');
+    expect(inline).toContain("display-mode: standalone");
+    expect(inline).toContain("__KITH_APP__");
+    expect(head.indexOf(inline)).toBeLessThan(head.indexOf('<link rel="icon"'));
+  });
+  it("names the helplines Kith has by default", () => {
+    expect(html).not.toContain("Samaritans");
+    expect(html).toContain("Childline and 999 (and any helplines you add)");
   });
   it("has one h1, landmarks, and images with alt text and sizes", () => {
     expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
@@ -88,8 +103,11 @@ describe("terms, privacy and the setup guide (real HTML too)", () => {
   it("the privacy policy covers what's kept, who it's shared with and the operator's own notice", () => {
     const h = read("privacy.html");
     expect(h).toContain("Last updated: 25 November 2026");
-    expect(h).toContain("If you run Kith yourself, you're the data controller and need your own privacy notice (you can adapt this one).");
-    for (const t of ["30 days", "anthropic.com/legal", "one cookie", "Age Appropriate Design Code"]) expect(h).toContain(t);
+    expect(h).toContain("if you run Kith yourself, you're the data controller and need your own privacy notice (you can adapt this one).");
+    for (const t of ["30 days", "anthropic.com/legal", "two cookies", "kith_sid", "kith_confirm", "400 days", "email address", "by hand", "Age Appropriate Design Code"]) expect(h).toContain(t);
+    // Generic: every family's own Kith is run by that family, not by whoever wrote the page.
+    expect(h).not.toContain("this family's own Kith");
+    expect(h).toContain("Every Kith is run by the family it belongs to");
     expect(words(h)).toBeGreaterThan(600);
   });
   it("the setup guide has eleven steps, a table of contents, commands and HowTo data", () => {

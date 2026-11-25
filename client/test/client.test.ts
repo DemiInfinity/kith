@@ -107,12 +107,35 @@ describe("signing in from an installed app", () => {
   it("says what went wrong in plain words", async () => {
     const { handoffWords } = await import("../src/lib/signin");
     const { wrongAppWords } = await import("../src/lib/appHint");
-    expect(handoffWords("expired", wrongAppWords)).toBe("Sign-in timed out. Try again?");
+    expect(handoffWords("expired", wrongAppWords)).toBe("That took a while. Try again?");
     expect(handoffWords("not-allowed", wrongAppWords)).toMatch(/isn’t set up for Kith/);
     expect(handoffWords("use-parent-app", wrongAppWords)).toMatch(/Kith Parent/);
     expect(handoffWords("cancelled", wrongAppWords)).toMatch(/^Sign-in was cancelled/);
     expect(handoffWords("bad handoff secret", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
     expect(handoffWords("failed", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
+  });
+  it("has words for every sign-in result, on the sign-in screen and in the sign-in window", async () => {
+    const { signinWords, doneWords } = await import("../src/lib/signin");
+    const { wrongAppWords } = await import("../src/lib/appHint");
+    expect(signinWords("expired", wrongAppWords)).toBe("That took a while. Try again?");
+    expect(signinWords("failed", wrongAppWords)).toBe("Sign-in didn’t work. Try again?");
+    expect(signinWords("not-allowed", wrongAppWords)).toMatch(/isn’t set up for Kith/);
+    expect(signinWords("use-parent-app", wrongAppWords)).toMatch(/Kith Parent/);
+    expect(signinWords("use-child-app", wrongAppWords)).toMatch(/Kids use Kith/);
+    expect(signinWords("something-new", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
+    expect(signinWords(null, wrongAppWords)).toBeNull();
+    expect(doneWords(null, wrongAppWords).text).toMatch(/close this window/);
+    for (const e of ["cancelled", "expired", "failed", "not-allowed", "use-parent-app", "use-child-app", "whatever"]) {
+      const w = doneWords(e, wrongAppWords);
+      expect(w.title, e).not.toBe("You’re signed in");
+      expect(w.text.length, e).toBeGreaterThan(10);
+    }
+  });
+  it("toasts stay longer for longer messages", async () => {
+    const { toastMs } = await import("../src/lib/action");
+    expect(toastMs("Saved.")).toBe(6_000);
+    expect(toastMs("x".repeat(120))).toBeGreaterThan(toastMs("x".repeat(60)));
+    expect(toastMs("x".repeat(1000))).toBe(15_000);
   });
   it("gets a started handoff and the provider's address ready before the click", async () => {
     const { prepareSignIn, preparedFresh } = await import("../src/lib/signin");

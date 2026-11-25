@@ -68,7 +68,13 @@ against a stand-in shaped like [Pocket ID](https://pocket-id.org).
      `KITH_OIDC_CLIENT_SECRET` (and `KITH_OIDC_TOKEN_AUTH` if your provider wants the secret in the form body).
    - Optional: limit the client to allowed groups in Pocket ID as well.
 2. **Fill in `.env`**:
-   - `KITH_PUBLIC_URL`: Kith's public address, used for redirects and secure cookies.
+   - `KITH_PUBLIC_URL`: Kith's public address, used for redirects and secure cookies (and the addresses
+     the public pages and sitemap point at, if you turn those on).
+   - `KITH_PUBLIC_SITE`: leave it `false` (the default). Your Kith is then just the app: "/" is its own
+     sign-in, `/parents`, `/terms`, `/privacy` and `/setup` are still there for your family to read but
+     every response is marked `noindex`, and `robots.txt` is `User-agent: *` / `Disallow: /`, so search
+     engines and AI crawlers are asked to stay away. Set it to `true` only if you want this address to be a
+     public website about Kith: the welcome page at "/" for visitors, those pages indexable, and a sitemap.
    - `KITH_OIDC_ISSUER`: your Pocket ID address (its `APP_URL`, e.g. `https://id.example.com`, no trailing slash).
    - `KITH_OIDC_CLIENT_ID`.
    - `KITH_PARENT_LABEL`: what the child calls you ("Mum", "Dad"…).

@@ -42,3 +42,17 @@ export async function disablePush() {
     await sub.unsubscribe();
   }
 }
+
+/**
+ * Registers this device's existing subscription again for the session that's signed in now. The
+ * server ties each subscription to a session and drops it when that session ends, so after signing
+ * in again (or from an older version) notifications keep reaching this device.
+ */
+export async function resyncPush() {
+  try {
+    if (!("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) await api("/api/push/subscribe", { body: sub.toJSON() });
+  } catch { /* not now: it's tried again next time the app opens */ }
+}
