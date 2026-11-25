@@ -9,8 +9,7 @@
     "build": "npm run build -w desk && npm run build -w server && npm run build -w client",
     "test": "npm test -w server && npm test -w desk && npm test -w client",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w desk && npm run typecheck -w client",
-    "vapid": "node scripts/vapid.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "vapid": "node scripts/vapid.mjs"
   },
   "engines": { "node": ">=22.13" }
 }
