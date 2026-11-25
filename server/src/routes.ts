@@ -31,6 +31,7 @@ import { localDate } from "./budget/time.js";
 import { deviceCount, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { notifyParent } from "./checkins/parentPush.js";
 import { registerParentInbox } from "./checkins/parentInbox.js";
+import { parentTestChat } from "./companion/parentTest.js";
 import { addSchedule, deleteSchedule, listSchedules, setActive } from "./companion/schedules.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
 import type { Energy } from "./budget/budget.js";
@@ -515,6 +516,20 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     return { ok: true };
   });
   registerParentInbox(app, db);
+  // A short private test chat for the parent (not saved; no tools; never sees the child's chats).
+  app.post("/api/parent/test-chat", { preHandler: parent, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const b = z.object({
+      text: z.string().trim().min(1).max(1000),
+      history: z.array(z.object({ role: z.enum(["parent", "companion"]), text: z.string().max(2000) })).max(12).default([]),
+    }).parse(req.body);
+    if (!d.llm.available) return reply.code(409).send({ error: `${loadProfile(db).name} can't think yet: add the Anthropic API key in Settings › Claude.` });
+    try {
+      return await parentTestChat({ db, llm: d.llm, safety: d.safety, childName: childName(db) }, b.text, b.history);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      return reply.code(502).send({ error: status === 401 ? "Anthropic didn't accept the API key. Check it in Settings › Claude." : `Couldn't reach Claude: ${(err as Error).message.slice(0, 160)}` });
+    }
+  });
   app.post("/api/parent/push/test", { preHandler: parent, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
     const sent = await notifyParent(db, { kind: "test" });
     return { sent, devices: deviceCount(db, "parent") };

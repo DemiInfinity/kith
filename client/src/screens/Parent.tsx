@@ -1,5 +1,5 @@
 import { Icon, IL, type IconName } from "../components/Icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
@@ -50,6 +50,66 @@ function VoiceCheck({ v }: { v: VoiceS }) {
         <div className="pcheck"><span className={`pcheck-dot ${r.stt.ok ? "ok" : ""}`}><Icon name={r.stt.ok ? "check" : "warn"} size={14} /></span><span><b>Listening</b> ({r.setup.sttHost}:{r.setup.sttPort})<br /><span className="small">{r.stt.ok ? `Model loaded: ${loaded.join(", ") || "unknown"}` : r.stt.error}</span></span></div>
         <div className="pcheck"><span className={`pcheck-dot ${r.tts.ok ? "ok" : ""}`}><Icon name={r.tts.ok ? "check" : "warn"} size={14} /></span><span><b>Speaking</b> ({r.setup.ttsHost}:{r.setup.ttsPort})<br /><span className="small">{r.tts.ok ? `${r.tts.installed.length} English voices available` : r.tts.error}</span></span></div>
         {mismatch && <div className="pwarn"><Icon name="warn" size={18} /><span>The listening server has <b>{loaded.join(", ")}</b> loaded, not {v.whisperModel}. The bundled Whisper loads one model when it starts: set <code className="hc-code">KITH_WHISPER_MODEL={v.whisperModel}</code> in .env, then <code className="hc-code">docker compose --profile voice up -d whisper</code>. A shared Wyoming server uses whatever models it has.</span></div>}
+      </>}
+    </div>
+  );
+}
+
+interface TestMsg { role: "parent" | "companion"; text: string; meta?: string }
+
+/** A short private test chat: proves the companion really answers, through the same safety check. */
+function TestChat({ name, ready, onNeedKey }: { name: string; ready: boolean; onNeedKey: () => void }) {
+  const [msgs, setMsgs] = useState<TestMsg[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const list = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }); }, [msgs, busy]);
+  const send = async (t = text) => {
+    const body = t.trim();
+    if (!body || busy) return;
+    setText(""); setErr(""); setBusy(true);
+    const history = msgs.map(({ role, text }) => ({ role, text }));
+    setMsgs((m) => [...m, { role: "parent", text: body }]);
+    try {
+      const r = await api<{ reply: string; model: string; power: string; ms: number; safety: { input: string; output: string } }>("/api/parent/test-chat", { body: { text: body, history } });
+      const power = r.power === "full" ? "Full power" : r.power === "low" ? "Low power" : "Resting";
+      setMsgs((m) => [...m, { role: "companion", text: r.reply, meta: `${r.model} · ${power} · ${(r.ms / 1000).toFixed(1)} s · safety: message ${r.safety.input}, reply ${r.safety.output}` }]);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card ptest">
+      <div className="spread">
+        <h3 className="psec-h"><span className="psec-ic"><Icon name="chat2" size={18} /></span>Try a chat with {name}</h3>
+        {msgs.length > 0 && <button className="btn ghost small" onClick={() => { setMsgs([]); setErr(""); }}>Clear</button>}
+      </div>
+      <span className="small">Check {name} is really working: the same safety check, safeguards and personality your child gets, on the model the current power mode uses. It’s private and isn’t saved: {name} can’t see your child’s chats or memories here, and can’t use tools. Each message costs about a penny.</span>
+      {!ready ? (
+        <div className="pwarn"><Icon name="warn" size={18} /><span style={{ flex: 1 }}>{name} can’t think until the Anthropic API key is set.</span><button className="btn primary small" onClick={onNeedKey}>Add the key</button></div>
+      ) : <>
+        <div className="ptest-list" ref={list} aria-live="polite">
+          {msgs.length === 0 && (
+            <div className="chips">
+              {["Hi! Are you working?", "What can you help with?", "Tell me a fun fact about foxes"].map((q) => <button key={q} className="chip" onClick={() => send(q)}>{q}</button>)}
+            </div>
+          )}
+          {msgs.map((m, i) => (
+            <div key={i} className={`ptest-msg ${m.role === "parent" ? "me" : ""}`}>
+              <div className="ptest-bubble">{m.text}</div>
+              {m.meta && <span className="ptest-meta">{m.meta}</span>}
+            </div>
+          ))}
+          {busy && <div className="ptest-msg"><div className="ptest-bubble"><span className="typing"><i /><i /><i /></span></div></div>}
+        </div>
+        {err && <div className="pwarn"><Icon name="warn" size={18} /><span>{err}</span></div>}
+        <form className="row" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <input className="input" id="ptest-input" aria-label={`Message ${name}`} placeholder={`Message ${name}…`} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+          <button className="btn primary small" type="submit" disabled={busy || !text.trim()}><IL i="send">Send</IL></button>
+        </form>
       </>}
     </div>
   );
@@ -578,6 +638,7 @@ export function Parent({ me }: { me: Me }) {
                   <span className="small">{Math.round(o.lowPower.month.share * 100)}% this month ({o.lowPower.month.turns} turns)</span>
                 </div>
               </div>
+              <TestChat name={comp.name} ready={o.status.apiReady} onNeedKey={() => { setTab("settings"); setTimeout(() => document.getElementById("set-claude")?.scrollIntoView({ behavior: "smooth" }), 80); }} />
               {disk && (
                 <div className="card pstorage">
                   <span className="ptile-h"><span className="psec-ic"><Icon name="folder" size={16} /></span>Storage</span>
