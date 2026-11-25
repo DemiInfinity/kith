@@ -1,0 +1,140 @@
+// Sign-in end to end against a stand-in provider shaped like Pocket ID: discovery at
+// /.well-known/openid-configuration, /authorize, /api/oidc/token, /.well-known/jwks.json,
+// /api/oidc/end-session; a public client with PKCE (S256); RS256 ID tokens with email,
+// email_verified and groups.
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import http from "node:http";
+import crypto from "node:crypto";
+import Fastify from "fastify";
+import cookie from "@fastify/cookie";
+import { openDb } from "../src/db.js";
+import { config } from "../src/config.js";
+import { registerAuth, resetOidcForTests } from "../src/auth.js";
+
+const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+const jwk = { ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "RS256", use: "sig" };
+const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+function sign(claims: Record<string, unknown>) {
+  const head = b64({ alg: "RS256", typ: "JWT", kid: "k1" });
+  const body = b64(claims);
+  const sig = crypto.sign("RSA-SHA256", Buffer.from(`${head}.${body}`), privateKey).toString("base64url");
+  return `${head}.${body}.${sig}`;
+}
+
+let issuer = "";
+let user: Record<string, unknown> = {};
+const codes = new Map<string, { challenge: string; nonce: string }>();
+
+const provider = http.createServer(async (req, res) => {
+  const url = new URL(req.url!, issuer);
+  const json = (o: unknown) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
+  if (url.pathname === "/.well-known/openid-configuration") {
+    return json({
+      issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/api/oidc/token`,
+      userinfo_endpoint: `${issuer}/api/oidc/userinfo`, jwks_uri: `${issuer}/.well-known/jwks.json`,
+      end_session_endpoint: `${issuer}/api/oidc/end-session`, response_types_supported: ["code"],
+      subject_types_supported: ["public"], id_token_signing_alg_values_supported: ["RS256"],
+      code_challenge_methods_supported: ["S256"], scopes_supported: ["openid", "profile", "email", "groups"],
+      token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
+    });
+  }
+  if (url.pathname === "/.well-known/jwks.json") return json({ keys: [jwk] });
+  if (url.pathname === "/api/oidc/token" && req.method === "POST") {
+    let body = "";
+    for await (const c of req) body += c;
+    const p = new URLSearchParams(body);
+    const code = codes.get(p.get("code") ?? "");
+    const verifierHash = crypto.createHash("sha256").update(p.get("code_verifier") ?? "").digest("base64url");
+    if (!code || verifierHash !== code.challenge || p.get("client_id") !== "kith") {
+      res.writeHead(400, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: "invalid_grant" }));
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return json({
+      access_token: "at", token_type: "Bearer", expires_in: 3600,
+      id_token: sign({ iss: issuer, aud: "kith", iat: now, exp: now + 3600, nonce: code.nonce, ...user }),
+    });
+  }
+  res.writeHead(404).end();
+});
+
+beforeAll(async () => {
+  await new Promise<void>((r) => provider.listen(0, "127.0.0.1", r));
+  issuer = `http://127.0.0.1:${(provider.address() as { port: number }).port}`;
+  Object.assign(config.oidc, { issuer, clientId: "kith", clientSecret: "", childGroup: "kith-child", parentGroup: "kith-parent", trustEmail: false });
+  config.people.child = [];
+  config.people.parents = [];
+  config.publicUrl = "http://localhost:8787";
+  resetOidcForTests();
+});
+afterAll(() => provider.close());
+
+async function signIn(claims: Record<string, unknown>) {
+  user = claims;
+  const db = openDb(":memory:");
+  const app = Fastify();
+  await app.register(cookie);
+  registerAuth(app, db);
+  const start = await app.inject({ method: "GET", url: "/auth/login" });
+  expect(start.statusCode).toBe(302);
+  const auth = new URL(start.headers.location as string);
+  expect(auth.origin + auth.pathname).toBe(`${issuer}/authorize`);
+  expect(auth.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(auth.searchParams.get("scope")).toContain("groups");
+  // What Pocket ID would do after the person signs in with their passkey:
+  const code = crypto.randomBytes(8).toString("hex");
+  codes.set(code, { challenge: auth.searchParams.get("code_challenge")!, nonce: auth.searchParams.get("nonce")! });
+  const back = await app.inject({ method: "GET", url: `/auth/callback?code=${code}&state=${auth.searchParams.get("state")}&iss=${encodeURIComponent(issuer)}` });
+  return { app, db, back };
+}
+
+describe("signing in with Pocket ID", () => {
+  it("lets the child in by group, with PKCE", async () => {
+    const { back } = await signIn({ sub: "u-123", email: "kid@example.com", email_verified: false, given_name: "Sam", groups: ["kith-child"] });
+    expect(back.headers.location).toBe("/");
+    expect(String(back.headers["set-cookie"])).toContain("kith_sid=");
+  });
+  it("sends the parent to the parent view", async () => {
+    const { back } = await signIn({ sub: "u-456", email: "grownup@example.com", email_verified: false, groups: ["kith-parent"] });
+    expect(back.headers.location).toBe("/parent");
+  });
+  it("keeps everyone else out", async () => {
+    const { back } = await signIn({ sub: "u-789", email: "someone@example.com", email_verified: true, groups: ["family"] });
+    expect(back.headers.location).toBe("/?signin=not-allowed");
+  });
+  it("doesn't trust an unverified email (Pocket ID's default) unless told to", async () => {
+    config.people.child = ["kid@example.com"];
+    const a = await signIn({ sub: "u-1", email: "kid@example.com", email_verified: false, groups: [] });
+    expect(a.back.headers.location).toBe("/?signin=not-allowed");
+    config.oidc.trustEmail = true;
+    const b = await signIn({ sub: "u-1", email: "kid@example.com", email_verified: false, groups: [] });
+    expect(b.back.headers.location).toBe("/");
+    config.oidc.trustEmail = false;
+    config.people.child = [];
+  });
+  it("matches the Pocket ID user ID", async () => {
+    config.people.child = ["u-555"];
+    const { back } = await signIn({ sub: "u-555", groups: [] });
+    expect(back.headers.location).toBe("/");
+    config.people.child = [];
+  });
+  it("signs out of Pocket ID too", async () => {
+    const { app, back } = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" });
+    const sid = /kith_sid=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
+    const out = await app.inject({ method: "POST", url: "/auth/logout", cookies: { kith_sid: sid } });
+    const redirect = new URL(out.json().redirect);
+    expect(redirect.origin + redirect.pathname).toBe(`${issuer}/api/oidc/end-session`);
+    expect(redirect.searchParams.get("post_logout_redirect_uri")).toBe("http://localhost:8787/");
+    expect(redirect.searchParams.get("id_token_hint")).toBeTruthy();
+  });
+  it("rejects a tampered state", async () => {
+    user = { sub: "u-123", groups: ["kith-child"] };
+    const db = openDb(":memory:");
+    const app = Fastify();
+    await app.register(cookie);
+    registerAuth(app, db);
+    const r = await app.inject({ method: "GET", url: "/auth/callback?code=x&state=forged" });
+    expect(r.headers.location).toBe("/?signin=expired");
+  });
+});

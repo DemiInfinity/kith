@@ -20,12 +20,17 @@ declare module "fastify" {
 }
 
 /** Matches a signed-in identity against the configured people. */
-export function roleFor(ids: { sub: string; email?: string; emailVerified?: boolean }, people = config.people): Role | null {
+export function roleFor(
+  ids: { sub: string; email?: string; emailVerified?: boolean; groups?: string[] },
+  people = config.people,
+  groups = { child: config.oidc.childGroup, parent: config.oidc.parentGroup },
+): Role | null {
   const cands = [ids.sub.toLowerCase()];
   if (ids.email && ids.emailVerified) cands.push(ids.email.toLowerCase());
   const has = (list: string[]) => list.some((x) => cands.includes(x.toLowerCase()));
-  if (has(people.parents)) return "parent";
-  if (has(people.child)) return "child";
+  const inGroup = (g: string) => Boolean(g) && (ids.groups ?? []).some((x) => x.toLowerCase() === g.toLowerCase());
+  if (has(people.parents) || inGroup(groups.parent)) return "parent";
+  if (has(people.child) || inGroup(groups.child)) return "child";
   return null;
 }
 
@@ -53,10 +58,12 @@ export function sessionFor(db: DB, sid: string | undefined): SessionUser | null 
   return { sid: row.id, sub: row.sub, role: row.role, name: row.name };
 }
 
-// Sessions store "sub|email" so removing either from the config ends the session.
-function stillListedByEmail(subjectAndEmail: string, role: Role) {
-  const [sub, email] = subjectAndEmail.split("|");
-  return roleFor({ sub, email, emailVerified: Boolean(email) }) === role;
+// Sessions store "sub|email|group" so removing someone from the config ends their session. (A group
+// can't be re-checked without signing in again, so a group sign-in lasts until the session ends,
+// as long as that group is still the configured one.)
+function stillListedByEmail(stored: string, role: Role) {
+  const [sub, email, group] = stored.split("|");
+  return roleFor({ sub, email, emailVerified: Boolean(email), groups: group ? [group] : [] }) === role;
 }
 
 export function childName(db: DB): string {
@@ -71,17 +78,27 @@ function setCookie(reply: FastifyReply, sid: string, role: Role) {
   });
 }
 
+// Kept in memory only, to hint the provider at sign-out.
+const idTokens = new Map<string, string>();
+
 let oidcConfig: Promise<oidc.Configuration> | null = null;
 function discover() {
   if (!oidcConfig) {
     const issuer = new URL(config.oidc.issuer);
     const opts = issuer.protocol === "http:" ? { execute: [oidc.allowInsecureRequests] } : undefined;
     oidcConfig = oidc
-      .discovery(issuer, config.oidc.clientId, config.oidc.clientSecret || undefined, config.oidc.clientSecret ? undefined : oidc.None(), opts)
+      .discovery(
+        issuer, config.oidc.clientId, config.oidc.clientSecret || undefined,
+        !config.oidc.clientSecret ? oidc.None() : config.oidc.tokenAuth === "post" ? oidc.ClientSecretPost(config.oidc.clientSecret) : oidc.ClientSecretBasic(config.oidc.clientSecret),
+        opts,
+      )
       .catch((err) => { oidcConfig = null; throw err; });
   }
   return oidcConfig;
 }
+
+/** For tests: forget the cached provider metadata. */
+export function resetOidcForTests() { oidcConfig = null; }
 
 export function registerAuth(app: FastifyInstance, db: DB) {
   const redirectUri = `${config.publicUrl}/auth/callback`;
@@ -95,7 +112,7 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     run(db, "INSERT INTO oidc_state(state, verifier, nonce, created) VALUES (?,?,?,?)", state, verifier, nonce, Date.now());
     const url = oidc.buildAuthorizationUrl(cfg, {
       redirect_uri: redirectUri,
-      scope: "openid email profile",
+      scope: config.oidc.childGroup || config.oidc.parentGroup ? "openid email profile groups" : "openid email profile",
       code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
       code_challenge_method: "S256",
       state,
@@ -118,9 +135,14 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       });
       const claims = tokens.claims()!;
       const email = typeof claims.email === "string" ? claims.email : undefined;
-      const role = roleFor({ sub: claims.sub, email, emailVerified: claims.email_verified === true });
+      const verified = claims.email_verified === true || config.oidc.trustEmail;
+      const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).filter((g): g is string => typeof g === "string") : [];
+      const role = roleFor({ sub: claims.sub, email, emailVerified: verified, groups });
       if (!role) return reply.redirect("/?signin=not-allowed");
-      const sid = createSession(db, { sub: `${claims.sub}|${claims.email_verified === true && email ? email : ""}`, role, name: firstName(claims as { given_name?: unknown; name?: unknown }) });
+      const viaGroup = role === "parent" ? config.oidc.parentGroup : config.oidc.childGroup;
+      const group = viaGroup && groups.some((g) => g.toLowerCase() === viaGroup.toLowerCase()) ? viaGroup : "";
+      if (tokens.id_token) idTokens.set(claims.sub, tokens.id_token);
+      const sid = createSession(db, { sub: `${claims.sub}|${verified && email ? email : ""}|${group}`, role, name: firstName(claims as { given_name?: unknown; name?: unknown }) });
       setCookie(reply, sid, role);
       return reply.redirect(role === "parent" ? "/parent" : "/");
     } catch (err) {
@@ -129,11 +151,26 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     }
   });
 
+  // Signs out of Kith, and (if the provider supports it, as Pocket ID does) out of the provider too:
+  // the app sends the browser to `redirect`.
   app.post("/auth/logout", async (req, reply) => {
     const sid = req.cookies[COOKIE];
+    const row = sid ? get<{ sub: string }>(db, "SELECT sub FROM sessions WHERE id = ?", sid) : undefined;
     if (sid) run(db, "DELETE FROM sessions WHERE id = ?", sid);
     reply.clearCookie(COOKIE, { path: "/" });
-    return { ok: true };
+    let redirect: string | null = null;
+    if (config.oidc.issuer && row && !row.sub.startsWith("dev:")) {
+      try {
+        const cfg = await discover();
+        if (cfg.serverMetadata().end_session_endpoint) {
+          const sub = row.sub.split("|")[0];
+          const hint = idTokens.get(sub);
+          idTokens.delete(sub);
+          redirect = oidc.buildEndSessionUrl(cfg, { post_logout_redirect_uri: `${config.publicUrl}/`, ...(hint ? { id_token_hint: hint } : {}) }).href;
+        }
+      } catch { /* provider unreachable: still signed out of Kith */ }
+    }
+    return { ok: true, redirect };
   });
 
   // Local testing without a sign-in provider. Off unless KITH_DEV_LOGIN=true.

@@ -55,17 +55,32 @@ Every call is costed from the API's reported usage, safety checks included. Pric
 
 ## 2. Sign-in (Pocket ID or any OpenID Connect provider)
 
+Kith signs in with OpenID Connect using the authorization code flow with PKCE (S256), state and nonce. It's tested
+against a stand-in shaped like [Pocket ID](https://pocket-id.org).
+
 1. **In Pocket ID, add an OIDC client** named "Kith":
    - Callback URL: `https://<your-kith-host>/auth/callback`.
-   - Turn PKCE on. With PKCE you can leave the client secret empty (a public client).
+   - Logout callback URL: `https://<your-kith-host>/`.
+   - Make it a **public client** (PKCE, no secret). A confidential client works too; then set
+     `KITH_OIDC_CLIENT_SECRET` (and `KITH_OIDC_TOKEN_AUTH` if your provider wants the secret in the form body).
+   - Optional: limit the client to allowed groups in Pocket ID as well.
 2. **Fill in `.env`**:
    - `KITH_PUBLIC_URL`: Kith's public address, used for redirects and secure cookies.
-   - `KITH_OIDC_ISSUER`: e.g. `https://auth.example.com`.
-   - `KITH_OIDC_CLIENT_ID`, plus `KITH_OIDC_CLIENT_SECRET` if the client isn't public.
-   - `KITH_CHILD_IDS` and `KITH_PARENT_IDS`: comma-separated **verified** emails, or OIDC subject ids. Nobody else gets
-     in. Taking someone out of the list ends their sessions.
+   - `KITH_OIDC_ISSUER`: your Pocket ID address (its `APP_URL`, e.g. `https://id.example.com`, no trailing slash).
+   - `KITH_OIDC_CLIENT_ID`.
    - `KITH_PARENT_LABEL`: what the child calls you ("Mum", "Dad"…).
-3. **If your identity provider uses a private CA**, give the container `NODE_EXTRA_CA_CERTS`.
+3. **Say who gets in.** Use one, or combine them; nobody else gets in.
+
+   | Way | Settings | Notes |
+   |---|---|---|
+   | **Groups** (easiest with Pocket ID) | `KITH_OIDC_CHILD_GROUP=kith-child`, `KITH_OIDC_PARENT_GROUP=kith-parent` | Create these groups in Pocket ID. Kith then asks for the `groups` scope. |
+   | **User IDs** | `KITH_CHILD_IDS` / `KITH_PARENT_IDS` | The Pocket ID user ID (the token's `sub`). |
+   | **Verified emails** | `KITH_CHILD_IDS` / `KITH_PARENT_IDS` | Pocket ID only marks emails verified if `EMAILS_VERIFIED` or email verification is on. Kith ignores unverified emails unless `KITH_OIDC_TRUST_EMAIL=true`. |
+
+   Taking someone out of the ID/email lists ends their sessions. A group sign-in lasts until the session ends (30 days
+   for the child, 14 for a parent), as long as the group setting is unchanged.
+4. **Signing out** of Kith also signs out of Pocket ID (RP-initiated logout).
+5. **If Pocket ID uses a private CA**, give the container `NODE_EXTRA_CA_CERTS`.
 
 `KITH_DEV_LOGIN=true` adds "Try as the child / parent" buttons with no sign-in. Use it only on your own machine.
 

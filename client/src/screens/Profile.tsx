@@ -199,7 +199,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
 /** Settings: everything about you and the companion, including usage (energy). */
 export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; state: AppState | null }) {
   const name = me.profile.name;
-  const logout = async () => { await api("/auth/logout", { body: {} }).catch(() => undefined); location.href = "/"; };
+  const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
   const rows: [string, string, string, string][] = [
     ["/pip", "🪪", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
     ["/me", "✨", "Personality", "Name, look, traits and voice"],

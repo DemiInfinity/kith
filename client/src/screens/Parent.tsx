@@ -184,7 +184,7 @@ export function Parent({ me }: { me: Me }) {
     setTestMsg("Sending…");
     try { const r = await api<{ ok: boolean }>("/api/parent/test-report", { body: {} }); setTestMsg(r.ok ? "Delivered ✓" : "It didn’t get through: check the reporter settings."); } catch (e) { setTestMsg((e as Error).message); }
   };
-  const logout = async () => { await api("/auth/logout", { body: {} }).catch(() => undefined); location.href = "/"; };
+  const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
   const cname = o?.childName || "your child";
   const comp = o?.companion ?? me.profile;
   const meChild: Me = { ...me, profile: comp };

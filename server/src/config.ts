@@ -46,6 +46,14 @@ export const config = {
     clientId: env.KITH_OIDC_CLIENT_ID ?? "",
     clientSecret: env.KITH_OIDC_CLIENT_SECRET ?? "",
     label: env.KITH_OIDC_LABEL ?? "Pocket ID",
+    // Optional: let people in by group (Pocket ID sends a "groups" claim with the groups scope).
+    childGroup: env.KITH_OIDC_CHILD_GROUP ?? "",
+    parentGroup: env.KITH_OIDC_PARENT_GROUP ?? "",
+    // Pocket ID only marks emails verified if it's set to (EMAILS_VERIFIED / email verification).
+    // Leave false and match by user ID or group instead, unless you trust your provider's emails.
+    trustEmail: bool(env.KITH_OIDC_TRUST_EMAIL),
+    // How the client authenticates at the token endpoint when it has a secret: "basic" or "post".
+    tokenAuth: (env.KITH_OIDC_TOKEN_AUTH ?? "basic") as "basic" | "post",
   },
   // Local testing only: lets you pick child/parent without a sign-in provider. Never in production.
   devLogin: bool(env.KITH_DEV_LOGIN),
