@@ -17,13 +17,18 @@ export const estimateTokens = (s: string) => Math.ceil(s.length / 4);
 export const HISTORY_MAX_TOKENS = 7000;   // above this, older messages are summarised…
 export const HISTORY_KEEP_TOKENS = 3500;  // …until the verbatim part is about this big
 
-export function loadRolling(db: DB): Rolling | null {
-  const r = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'rolling_summary'");
+const key = (thread: number) => (thread === 1 ? "rolling_summary" : `rolling_summary:${thread}`);
+
+export function loadRolling(db: DB, thread = 1): Rolling | null {
+  const r = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = ?", key(thread));
   return r ? (JSON.parse(r.json) as Rolling) : null;
 }
-export function saveRolling(db: DB, r: Rolling | null) {
-  if (!r) run(db, "DELETE FROM settings WHERE key = 'rolling_summary'");
-  else run(db, "INSERT INTO settings(key, json) VALUES('rolling_summary', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(r));
+export function saveRolling(db: DB, r: Rolling | null, thread = 1) {
+  if (!r) run(db, "DELETE FROM settings WHERE key = ?", key(thread));
+  else run(db, "INSERT INTO settings(key, json) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", key(thread), JSON.stringify(r));
+}
+export function allRollingKeys(db: DB) {
+  return all<{ key: string; json: string }>(db, "SELECT key, json FROM settings WHERE key LIKE 'rolling_summary%'");
 }
 
 /** Splits messages into the part to summarise (oldest) and the part to keep word for word. Pure. */
@@ -41,11 +46,17 @@ export function splitForSummary(msgs: Msg[], max = HISTORY_MAX_TOKENS, keep = HI
   return { fold: msgs.slice(0, i), keep: msgs.slice(i) };
 }
 
-/** The conversation context for a turn: a rolling summary plus recent messages. */
-export async function conversationContext(db: DB, llm: LLM, companionName: string): Promise<{ summary: string; recent: Msg[] }> {
-  let rolling = loadRolling(db);
+/**
+ * The conversation context for a turn: a rolling summary plus recent messages, for one thread.
+ * This is the compactor: when the thread gets long, the oldest messages are folded into the summary
+ * (small model) and their full text is archived to a history .md file for recall later.
+ */
+export async function conversationContext(
+  db: DB, llm: LLM, companionName: string, thread = 1, archive?: (folded: Msg[], summary: string) => void,
+): Promise<{ summary: string; recent: Msg[] }> {
+  let rolling = loadRolling(db, thread);
   const since = rolling?.upToId ?? 0;
-  const msgs = all<Msg>(db, "SELECT id, ts, role, text, mode FROM messages WHERE id > ? ORDER BY id", since);
+  const msgs = all<Msg>(db, "SELECT id, ts, role, text, mode FROM messages WHERE thread_id = ? AND id > ? ORDER BY id", thread, since);
   const { fold, keep } = splitForSummary(msgs);
   if (fold.length && llm.available) {
     try {
@@ -64,7 +75,8 @@ export async function conversationContext(db: DB, llm: LLM, companionName: strin
       const text = textOf(msg);
       if (text) {
         rolling = { upToId: fold[fold.length - 1].id, text: text.slice(0, 3000), ts: Date.now() };
-        saveRolling(db, rolling);
+        saveRolling(db, rolling, thread);
+        try { archive?.(fold, rolling.text); } catch (err) { console.warn("[context] couldn't write history", (err as Error).message); }
         return { summary: rolling.text, recent: keep };
       }
     } catch (err) {

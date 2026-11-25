@@ -4,6 +4,8 @@ import type { DB } from "./db.js";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
+import { createThread, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
+import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
 import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
@@ -72,12 +74,35 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     };
   });
 
-  app.get("/api/messages", { preHandler: child }, async () => ({ messages: recentMessages(db, 200) }));
+  app.get("/api/messages", { preHandler: child }, async (req) => {
+    const thread = Number((req.query as { thread?: string }).thread) || MAIN_THREAD;
+    return { messages: recentMessages(db, 200, thread) };
+  });
+
+  // ── Side chats ────────────────────────────────────────────────────────────────────────
+  app.get("/api/threads", { preHandler: child }, async () => ({ threads: listThreads(db) }));
+  app.post("/api/threads", { preHandler: child }, async (req) => {
+    const b = z.object({ title: z.string().max(60).optional(), fromMessageId: z.number().int().optional() }).parse(req.body ?? {});
+    const from = b.fromMessageId ? get<{ text: string; thread_id: number }>(db, "SELECT text, thread_id FROM messages WHERE id = ?", b.fromMessageId) : undefined;
+    return createThread(db, { title: b.title, fromText: from?.text, parentId: from?.thread_id });
+  });
+  app.patch("/api/threads/:id", { preHandler: child }, async (req, reply) => {
+    const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional() }).parse(req.body ?? {});
+    return updateThread(db, Number((req.params as { id: string }).id), b) ? { ok: true } : reply.code(400).send({ error: "The main chat can’t be archived." });
+  });
+
+  // ── Chat history archive (the child's only) ───────────────────────────────────────────
+  app.get("/api/history", { preHandler: child }, async () => ({ files: listHistory() }));
+  app.get("/api/history/file", { preHandler: child }, async (req, reply) => {
+    const md = readHistory(String((req.query as { f?: string }).f ?? ""));
+    return md === null ? reply.code(404).send({ error: "not found" }) : { md };
+  });
 
   const ChatBody = z.object({
     text: z.string().trim().min(1).max(4000),
     mode: z.enum(MODES).default("chat"),
     ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional() }).default({}),
+    thread: z.number().int().optional(),
   });
   app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req) => {
     const body = ChatBody.parse(req.body);

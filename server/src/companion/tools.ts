@@ -7,6 +7,7 @@ import { addMemory } from "./memory.js";
 import type { ToolDef } from "../connections/connections.js";
 import { KIND_NAMES, type Studio } from "../desk/studio.js";
 import { addWorld, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
+import { searchHistory } from "./history.js";
 
 export interface TurnEffects {
   memories: string[];
@@ -22,6 +23,17 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
     ({ name, description, input_schema, connection: "companion", level: "act", run });
 
   return [
+    tool(
+      "recall_history",
+      "Search your archived past conversations with them. Only use this when they ask you to remember something specific from before that isn't in your summary or recent messages.",
+      obj({ query: { type: "string", description: "What to look for, in a few words" } }, ["query"]),
+      async (input) => {
+        const q = z.object({ query: z.string().max(200) }).parse(input).query;
+        const hits = searchHistory(q);
+        if (!hits.length) return "Nothing in the archive matches that.";
+        return hits.map((h) => `From ${h.file.replace(/^thread-\d+\//, "").slice(0, 10)}:\n${h.excerpt}`).join("\n\n---\n\n");
+      },
+    ),
     tool(
       "remember",
       "Remember something that matters to them (an upcoming test or show, what they're into, how they like to revise). Never personal details like address, school, full name or phone. They can see and delete every memory.",

@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS browse_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL,
   why TEXT NOT NULL, job_id INTEGER, outcome TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS threads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, title TEXT NOT NULL, parent_id INTEGER,
+  from_text TEXT, archived INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS world (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, json TEXT NOT NULL
 );
@@ -104,6 +108,7 @@ export function openDb(file: string): DB {
   const db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -118,4 +123,13 @@ export function get<T>(db: DB, sql: string, ...params: (string | number | null)[
 }
 export function run(db: DB, sql: string, ...params: (string | number | null)[]) {
   return db.prepare(sql).run(...params);
+}
+
+/** Small additive migrations for existing databases. */
+function migrate(db: DB) {
+  const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
+  db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");
+  // Thread 1 is always the main chat.
+  db.prepare("INSERT OR IGNORE INTO threads(id, ts, title, updated) VALUES (1, ?, 'Chat', ?)").run(Date.now(), Date.now());
 }

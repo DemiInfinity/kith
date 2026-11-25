@@ -26,13 +26,15 @@ import { localParts } from "../budget/time.js";
 
 import { modeNote, prefersLowPower, type Mode, type ModeCtx } from "./modes.js";
 import { conversationContext } from "./context.js";
+import { getThread, MAIN_THREAD, threadNote, touchThread } from "./threads.js";
+import { writeHistory } from "./history.js";
 import { getSubject } from "../study/study.js";
 import { logActivity } from "../desk/activity.js";
 import { get as dbGet } from "../db.js";
 export type { Mode } from "./modes.js";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
 
-export interface StoredMessage { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }
+export interface StoredMessage { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null; thread_id?: number }
 
 export interface TurnResult {
   child: StoredMessage;
@@ -56,13 +58,14 @@ export interface Deps {
 const HELD_BACK =
   "Hmm, I don't think I should answer that one. Want to talk about something else? If something's on your mind, “Need a grown-up?” is always there.";
 
-export function recentMessages(db: DB, limit = 40): StoredMessage[] {
-  return all<StoredMessage>(db, "SELECT id, ts, role, text, mode, meta FROM messages ORDER BY id DESC LIMIT ?", limit).reverse();
+export function recentMessages(db: DB, limit = 40, thread = MAIN_THREAD): StoredMessage[] {
+  return all<StoredMessage>(db, "SELECT id, ts, role, text, mode, meta, thread_id FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?", thread, limit).reverse();
 }
 
-function store(db: DB, role: "child" | "companion", text: string, mode: Mode, meta?: unknown): StoredMessage {
+function store(db: DB, role: "child" | "companion", text: string, mode: Mode, meta?: unknown, thread = MAIN_THREAD): StoredMessage {
   const ts = Date.now();
-  const res = run(db, "INSERT INTO messages(ts, role, text, mode, meta) VALUES (?,?,?,?,?)", ts, role, text, mode, meta ? JSON.stringify(meta) : null);
+  const res = run(db, "INSERT INTO messages(ts, role, text, mode, meta, thread_id) VALUES (?,?,?,?,?,?)", ts, role, text, mode, meta ? JSON.stringify(meta) : null, thread);
+  touchThread(db, thread);
   return { id: Number(res.lastInsertRowid), ts, role, text, mode, meta: meta ? JSON.stringify(meta) : null };
 }
 
@@ -84,7 +87,8 @@ export function restingText(_e: Energy, parent: string) {
 
 export { whenText };
 
-export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ctx?: ModeCtx }): Promise<TurnResult> {
+export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ctx?: ModeCtx; thread?: number }): Promise<TurnResult> {
+  const thread = input.thread && getThread(deps.db, input.thread) ? input.thread : MAIN_THREAD;
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
   const profile = loadProfile(db);
@@ -92,10 +96,10 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
   const effects: TurnEffects = { memories: [], jobs: [], characters: [] };
 
   const raw = input.text.trim().slice(0, 4000);
-  const history = recentMessages(db, 40);
+  const history = recentMessages(db, 40, thread);
   const verdict = await safety.checkInput(raw, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`));
   const { text: clean } = redactPersonal(raw);
-  const child = store(db, "child", clean, input.mode);
+  const child = store(db, "child", clean, input.mode, undefined, thread);
 
   let report: TurnResult["report"] = null;
   if (verdict.level !== "none") {
@@ -121,7 +125,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
       const switchedToLow = energy.mode === "low" && (!last || JSON.parse(last.json) === "full");
       run(db, "INSERT INTO settings(key, json) VALUES('last_power', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(energy.mode));
       if (switchedToLow) logActivity(db, "🔋", `Switched to Low power${energy.fullBackAt ? ` (Full power back ${whenText(energy.fullBackAt)})` : ""}`);
-      replyText = await generateReply(deps, { clean, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
+      replyText = await generateReply(deps, { clean, thread, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
       if (report) mood = "concerned";
     } catch (err) {
       if (err instanceof OfflineError) {
@@ -135,7 +139,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
     }
   }
 
-  const reply = store(db, "companion", replyText, input.mode, report ? { report } : undefined);
+  const reply = store(db, "companion", replyText, input.mode, report ? { report } : undefined, thread);
   energy = energyNow(db);
 
   // Told first (the reply above), then the parent hears.
@@ -159,7 +163,7 @@ export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: 
 
 async function generateReply(
   deps: Deps,
-  a: { clean: string; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
+  a: { clean: string; thread: number; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
 ): Promise<string> {
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
@@ -178,7 +182,12 @@ async function generateReply(
 
   // Stable first and cached: the rules and personality, then memories and the rolling summary
   // (which change now and then). The time and per-mode notes change every turn, so they come last.
-  const convo = await conversationContext(db, llm, profile.name);
+  const convo = await conversationContext(db, llm, profile.name, a.thread, (folded, summary) => {
+    writeHistory({
+      thread: a.thread, threadTitle: getThread(db, a.thread)?.title ?? "Chat", companionName: profile.name, childName: deps.childName,
+      summary, messages: folded,
+    });
+  });
   const now = localParts(Date.now(), config.timezone);
   const system: Anthropic.TextBlockParam[] = [
     // 1. Safeguards: always first, and they win over everything after them.
@@ -195,6 +204,8 @@ async function generateReply(
         `Now: ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.weekday]} ${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")} ${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}.`,
         model === config.anthropic.lowModel ? "You're on Low power right now: keep replies simple and short." : "",
         modeNote(db, a.mode, a.ctx),
+        threadNote(db, a.thread),
+        "Older conversations are archived. Your summary covers the gist; only if they ask you to remember something specific from before that isn't in it, use recall_history to look it up (don't use it otherwise).",
       ].filter(Boolean).join("\n\n"),
     },
   ];

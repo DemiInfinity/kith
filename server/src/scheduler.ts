@@ -15,7 +15,8 @@ import { textOf, type LLM } from "./llm.js";
 import { isGuiltTrip, redactPersonal } from "./safety/rules.js";
 import type { SafetyChecker } from "./safety/check.js";
 import { deliverReport, failedReports, type Reporter } from "./reporting/reporter.js";
-import { loadRolling, saveRolling } from "./companion/context.js";
+import { allRollingKeys } from "./companion/context.js";
+import { purgeHistory } from "./companion/history.js";
 import { logActivity } from "./desk/activity.js";
 
 const MIN = 60_000;
@@ -41,9 +42,11 @@ export function retention(db: DB, now = Date.now()) {
   const days = loadParentSettings(db).retentionDays;
   const cutoff = now - days * DAY;
   run(db, "DELETE FROM messages WHERE ts < ?", cutoff);
-  // The rolling summary is made from chats, so it goes with them.
-  const rolling = loadRolling(db);
-  if (rolling && rolling.ts < cutoff) saveRolling(db, null);
+  // Rolling summaries and the history archive are made from chats, so they go with them.
+  for (const r of allRollingKeys(db)) {
+    if ((JSON.parse(r.json) as { ts: number }).ts < cutoff) run(db, "DELETE FROM settings WHERE key = ?", r.key);
+  }
+  purgeHistory(days, now);
   run(db, "DELETE FROM checkins WHERE ts < ?", cutoff);
   run(db, "DELETE FROM tool_log WHERE ts < ?", cutoff);
   run(db, "DELETE FROM desk_activity WHERE ts < ?", cutoff);
