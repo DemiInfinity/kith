@@ -297,7 +297,8 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
 @keyframes zzz { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -14px); } }
-.orb { border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #f2c4f6, #5a2a48 120%); flex: none; }
+/* Deep plum behind the character (with a soft glow) so lilac and peach looks stand out instead of blending in. */
+.orb { border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 50% 38%, #5a3a64 0%, #3a2440 45%, #22142a 100%); box-shadow: inset 0 0 0 1px rgba(217,163,224,0.25); flex: none; }
 .orb.ring { box-shadow: 0 0 0 5px var(--hearth), 0 0 0 8px var(--lilac), 0 20px 50px rgba(217,163,224,0.35); }
 .orb.halo { box-shadow: 0 0 0 10px rgba(217,163,224,0.12), 0 0 0 24px rgba(217,163,224,0.06), 0 30px 70px rgba(217,163,224,0.4); }
 .orb.side { box-shadow: 0 0 0 3px var(--side), 0 0 0 4.5px var(--lilac); }
@@ -409,9 +410,9 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   92% { transform: translate(3px, 2px) rotate(5deg); }
 }
 @keyframes peek {
-  0%, 70%, 100% { transform: translate(9px, 4px) rotate(5deg); }
-  76%, 86% { transform: translate(0, 0) rotate(0deg); }
-  92% { transform: translate(9px, 4px) rotate(5deg); }
+  0%, 70%, 100% { transform: translate(9px, -3px) rotate(5deg); }
+  76%, 86% { transform: translate(0, -4px) rotate(0deg); }
+  92% { transform: translate(9px, -3px) rotate(5deg); }
 }
 @keyframes type { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0.5px, 2.5px); } }
 @keyframes screenlight { 0%, 100% { opacity: 0.1; } 40% { opacity: 0.2; } 60% { opacity: 0.13; } }

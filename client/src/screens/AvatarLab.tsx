@@ -22,7 +22,7 @@ export function AvatarLab() {
       <div ref={ref} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
         {LOOKS.map((l) => (
           <div key={l} className="card" style={{ alignItems: "center" }}>
-            <span className="orb" style={{ width: 210, height: 210 }}><AvatarSvg look={l} size={200} mood={mood} laptop={pose === "laptop"} mouth={pose === "talking" ? 0.6 : 0} /></span>
+            <span className="orb" style={{ width: 210, height: 210 }}><AvatarSvg look={l} size={200} mood={mood} laptop={pose === "laptop"} talking={pose === "talking"} /></span>
             <b>{l}</b>
           </div>
         ))}

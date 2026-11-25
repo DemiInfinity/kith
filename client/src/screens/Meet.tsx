@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { api, type Me, type Profile } from "../api";
-import { Avatar, LookIcon, LOOKS } from "../components/Avatar";
+import { Avatar, LookIcon } from "../components/Avatar";
 
 /** First run: the child names their companion and picks its look. Honest from the first screen. */
 export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
   const [name, setName] = useState(me.profile.name || "Pip");
-  const [look, setLook] = useState(me.profile.look);
+  const [look, setLook] = useState(me.looks.includes(me.profile.look) ? me.profile.look : me.looks[0]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -30,14 +30,18 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
           style={{ textAlign: "center", fontFamily: "var(--serif)", fontSize: 26, fontWeight: 600, borderColor: "var(--lilac)", borderWidth: 2, minHeight: 56 }}
         />
         <span style={{ fontSize: 14, color: "var(--muted)" }}>You can change it any time.</span>
-        <b style={{ alignSelf: "flex-start", fontSize: 15 }}>And what should I look like?</b>
-        <div className="looks" role="radiogroup" aria-label="Look">
-          {LOOKS.map((l) => (
-            <button key={l} className={`look ${look === l ? "on" : ""}`} role="radio" aria-checked={look === l} aria-label={l} onClick={() => setLook(l)}>
-              <LookIcon look={l} />
-            </button>
-          ))}
-        </div>
+        {me.looks.length > 1 && (
+          <>
+            <b style={{ alignSelf: "flex-start", fontSize: 15 }}>And what should I look like?</b>
+            <div className="looks" role="radiogroup" aria-label="Look">
+              {me.looks.map((l) => (
+                <button key={l} className={`look ${look === l ? "on" : ""}`} role="radio" aria-checked={look === l} aria-label={l} onClick={() => setLook(l)}>
+                  <LookIcon look={l} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
         <button className="btn primary block" style={{ minHeight: 54, fontSize: 17 }} disabled={busy} onClick={go}>That’s me →</button>
         <span className="small">

@@ -107,7 +107,10 @@ export function defaultConnections(): Connection[] {
 
 // ── The companion's identity, picked by the child ────────────────────────────────────────────
 
+// Every look the avatar rig can draw…
 export const LOOKS = ["buddy", "fox", "cat", "dragon", "robot", "star", "frog", "owl", "panda"] as const;
+// …and the ones offered for now (more later). A companion on any other look is shown as the first.
+export const OFFERED_LOOKS: (typeof LOOKS)[number][] = ["buddy"];
 export const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"] as const;
 
 export const CompanionProfile = z.object({
@@ -155,10 +158,12 @@ export function saveParentSettings(db: DB, s: ParentSettings) {
 }
 export function loadProfile(db: DB): CompanionProfile {
   const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'companion'");
-  return CompanionProfile.parse(row ? JSON.parse(row.json) : {});
+  const p = CompanionProfile.parse(row ? JSON.parse(row.json) : {});
+  return OFFERED_LOOKS.includes(p.look) ? p : { ...p, look: OFFERED_LOOKS[0] };
 }
 export function saveProfile(db: DB, p: CompanionProfile) {
   const valid = CompanionProfile.parse(p);
+  if (!OFFERED_LOOKS.includes(valid.look)) valid.look = OFFERED_LOOKS[0];
   run(db, "INSERT INTO settings(key, json) VALUES('companion', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(valid));
   return valid;
 }

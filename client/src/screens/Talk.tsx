@@ -18,6 +18,7 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
   const [said, setSaid] = useState("");
   const [err, setErr] = useState("");
   const [secs, setSecs] = useState(0);
+  const [noVoice, setNoVoice] = useState(false);
   const mic = useRef<MicCapture | null>(null);
   const stopPlay = useRef<AbortController | null>(null);
   const name = me.profile.name;
@@ -69,7 +70,11 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
         stopPlay.current = new AbortController();
         await playWithMouth(wav, setMouth, stopPlay.current.signal);
       } catch {
+        // No voice: show the reply and "talk" it for a moment so it still feels like a call.
         setErr("My voice isn’t working right now, so I’ve written it instead.");
+        setNoVoice(true);
+        await new Promise((r) => setTimeout(r, Math.min(6000, 600 + turn.reply.text.length * 45)));
+        setNoVoice(false);
       }
       setPhase("idle");
     } catch (e) {
@@ -102,7 +107,7 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
         <button className="grownup" onClick={openHelp}>Need a grown-up?</button>
       </div>
       <div className="stage">
-        <Avatar look={me.profile.look} mood={mood} mouth={mouth} size={170} variant="halo" />
+        <Avatar look={me.profile.look} mood={mood} mouth={mouth} size={170} variant="halo" talking={phase === "speaking" && mouth === 0 && noVoice} />
         <div className="wave" aria-hidden>{bars.map((h, i) => <span key={i} style={{ height: h }} />)}</div>
         <span style={{ fontSize: 15, fontWeight: 800, color: "var(--lilac-soft)" }} aria-live="polite">{status}</span>
       </div>

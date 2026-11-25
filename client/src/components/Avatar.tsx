@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 // The companion's animated face: an SVG rig that works for every look. It breathes, blinks, shows
 // moods (happy, thinking, sleepy for Low power, resting, concerned) and moves its mouth with
 // `mouth` (0–1), which the Talk screen drives from the voice audio.
@@ -210,6 +210,11 @@ const PAW: Record<Look, string> = {
   star: "#F2B45A", frog: "#69B25B", owl: "#8A6246", panda: "#2A2530",
 };
 
+/** Where the companion sits at its laptop: to the left, and animals with ears a little higher so their arms fit. */
+function seat(look: Look) {
+  return look === "buddy" || look === "star" ? { x: -34, y: 2 } : { x: -34, y: -8 };
+}
+
 /**
  * Its own little laptop, drawn in the Fluent Emoji style and colours. The companion sits to the left,
  * so the laptop is turned to face it: we see the BACK of the lid (with the Kith face), the screen
@@ -235,15 +240,25 @@ function Laptop({ look }: { look: Look }) {
         {keys}
         <rect x={0.34} y={0.68} width={0.32} height={0.22} rx={0.05} fill="#BDBDBD" />
       </g>
-      {/* arms come out of its body to paws on the keys, taking turns like typing */}
-      <g className="arm-l">
-        <path d="M74 150 Q86 162 100 158" stroke={paw} strokeWidth="12" strokeLinecap="round" fill="none" />
-        <ellipse cx="101" cy="157.5" rx="7.5" ry="5.2" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
-      </g>
-      <g className="arm-r">
-        <path d="M90 140 Q106 144 120 148" stroke={paw} strokeWidth="11" strokeLinecap="round" fill="none" />
-        <ellipse cx="121" cy="148" rx="7" ry="4.8" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
-      </g>
+      {/* arms come out of the left and right of its head, near the bottom, to paws on the keys,
+          taking turns like typing (coordinates here are the laptop's: 12 to the right of the avatar's) */}
+      {(() => {
+        const o = seat(look);
+        const L = { x: 48 + o.x - 12, y: 146 + o.y }; // left side of the head, near the bottom
+        const R = { x: 152 + o.x - 12, y: 146 + o.y }; // right side
+        return (
+          <>
+            <g className="arm-l">
+              <path d={`M${L.x} ${L.y} Q${L.x + 6} ${L.y + 24} ${L.x + 34} ${L.y + 22} T101 158`} stroke={paw} strokeWidth="11" strokeLinecap="round" fill="none" />
+              <ellipse cx="102" cy="157.5" rx="7.5" ry="5.2" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
+            </g>
+            <g className="arm-r">
+              <path d={`M${R.x} ${R.y} Q${R.x + 8} ${R.y + 4} 121 148`} stroke={paw} strokeWidth="10" strokeLinecap="round" fill="none" />
+              <ellipse cx="122" cy="148" rx="7" ry="4.8" fill={paw} stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
+            </g>
+          </>
+        );
+      })()}
       {/* the lid: its near edge (thickness), then the back of the lid with the Kith face */}
       <polygon points="124,170 138,114 134,115 120,171" fill="#5B528A" />
       <polygon points="124,170 160,144 174,88 138,114" fill="#7167A4" stroke="#857BB8" strokeWidth="1.5" strokeLinejoin="round" />
@@ -256,13 +271,45 @@ function Laptop({ look }: { look: Look }) {
   );
 }
 
-export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop = false, lookAround = true }: {
+/**
+ * Mouth movement for talking when there's no live audio to follow: open and close in a
+ * syllable-like rhythm (a few quick syllables, then a short pause, like speech).
+ */
+export function useTalkingMouth(active: boolean): number {
+  const [open, setOpen] = useState(0);
+  useEffect(() => {
+    if (!active) { setOpen(0); return; }
+    if (typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches) { setOpen(0.3); return; }
+    let t = 0;
+    let syllables = 3 + Math.floor(Math.random() * 4);
+    const id = setInterval(() => {
+      t += 1;
+      if (syllables <= 0) {
+        // a little pause between words
+        setOpen(0);
+        if (t % 4 === 0) syllables = 2 + Math.floor(Math.random() * 5);
+        return;
+      }
+      // open on even ticks, close on odd ones, with varied size
+      if (t % 2 === 0) setOpen(0.35 + Math.random() * 0.6);
+      else { setOpen(0.05); syllables -= 1; }
+    }, 110);
+    return () => clearInterval(id);
+  }, [active]);
+  return open;
+}
+
+export function AvatarSvg({ look, mood = "happy", mouth: mouthIn = 0, size = 120, laptop = false, lookAround = true, talking = false }: {
   look: Look; mood?: Mood; mouth?: number; size?: number;
+  /** Talking with no audio to follow: the mouth opens and closes by itself. */
+  talking?: boolean;
   /** Show it working on its own laptop (used while its desk is busy). */
   laptop?: boolean;
   /** Glance left and right now and then while idle. */
   lookAround?: boolean;
 }) {
+  const auto = useTalkingMouth(talking && mouthIn === 0);
+  const mouth = mouthIn || auto;
   const rig = RIGS[look] ?? RIGS.fox;
   const gid = `kith-g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const idle = lookAround && !laptop && mouth === 0 && (mood === "happy" || mood === "concerned");
@@ -271,7 +318,7 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop 
     <svg className={`avatar ${mood}${laptop ? " working" : ""}`} width={size} height={size} viewBox="0 0 200 200" role="img"
       aria-label={`${look}, ${laptop ? "working on its laptop" : mood}`}>
       {/* At the laptop, the companion sits to the left, turned towards it. */}
-      <g transform={laptop ? "translate(-28 6)" : undefined}>
+      <g transform={laptop ? `translate(${seat(look).x} ${seat(look).y})` : undefined}>
       <g className="breathe">
         <g className={laptop ? "ears at-screen-ears" : idle ? "ears glance-ears" : "ears"}>{rig.ears}</g>
         <g className={laptop ? "head at-screen-head" : idle ? "head glance-head" : "head"}>
@@ -335,11 +382,11 @@ export function LogoMark({ size = 64 }: { size?: number }) {
 
 /** The avatar inside its glowing orb, as in the designs. */
 export function Avatar({
-  look, mood = "happy", mouth = 0, size = 52, variant = "plain", laptop = false,
-}: { look: Look; mood?: Mood; mouth?: number; size?: number; variant?: "plain" | "ring" | "halo" | "side"; laptop?: boolean }) {
+  look, mood = "happy", mouth = 0, size = 52, variant = "plain", laptop = false, talking = false,
+}: { look: Look; mood?: Mood; mouth?: number; size?: number; variant?: "plain" | "ring" | "halo" | "side"; laptop?: boolean; talking?: boolean }) {
   return (
     <span className={`orb ${variant}`} style={{ width: size, height: size }}>
-      <AvatarSvg look={look} mood={mood} mouth={mouth} size={Math.round(size * 0.92)} laptop={laptop} />
+      <AvatarSvg look={look} mood={mood} mouth={mouth} size={Math.round(size * 0.92)} laptop={laptop} talking={talking} />
     </span>
   );
 }

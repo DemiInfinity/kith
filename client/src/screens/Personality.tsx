@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Me, type Profile } from "../api";
-import { Avatar, LookIcon, LOOKS } from "../components/Avatar";
+import { Avatar, LookIcon } from "../components/Avatar";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
 
@@ -22,7 +22,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
   const [saving, setSaving] = useState<"" | "saving" | "saved" | "error">("");
   const [mouth, setMouth] = useState(0);
   const [playing, setPlaying] = useState("");
-  const [pose, setPose] = useState<"around" | "laptop" | "thinking" | "sleepy">("around");
+  const [pose, setPose] = useState<"around" | "talking" | "laptop" | "thinking" | "sleepy">("around");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const first = useRef(true);
 
@@ -69,9 +69,9 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
       <div className="spread"><h2 className="screen-title">Personality</h2><span className="small" aria-live="polite">{saving === "saving" ? "saving…" : saving === "saved" ? "saved ✓" : saving === "error" ? "couldn’t save" : ""}</span></div>
 
       <div className="card" style={{ alignItems: "center", gap: 10 }}>
-        <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} />
+        <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />
         <div className="chips" style={{ justifyContent: "center" }}>
-          {([["around", "👀 Looking around"], ["laptop", "💻 At its laptop"], ["thinking", "🤔 Thinking"], ["sleepy", "😴 Low power"]] as const).map(([k, l]) => (
+          {([["around", "👀 Looking around"], ["talking", "💬 Talking"], ["laptop", "💻 At its laptop"], ["thinking", "🤔 Thinking"], ["sleepy", "😴 Low power"]] as const).map(([k, l]) => (
             <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: 13 }} onClick={() => setPose(k)}>{l}</button>
           ))}
         </div>
@@ -80,12 +80,16 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <span className="small">tap to rename</span>
       </div>
 
-      <b>Pick a look</b>
-      <div className="looks" role="radiogroup" aria-label="Look">
-        {LOOKS.map((l) => (
-          <button key={l} className={`look ${p.look === l ? "on" : ""}`} role="radio" aria-checked={p.look === l} aria-label={l} onClick={() => set({ look: l })}><LookIcon look={l} /></button>
-        ))}
-      </div>
+      {me.looks.length > 1 ? (
+        <>
+          <b>Pick a look</b>
+          <div className="looks" role="radiogroup" aria-label="Look">
+            {me.looks.map((l) => (
+              <button key={l} className={`look ${p.look === l ? "on" : ""}`} role="radio" aria-checked={p.look === l} aria-label={l} onClick={() => set({ look: l })}><LookIcon look={l} /></button>
+            ))}
+          </div>
+        </>
+      ) : <span className="small" style={{ textAlign: "center" }}>More looks are coming soon.</span>}
 
       <div className="stack">
         <b>{p.name} is…</b>

@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
 import { MODES } from "./companion/modes.js";
 import { getSubject, logHelp } from "./study/study.js";
-import { CompanionProfile, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
+import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
 import { addMemory, deleteMemory, listMemories } from "./companion/memory.js";
 import { sampleLine } from "./companion/prompt.js";
@@ -53,6 +53,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       quietHours: s.quietHours,
       voices: config.voice.voices.map((v) => v.label),
       kinds: KIND_NAMES,
+      looks: OFFERED_LOOKS,
       push: { ready: pushReady(), publicKey: config.push.publicKey },
       apiReady: d.llm.available,
       drawingUploads: false,

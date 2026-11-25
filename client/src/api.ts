@@ -43,7 +43,7 @@ export interface Profile {
 export interface Helpline { name: string; number: string; sub: string; kind: "helpline" | "emergency" }
 export interface Me {
   role: "child" | "parent"; name: string; parentLabel: string; profile: Profile; helplines: Helpline[];
-  quietHours: { start: string; end: string }; voices: string[]; kinds: string[];
+  quietHours: { start: string; end: string }; voices: string[]; kinds: string[]; looks: Look[];
   push: { ready: boolean; publicKey: string }; apiReady: boolean; drawingUploads: boolean;
 }
 export interface Energy { mode: "full" | "low" | "resting"; percent: number; fullBackAt: number | null; weekResetsAt: number; limitedBy: string | null }
