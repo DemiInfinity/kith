@@ -51,8 +51,6 @@ const DEFAULT_VOICE: &str = "bf_emma";
 /// Slower than this (seconds to make a second of speech), and she'd hear gaps: use the home voice.
 const TOO_SLOW: f32 = 0.9;
 /// Not used for this long: the model (a few hundred MB of memory) is put away until it's next
-/// wanted. The files stay; loading it again takes a few seconds.
-const PUT_AWAY_AFTER: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -315,6 +313,9 @@ fn load(app: &AppHandle, dir: &Path) -> Result<(), String> {
     let t = Instant::now();
     let samples = engine.speak("It's really lovely to hear from you today.", v, 1.0)?;
     let rtf = t.elapsed().as_secs_f32() / (samples.len().max(1) as f32 / crate::kokoro::SAMPLE_RATE as f32);
+    if std::env::var_os("KITH_DEBUG").is_some() {
+        eprintln!("[kith] voice warmed up (speed {rtf:.2}x real time)");
+    }
     let state = app.state::<Voice>();
     *state.engine.guard() = Some((engine, voices));
     let slow = rtf > TOO_SLOW;
@@ -327,32 +328,9 @@ fn load(app: &AppHandle, dir: &Path) -> Result<(), String> {
     if slow {
         // It won't be used: don't keep it in memory.
         *state.engine.guard() = None;
-    } else {
-        let a = app.clone();
-        std::thread::spawn(move || put_away_when_quiet(&a));
     }
+    // Otherwise it stays loaded while the app is open, so Pip can speak straight away.
     Ok(())
-}
-
-/// Puts the model away after a quiet while (it comes back with the next call).
-#[cfg(target_arch = "aarch64")]
-fn put_away_when_quiet(app: &AppHandle) {
-    loop {
-        std::thread::sleep(Duration::from_secs(60));
-        let state = app.state::<Voice>();
-        let quiet = {
-            let l = state.live.guard();
-            l.phase == Phase::Ready && l.used.is_some_and(|t| t.elapsed() > PUT_AWAY_AFTER)
-        };
-        if quiet {
-            // Holding the engine lock: a sentence being made finishes first.
-            let mut engine = state.engine.guard();
-            *engine = None;
-            drop(engine);
-            set(app, |l| l.phase = Phase::Absent);
-            return;
-        }
-    }
 }
 
 #[cfg(not(target_arch = "aarch64"))]
@@ -373,6 +351,13 @@ pub fn after_sentence(avg: Option<f32>, timed: u32, rtf: f32) -> (f32, bool) {
 #[tauri::command]
 pub fn voice_status(state: tauri::State<'_, Voice>) -> Status {
     state.status()
+}
+
+/// Gets the voice ready as soon as the app opens (the child's app on Apple silicon only).
+pub fn start(app: &AppHandle) {
+    if supported(app) {
+        let _ = voice_prepare(app.clone(), app.state::<Voice>());
+    }
 }
 
 /// Gets the voice ready (fetching it the first time). Returns straight away; "kith:voice" events

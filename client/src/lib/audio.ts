@@ -86,13 +86,47 @@ export function toPcm16(input: Float32Array, fromRate: number, toRate: number): 
 }
 
 /** Plays a WAV and reports how loud it is, frame by frame, so the avatar's mouth can follow. */
+/**
+ * A plain 16-bit PCM WAV (Pip's voices: the Mac's own and the home server's) read straight into an
+ * AudioBuffer. The Mac app's web view can fail to decode these itself; null for anything else.
+ */
+export function pcmWav(ctx: BaseAudioContext, bytes: ArrayBuffer): AudioBuffer | null {
+  try {
+    const v = new DataView(bytes);
+    const tag = (o: number) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3));
+    if (bytes.byteLength < 44 || tag(0) !== "RIFF" || tag(8) !== "WAVE") return null;
+    let off = 12, rate = 0, channels = 0, bits = 0;
+    while (off + 8 <= bytes.byteLength) {
+      const id = tag(off), size = v.getUint32(off + 4, true), body = off + 8;
+      if (id === "fmt ") {
+        if (v.getUint16(body, true) !== 1) return null; // PCM only
+        channels = v.getUint16(body + 2, true); rate = v.getUint32(body + 4, true); bits = v.getUint16(body + 14, true);
+      } else if (id === "data") {
+        if (bits !== 16 || channels < 1 || !rate) return null;
+        const end = Math.min(bytes.byteLength, body + (size || bytes.byteLength - body));
+        const frames = Math.floor((end - body) / (2 * channels));
+        if (!frames) return null;
+        const buf = ctx.createBuffer(channels, frames, rate);
+        for (let c = 0; c < channels; c++) {
+          const out = buf.getChannelData(c);
+          for (let i = 0; i < frames; i++) out[i] = v.getInt16(body + (i * channels + c) * 2, true) / 32768;
+        }
+        return buf;
+      }
+      off = body + size + (size % 2);
+    }
+    return null;
+  } catch { return null; }
+}
+
 export async function playWithMouth(wav: Blob, onMouth: (open: number) => void, signal?: AbortSignal, shared?: AudioContext): Promise<void> {
   const ctx = shared && shared.state !== "closed" ? shared : new AudioContext();
   try {
     if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
     // Never hang silently: if the browser won't let sound start, say so instead of waiting forever.
     if (ctx.state !== "running") throw new Error("sound-blocked");
-    const buf = await ctx.decodeAudioData(await wav.arrayBuffer());
+    const bytes = await wav.arrayBuffer();
+    const buf = pcmWav(ctx, bytes) ?? await ctx.decodeAudioData(bytes);
     if (signal?.aborted) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;

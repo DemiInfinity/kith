@@ -8,7 +8,7 @@ import { Pip3D, prefersStill } from "../pip3d/Stage";
 import { normaliseLook, type Look as Look3D } from "../pip3d/look";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
-import { isChildMacApp, MAC_VOICES, macVoiceOffered, prepareMacVoice, saveMacVoice, savedMacVoice, speakOnMac, useMacVoice, voiceProgressText } from "../lib/macVoice";
+import { isChildMacApp, MAC_VOICES, macVoiceOffered, prepareMacVoice, waitForMacVoice, saveMacVoice, savedMacVoice, speakOnMac, useMacVoice, voiceProgressText } from "../lib/macVoice";
 
 export const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"];
 
@@ -84,10 +84,12 @@ export function Personality({ me, onSaved, go }: { me: Me; onSaved: (p: Profile)
   const previewMac = async (id: string) => {
     setMacPick(id);
     saveMacVoice(id);
-    if (macVoice.phase !== "ready") { prepareMacVoice(); return; }
+    // Sound on now, in the tap; then wait for the voice if it's still loading (about a minute after
+    // the app opens, or after a quiet while), and play into the sound that's already on.
     const ctx = soundOn();
     setPlaying(id);
     try {
+      if (macVoice.phase !== "ready") await waitForMacVoice();
       const where = await speakOnMac(sampleLine(p), setMouth, undefined, ctx, id);
       if (where === "home") await playWithMouth(await api<Blob>("/api/voice/tts", { body: { preview: p.voice } }), setMouth, undefined, ctx);
     } catch { /* picking still works */ } finally { setPlaying(""); void ctx.close().catch(() => undefined); }

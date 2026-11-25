@@ -401,6 +401,11 @@ fn decide(app: &AppHandle, state: &State, url: &Url) -> bool {
     false
 }
 
+/// Google's own pages that the file picker opens as a popup (sign-in and the picker itself).
+fn google_popup(url: &Url) -> bool {
+    url.scheme() == "https" && matches!(url.host_str(), Some("accounts.google.com" | "docs.google.com" | "drive.google.com"))
+}
+
 fn open_outside(app: &AppHandle, state: &State, url: &Url) {
     {
         let mut s = state.guard();
@@ -761,6 +766,7 @@ fn main() {
             let state: State = Arc::new(Mutex::new(Shell { config: load_config(&handle), ..Default::default() }));
             app.manage(state.clone());
             app.manage(voice::Voice::new(&handle));
+            voice::start(&handle);
             app.manage(music::Music::default());
             // Bind first: a lock held in the `if let` would still be held inside grant_native.
             let server = state.guard().config.server.clone();
@@ -910,9 +916,23 @@ fn main() {
                     }
                 })
                 .on_navigation(move |url| allow_in_window(&nav_app, &nav_state, url))
-                .on_new_window(move |url, _features| {
-                    // window.open / target=_blank. Our own pages load in the main window; the rest go
-                    // to the browser. Never a second web view (it wouldn't share the sign-in).
+                .on_new_window(move |url, features| {
+                    // window.open / target=_blank. Our own pages load in the main window; Google's
+                    // sign-in for its file picker opens as a small window inside Kith (it must be a
+                    // real popup that shares this web view's storage, or the picker never hears back);
+                    // the rest go to the browser.
+                    if google_popup(&url) {
+                        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                        let label = format!("google-{}", N.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+                        match WebviewWindowBuilder::new(&win_app, label, WebviewUrl::External(url.clone()))
+                            .window_features(features)
+                            .title("Google")
+                            .build()
+                        {
+                            Ok(window) => return NewWindowResponse::Create { window },
+                            Err(e) => eprintln!("[kith] couldn't open Google's window: {e}"),
+                        }
+                    }
                     let server = win_state.guard().config.server.clone();
                     if server.as_deref().is_some_and(|s| same_origin(&url, s)) {
                         if let Some(w) = win_app.get_webview_window(MAIN) {

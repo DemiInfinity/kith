@@ -50,6 +50,23 @@ export function useMacVoice(): VoiceStatus {
 export const macVoiceOffered = (s: VoiceStatus) => s.phase !== "unsupported" && s.phase !== "slow" && s.voices.length > 0;
 
 /** Gets the voice ready, fetching it the first time. Safe to call often. */
+/** Gets the voice ready and waits for it (up to `ms`): true when it can speak, false otherwise. */
+export function waitForMacVoice(ms = 120_000): Promise<boolean> {
+  const now = macVoiceStatus().phase;
+  if (now === "ready") return Promise.resolve(true);
+  if (now === "unsupported" || now === "slow") return Promise.resolve(false);
+  prepareMacVoice();
+  return new Promise((resolve) => {
+    const stop = (v: boolean) => { clearTimeout(t); off(); resolve(v); };
+    const t = setTimeout(() => stop(false), ms);
+    const off = subscribe(() => {
+      const ph = macVoiceStatus().phase;
+      if (ph === "ready") stop(true);
+      else if (ph === "failed" || ph === "slow" || ph === "unsupported") stop(false);
+    });
+  });
+}
+
 export function prepareMacVoice() {
   if (!isChildMacApp()) return;
   listen();

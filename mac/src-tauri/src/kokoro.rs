@@ -196,6 +196,7 @@ mod engine {
         pub fn load(model: &Path) -> Result<Engine, String> {
             let env = ort::init().with_name("kith-voice").build().map_err(|e| e.to_string())?;
             let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8);
+            let t = std::time::Instant::now();
             let session = Session::builder(&env)
                 .map_err(|e| e.to_string())?
                 .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -204,6 +205,9 @@ mod engine {
                 .map_err(|e| e.to_string())?
                 .commit_from_file(model)
                 .map_err(|e| e.to_string())?;
+            if std::env::var_os("KITH_DEBUG").is_some() {
+                eprintln!("[kith] voice model loaded in {:.1}s", t.elapsed().as_secs_f32());
+            }
             let input = |want: &str, i: usize| {
                 session.inputs().iter().map(|o| o.name().to_string()).find(|n| n.contains(want)).or_else(|| session.inputs().get(i).map(|o| o.name().to_string()))
             };
@@ -248,6 +252,23 @@ mod engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Speaks with the real downloaded voice (run by hand: cargo test real_voice -- --ignored).
+    #[test]
+    #[ignore]
+    #[cfg(target_arch = "aarch64")]
+    fn real_voice() {
+        let dir = std::path::PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Application Support/app.kith.mac/kokoro-v1.0");
+        let mut e = Engine::load(&dir.join("onnx/model.onnx")).unwrap();
+        let voice_file = std::fs::read_dir(dir.join("voices")).unwrap().next().unwrap().unwrap().path();
+        let v = read_voice(&std::fs::read(&voice_file).unwrap()).unwrap();
+        let s = e.speak("Fractions again? Easy. We'll have them sorted in no time.", &v, 1.0).unwrap();
+        let peak = s.iter().fold(0f32, |m, x| m.max(x.abs()));
+        let out = std::env::var("KITH_VOICE_OUT").unwrap_or_else(|_| "/tmp/kith-voice.wav".into());
+        std::fs::write(&out, wav(&s)).unwrap();
+        eprintln!("voice {:?}: {} samples, {:.1}s, peak {peak:.3}", voice_file.file_name().unwrap(), s.len(), s.len() as f32 / SAMPLE_RATE as f32);
+        assert!(peak > 0.01, "silent");
+    }
 
     #[test]
     fn tokens_keep_only_what_the_model_knows() {
