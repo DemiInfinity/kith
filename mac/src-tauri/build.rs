@@ -11,6 +11,17 @@ fn main() {
         Err(_) => String::new(),
     };
     println!("cargo:rustc-env=KITH_DEFAULT_CONFIG={json}");
+    // ONNX Runtime (Pip's on-device voice, Apple silicon only) uses `@available` checks, which need
+    // clang's own runtime library (___isPlatformVersionAtLeast). Rust links without it, so add it.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("aarch64") {
+        if let Ok(out) = std::process::Command::new("xcrun").args(["clang", "-print-resource-dir"]).output() {
+            let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !dir.is_empty() {
+                println!("cargo:rustc-link-search=native={dir}/lib/darwin");
+                println!("cargo:rustc-link-lib=static=clang_rt.osx");
+            }
+        }
+    }
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
         "setup_info",
         "save_server",
