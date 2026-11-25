@@ -26,7 +26,7 @@ export function Google({ me, isParent = false }: { me: Me; isParent?: boolean })
     <div className="screen narrow">
       <span className="hand">your files, your Drive</span>
       <h2 className="screen-title">Google Drive</h2>
-      {result === "connected" && <div className="notice">Connected ✓ Things {name} makes will be saved to a “Kith” folder in your Drive.</div>}
+      {result === "connected" && <div className="notice">Connected. Things {name} makes will be saved to a “Kith” folder in your Drive.</div>}
       {result === "failed" && <div className="notice">That didn’t connect{why ? `: ${why}` : "."}</div>}
       {result === "cancelled" && <div className="notice">No problem, nothing was connected.</div>}
       {s && !s.configured && <div className="card"><b>Not set up yet</b><span className="small">{me.parentLabel} needs to add a Google sign-in for Kith first (docs/google.md).</span></div>}

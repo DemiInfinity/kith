@@ -1,17 +1,19 @@
-// Pip's browser: headless Chromium (Playwright) that can only read safe-listed pages.
-// - All traffic goes through the egress proxy, which enforces the safe list again.
+// Pip's browser: headless Chromium (Playwright) that reads the web, minus the family's block list.
+// - All traffic goes through the egress proxy, which enforces the block list again (with the big
+//   public list on top).
+// - Robot checks (CAPTCHAs, "are you human?") stop it: it never tries to get past one.
 // - Read-only: JavaScript off, downloads off, uploads off, nothing but GET requests.
 // - No logins or cookies kept: every visit uses a brand-new, empty browser context.
 // - What it reads is returned as data for the Kith server to check; nothing on a page can tell the
 //   desk to do anything.
 
-import { pageAllowed, resourceAllowed, type BrowseRules } from "./rules.js";
+import { looksLikeRobotCheck, pageAllowed, resourceAllowed, type BrowseRules } from "./rules.js";
 
 export interface Visit { url: string; title: string; text: string; why: string; jobId: number | null; ts: number }
 /** A standard 16:9 desktop. */
 export const VIEW = { width: 1280, height: 720 };
 
-export interface Live { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; cursor: { x: number; y: number } }
+export interface Live { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; cursor: { x: number; y: number }; robotCheck?: boolean }
 
 let live: Live = { busy: false, url: "", title: "", why: "", jobId: null, ts: 0, frame: "", cursor: { x: VIEW.width / 2, y: VIEW.height / 2 } };
 export const liveView = () => live;
@@ -31,9 +33,15 @@ type Session = { browser: import("playwright-core").Browser; page: import("playw
 let session: Session | null = null;
 export const takenOver = () => (session ? session.who : null);
 
+async function robotCheck(page: import("playwright-core").Page, status = 200) {
+  const title = await page.title().catch(() => "");
+  const text = (await page.evaluate("document.body ? document.body.innerText : ''").catch(() => "")) as string;
+  return looksLikeRobotCheck(title, text, page.frames().map((f) => f.url()), status);
+}
+
 async function snap(page: import("playwright-core").Page, why: string) {
   const shot = await page.screenshot({ type: "jpeg", quality: 55 });
-  live = { busy: false, url: page.url(), title: (await page.title()).slice(0, 200), why, jobId: null, ts: Date.now(), frame: `data:image/jpeg;base64,${shot.toString("base64")}`, cursor: live.cursor };
+  live = { busy: false, url: page.url(), title: (await page.title()).slice(0, 200), why, jobId: null, ts: Date.now(), frame: `data:image/jpeg;base64,${shot.toString("base64")}`, cursor: live.cursor, robotCheck: await robotCheck(page) };
   return live;
 }
 
@@ -57,18 +65,26 @@ export async function takeOver(who: string, rules: BrowseRules, startUrl?: strin
   session = { browser, page, who, rules, idle: setTimeout(() => undefined, 0) };
   bump();
   const url = startUrl && pageAllowed(startUrl, rules) ? startUrl : live.url && pageAllowed(live.url, rules) ? live.url : `https://${rules.sites[0]?.replace(/^https?:\/\//, "") ?? "en.wikipedia.org"}`;
+  live = { ...live, cursor: { x: VIEW.width / 2, y: VIEW.height / 2 } };
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
   return snap(page, `taken over by ${who}`);
 }
 
 /** One step while taken over. Navigation off the safe list is blocked by the rules (and the proxy). */
-export async function act(a: { type: "go" | "click" | "scroll" | "back"; url?: string; x?: number; y?: number; dy?: number }) {
+export async function act(a: { type: "go" | "click" | "scroll" | "back" | "move"; url?: string; x?: number; y?: number; dy?: number }) {
   if (!session) throw new Error("Nobody has taken over the browser.");
   bump();
   const { page, rules, who } = session;
+  if (a.type === "move") {
+    // Just the pointer, so everyone watching sees it move. No screenshot.
+    const x = Math.max(0, Math.min(VIEW.width - 1, a.x ?? 0)), y = Math.max(0, Math.min(VIEW.height - 1, a.y ?? 0));
+    live = { ...live, cursor: { x, y }, ts: Date.now() };
+    void page.mouse.move(x, y).catch(() => undefined);
+    return { ...live, navigated: false };
+  }
   const before = page.url();
   if (a.type === "go") {
-    if (!a.url || !pageAllowed(a.url, rules)) throw new Error("That page isn't on the family's safe list.");
+    if (!a.url || !pageAllowed(a.url, rules)) throw new Error(rules.mode === "blocklist" ? "That site is blocked." : "That page isn't on the family's safe list.");
     await page.goto(a.url, { waitUntil: "domcontentloaded", timeout: 20_000 }).catch(() => undefined);
   } else if (a.type === "click") {
     const x = Math.max(0, Math.min(VIEW.width - 1, a.x ?? 0)), y = Math.max(0, Math.min(VIEW.height - 1, a.y ?? 0));
@@ -106,7 +122,7 @@ export function browse(url: string, why: string, jobId: number | null, rules: Br
 }
 
 async function visit(url: string, why: string, jobId: number | null, rules: BrowseRules): Promise<Visit> {
-  if (!pageAllowed(url, rules)) throw new Error("That page isn't on the family's safe list.");
+  if (!pageAllowed(url, rules)) throw new Error(rules.mode === "blocklist" ? "That site is blocked." : "That page isn't on the family's safe list.");
   const { chromium } = await load();
   const browser = await chromium.launch({
     headless: true,
@@ -127,7 +143,12 @@ async function visit(url: string, why: string, jobId: number | null, rules: Brow
     live = { ...live, busy: true, url, title: "", why, jobId, ts: Date.now() };
     const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
     const finalUrl = page.url();
-    if (!pageAllowed(finalUrl, rules)) throw new Error("That page sent the browser off the safe list.");
+    if (!pageAllowed(finalUrl, rules)) throw new Error("That page sent the browser somewhere blocked.");
+    if (await robotCheck(page, res?.status() ?? 200)) {
+      const s = await page.screenshot({ type: "jpeg", quality: 55 });
+      live = { ...live, busy: false, url: finalUrl, title: (await page.title()).slice(0, 200), ts: Date.now(), frame: `data:image/jpeg;base64,${s.toString("base64")}`, robotCheck: true };
+      throw new Error("Robot check: this site wants to know if I'm human, so I stopped here.");
+    }
     if (res && !res.ok()) throw new Error(`The page answered ${res.status()}.`);
     const title = (await page.title()).slice(0, 200);
     const text = (await page.evaluate("document.body ? document.body.innerText : ''") as string).replace(/\n{3,}/g, "\n\n").slice(0, 20_000);
@@ -139,7 +160,7 @@ async function visit(url: string, why: string, jobId: number | null, rules: Brow
       if (i > 0) await page.mouse.wheel(0, 420);
       await page.waitForTimeout(350);
       const s = await page.screenshot({ type: "jpeg", quality: 55 });
-      live = { busy: i < path.length - 1, url: finalUrl, title, why, jobId, ts: Date.now(), frame: `data:image/jpeg;base64,${s.toString("base64")}`, cursor: path[i] };
+      live = { busy: i < path.length - 1, url: finalUrl, title, why, jobId, ts: Date.now(), frame: `data:image/jpeg;base64,${s.toString("base64")}`, cursor: path[i], robotCheck: false };
     }
     await context.close();
     return { url: finalUrl, title, text, why, jobId, ts: Date.now() };

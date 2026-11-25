@@ -1,3 +1,4 @@
+import { Icon, IL } from "../components/Icons";
 import { useEffect, useRef, useState } from "react";
 import { api, type Me, type Profile } from "../api";
 import { Avatar, LookIcon } from "../components/Avatar";
@@ -71,8 +72,8 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
       <div className="card" style={{ alignItems: "center", gap: 10 }}>
         <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />
         <div className="chips" style={{ justifyContent: "center" }}>
-          {([["around", "👀 Looking around"], ["talking", "💬 Talking"], ["laptop", "💻 At its laptop"], ["thinking", "🤔 Thinking"], ["sleepy", "😴 Low power"]] as const).map(([k, l]) => (
-            <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: 13 }} onClick={() => setPose(k)}>{l}</button>
+          {([["around", "eye", "Looking around"], ["talking", "chat2", "Talking"], ["laptop", "laptop", "At its laptop"], ["thinking", "bulb", "Thinking"], ["sleepy", "moon", "Low power"]] as const).map(([k, ic, l]) => (
+            <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: 13 }} onClick={() => setPose(k)}><IL i={ic}>{l}</IL></button>
           ))}
         </div>
         <input className="input" aria-label="Name" value={p.name} maxLength={24} onChange={(e) => set({ name: e.target.value })}
@@ -114,7 +115,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, me.voices.length)}, 1fr)`, gap: 8 }}>
           {me.voices.map((v) => (
             <button key={v} className={`look ${p.voice === v ? "on" : ""}`} style={{ aspectRatio: "auto", minHeight: 56, fontSize: 14, fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => preview(v)}>
-              <span style={{ fontSize: 18 }}>{playing === v ? "🔊" : "▶"}</span>{v}
+              <span className="hic"><Icon name={playing === v ? "speaker" : "play"} size={18} /></span>{v}
             </button>
           ))}
         </div>
@@ -127,9 +128,9 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
 
       <div className="stack">
         <b>{p.name} can help with</b>
-        <Toggle label="📚 Homework (helps you learn it)" checked={p.helpWith.homework} onChange={(v) => set({ helpWith: { ...p.helpWith, homework: v } })} />
-        <Toggle label="✨ Stories and ideas" checked={p.helpWith.stories} onChange={(v) => set({ helpWith: { ...p.helpWith, stories: v } })} />
-        <Toggle label="🎵 Music and films to try" checked={p.helpWith.music} onChange={(v) => set({ helpWith: { ...p.helpWith, music: v } })} />
+        <Toggle label="Homework (helps you learn it)" checked={p.helpWith.homework} onChange={(v) => set({ helpWith: { ...p.helpWith, homework: v } })} />
+        <Toggle label="Stories and ideas" checked={p.helpWith.stories} onChange={(v) => set({ helpWith: { ...p.helpWith, stories: v } })} />
+        <Toggle label="Music and films to try" checked={p.helpWith.music} onChange={(v) => set({ helpWith: { ...p.helpWith, music: v } })} />
       </div>
 
       <span className="small">Want to say more about who {p.name} is? Tap {p.name}’s picture › Who {p.name} is. Personality changes how {p.name} talks, never the safety rules underneath. {p.name} is an AI, not a person: it’s here to help and cheer you on, not to replace your friends.</span>

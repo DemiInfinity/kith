@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   # The companion's desk: no internet (internal network), no API key, read-only filesystem.
-  # Its browser can only get out through the egress proxy, which allows the family's safe list.
+  # Its browser can only get out through the egress proxy, which applies the family's block list.
   desk:
     build: { context: ., target: desk }
     image: kith-desk:local
@@ -42,7 +42,7 @@ services:
     pids_limit: 256
     restart: unless-stopped
 
-  # The desk browser's only way to the internet: HTTPS to safe-listed hosts, nothing else.
+  # The desk browser's only way to the internet: HTTPS to public hosts that aren't blocked; never private addresses.
   egress:
     build: { context: ., target: egress }
     image: kith-egress:local

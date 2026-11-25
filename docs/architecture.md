@@ -10,7 +10,7 @@
    ├─ budgets: spend ledger (every call costed) → energy (child) / money (parent)
    ├─ connections: parent-approved tools (HA REST, Kin/MCP, Jellyfin, calculator, dictionary, websites)
    ├─ studio: desk jobs (desk budget) ──────────────▶ desk container (internal network, no internet)
-   │                                                    └─ read-only Chromium ─▶ egress proxy ─▶ safe-listed sites only
+   │                                                    └─ read-only Chromium ─▶ egress proxy ─▶ the web, minus the block list
    ├─ voice: Wyoming client ─▶ whisper (speech-to-text), piper (text-to-speech)
    ├─ scheduler: check-ins (web push), journal, weekly summary, retention, report retries
    └─ reporters: console, Home Assistant AI board, …

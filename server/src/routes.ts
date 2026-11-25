@@ -172,9 +172,9 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     let live = null;
     try { live = await studio.desk.live(); } catch { /* desk not reachable */ }
     const s = loadParentSettings(db).browser;
-    return { enabled: s.enabled, sites: s.sites, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
+    return { enabled: s.enabled, mode: s.mode, sites: s.sites, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
   });
-  // Take over the desk browser (child or parent). Same rules: safe list only, read-only, logged.
+  // Take over the desk browser (child or parent). Same rules: block list, read-only, logged.
   const who = (role: string) => (role === "parent" ? config.people.parentLabel : childName(db) || "you");
   const logVisit = (url: string, title: string, role: string) => {
     run(db, "INSERT INTO browse_log(ts, url, title, why, job_id, outcome) VALUES (?,?,?,?,NULL,'read')", Date.now(), url.slice(0, 500), title.slice(0, 200), `taken over by ${who(role)}`);
@@ -184,9 +184,9 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const b = loadParentSettings(db).browser;
     if (!b.enabled) return reply.code(409).send({ error: "Browsing is switched off." });
     try {
-      const l = await studio.desk.takeOver(who(req.user!.role), b.sites, b.assetHosts);
+      const l = await studio.desk.takeOver(who(req.user!.role), studio.browser.deskRules(b));
       logVisit(l.url, l.title, req.user!.role);
-      return l;
+      return { ...l, takenOverBy: who(req.user!.role) };
     } catch (err) {
       return reply.code(422).send({ error: (err as Error).message });
     }
@@ -196,10 +196,16 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     try {
       const l = await studio.desk.act(a);
       if (l.navigated) logVisit(l.url, l.title, req.user!.role);
-      return l;
+      return { ...l, takenOverBy: who(req.user!.role) };
     } catch (err) {
       return reply.code(422).send({ error: (err as Error).message });
     }
+  });
+  // Where the driver's pointer is, so everyone watching sees it move (no screenshot, nothing logged).
+  app.post("/api/desk/browser/pointer", { preHandler: either, config: { rateLimit: { max: 400, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const a = z.object({ x: z.number(), y: z.number() }).parse(req.body);
+    try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
+    catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
   });
   app.post("/api/desk/browser/release", { preHandler: either }, async (req) => {
     await studio.desk.release().catch(() => undefined);
@@ -407,11 +413,11 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     reply.code(403).send({ error: "Uploading drawings isn't switched on yet. It needs a child-safety check first." }),
   );
 
-  // ── Need a grown-up? ──────────────────────────────────────────────────────────────────
+  // ── Grown-up? ──────────────────────────────────────────────────────────────────
   app.post("/api/help/message-parent", { preHandler: child, config: { rateLimit: { max: 5, timeWindow: "10 minutes" } } }, async (req) => {
     const { text } = z.object({ text: z.string().max(500).default("") }).parse(req.body ?? {});
     const who = childName(db) || "Your child";
-    const parentText = text.trim() ? `${who} pressed "Need a grown-up?" and wrote: ${text.trim()}` : `${who} pressed "Need a grown-up?" and would like you.`;
+    const parentText = text.trim() ? `${who} pressed "Grown-up?" and wrote: ${text.trim()}` : `${who} pressed "Grown-up?" and would like you.`;
     const report = createReport(db, { level: "now", category: "asked_for_help", childNotice: "You asked for a grown-up.", parentText });
     const ok = await deliverReport(db, d.reporters, report, { companionName: loadProfile(db).name, childName: childName(db) });
     return { ok };

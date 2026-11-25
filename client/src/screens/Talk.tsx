@@ -105,7 +105,7 @@ export function Talk({ me, energy, onTurn, openHelp, go }: {
           <span style={{ fontSize: 14, fontWeight: 800, color: "var(--muted)" }}>Talking with {name} · {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</span>
           <PowerChip energy={energy} />
         </span>
-        <button className="grownup" onClick={openHelp}>Need a grown-up?</button>
+        <button className="grownup" onClick={openHelp}>Grown-up?</button>
       </div>
       <div className="stage">
         <Avatar look={me.profile.look} mood={mood} mouth={mouth} size={170} variant="halo" talking={phase === "speaking" && mouth === 0 && noVoice} />

@@ -10,14 +10,14 @@ const e = (over: Partial<Energy>): Energy => ({ mode: "full", percent: 72, fullB
 describe("energy words (the child sees energy, never money)", () => {
   it("Full power", () => {
     const w = energyWords(e({}));
-    expect(w).toMatchObject({ icon: "🔥", title: "Full power", pct: "72% left" });
+    expect(w).toMatchObject({ icon: "fire", title: "Full power", pct: "72% left" });
     expect(w.sub).toBe("this week’s energy · tops up Monday");
   });
-  it("Low power keeps Need a grown-up in view", () => {
+  it("Low power keeps Grown-up? in view", () => {
     const w = energyWords(e({ mode: "low", percent: 8 }));
     expect(w.title).toBe("Low power");
     expect(w.pct).toBe("8% left · resets Monday");
-    expect(w.sub).toMatch(/Need a grown-up/);
+    expect(w.sub).toMatch(/Grown-up\?/);
   });
   it("Resting", () => {
     expect(energyWords(e({ mode: "resting", percent: 0 })).title).toBe("Resting");

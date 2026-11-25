@@ -81,7 +81,7 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
         brief: { type: "string", description: "What to make, with the details they asked for" },
         chapters: { type: "integer", minimum: 1, maximum: 3, description: "Stories only" },
         character_ids: { type: "array", items: { type: "integer" }, description: "Their OCs to include, if any" },
-        look_up: { type: "string", description: "Optional: a search to look things up on the family's safe-listed websites first (for facts, revision notes, flashcards). Leave out for stories and games." },
+        look_up: { type: "string", description: "Optional: a search to look things up on the web first (through the family's block list) (for facts, revision notes, flashcards). Leave out for stories and games." },
       }, ["kind", "title", "brief"]),
       async (input) => {
         const v = z.object({

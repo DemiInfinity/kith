@@ -1,4 +1,5 @@
-// The safe-list rules, kept separate so they're easy to test.
+// The proxy's rules, kept separate so they're easy to test. "blocklist" mode (the default): any public
+// host except blocked ones. "safelist" mode: listed hosts only.
 import net from "node:net";
 
 /** "bbc.co.uk/bitesize" → host "bbc.co.uk". Paths are enforced by the desk browser; the proxy works on hosts. */
@@ -22,4 +23,26 @@ export function isPrivateAddress(ip: string): boolean {
   const v = ip.toLowerCase();
   if (v.startsWith("::ffff:")) return isPrivateAddress(v.slice(7));
   return v === "::1" || v === "::" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80");
+}
+
+function internalName(h: string) {
+  return !h.includes(".") || net.isIP(h) !== 0 || /\.(local|lan|home|internal|intranet|corp|localhost|home\.arpa|onion)$/.test(h);
+}
+
+export interface ProxyRules { mode: "blocklist" | "safelist"; hosts: string[]; blocked: Set<string>; words: string[] }
+
+/** Blocked if the host or any domain it sits under is listed, or a host part holds a blocked word. */
+export function hostBlocked(host: string, blocked: Set<string>, words: string[]): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  if (internalName(h)) return true;
+  const labels = h.split(".");
+  for (let i = 0; i < labels.length - 1; i++) if (blocked.has(labels.slice(i).join("."))) return true;
+  const parts = h.split(/[.-]/);
+  return words.some((w) => parts.some((p) => p === w || (w.length >= 5 && p.includes(w))));
+}
+
+export function proxyAllows(host: string, r: ProxyRules): boolean {
+  if (r.mode === "safelist") return hostAllowed(host, r.hosts);
+  if (hostAllowed(host, r.hosts) && !r.blocked.has(hostOf(host))) return true;
+  return !hostBlocked(host, r.blocked, r.words);
 }

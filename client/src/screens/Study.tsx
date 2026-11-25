@@ -1,3 +1,4 @@
+import { Icon, IL } from "../components/Icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Me, type Mood, type Turn } from "../api";
 import { Toggle } from "../components/bits";
@@ -41,7 +42,7 @@ function SubjectEditor({ row, boards, onDone }: { row: SubjectRow | null; boards
         <div key={i} className="row">
           <select className="select" style={{ width: 120 }} value={d.kind} onChange={(e) => setS({ ...s, dates: s.dates.map((x, j) => (j === i ? { ...x, kind: e.target.value as "mock" } : x)) })}><option>mock</option><option>exam</option><option>deadline</option></select>
           <input className="input" type="date" value={d.date} onChange={(e) => setS({ ...s, dates: s.dates.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)) })} />
-          <button className="x" aria-label="Remove date" onClick={() => setS({ ...s, dates: s.dates.filter((_, j) => j !== i) })}>✕</button>
+          <button className="x" aria-label="Remove date" onClick={() => setS({ ...s, dates: s.dates.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
         </div>
       ))}
       <button className="btn ghost small" onClick={() => setS({ ...s, dates: [...s.dates, { kind: "exam", label: "", date: new Date().toISOString().slice(0, 10) }] })}>+ date</button>
@@ -189,7 +190,7 @@ function PracticeQ({ v }: { v: StudyView }) {
       {marked && (
         <div className="card glow">
           <b style={{ fontFamily: "var(--serif)", fontSize: 22 }}>{marked.score} / {marked.outOf}</b>
-          {marked.points.map((p, i) => <span key={i} style={{ fontSize: 14 }}>{p.met ? "✓" : "○"} {p.point}</span>)}
+          {marked.points.map((p, i) => <span key={i} style={{ fontSize: 14 }}><Icon name={p.met ? "check" : "clock"} size={14} style={{ verticalAlign: -2 }} /> {p.point}</span>)}
           <span style={{ fontSize: 14 }}><b>Next time:</b> {marked.nextStep}</span>
           <span className="small" style={{ color: "var(--text-3)" }}>{marked.encouragement}</span>
         </div>
@@ -217,15 +218,15 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
 
   const tabs = (
     <div className="chips" role="tablist">
-      {([["plan", "🗓️ Plan"], ["subjects", "📚 Subjects"], ["cards", `🗂️ Cards${due ? ` (${due})` : ""}`], ["practice", "✍️ Practice"], ["ask", `💬 Ask ${name}`], ["log", "📋 Help log"]] as const).map(([k, l]) => (
-        <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>
+      {([["plan", "calendar", "Plan"], ["subjects", "study", "Subjects"], ["cards", "cards", `Cards${due ? ` (${due})` : ""}`], ["practice", "pencil", "Practice"], ["ask", "chat2", `Ask ${name}`], ["log", "scroll", "Help log"]] as const).map(([k, ic, l]) => (
+        <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}><IL i={ic}>{l}</IL></button>
       ))}
     </div>
   );
   const head = <div><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>;
 
   const askInChat = () => {
-    const label = `📚 Studying${subj ? ` ${subj.subject.name}` : ""}${isCoursework ? " · coursework" : ""}`;
+    const label = `Studying${subj ? ` ${subj.subject.name}` : ""}${isCoursework ? " · coursework" : ""}`;
     go(`/?mode=study${askSubject ? `&subject=${askSubject}` : ""}${isCoursework ? "&coursework=1" : ""}&label=${encodeURIComponent(label)}`);
   };
 
@@ -237,7 +238,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
         <>
           {v.subjects.length === 0 && <div className="card"><b>Let’s set up your subjects</b><span className="small">Add each subject with its exam board and your mock and exam dates. I’ll make a gentle plan that counts back to them.</span><button className="btn primary small" onClick={() => setTab("subjects")}>Add subjects</button></div>}
           {v.countdowns.slice(0, 4).map((c) => (
-            <div key={c.subjectId + c.date + c.kind} className="memrow"><span>{c.kind === "mock" ? "📝" : c.kind === "exam" ? "🎓" : "📌"}</span><span className="t"><b>{c.subject}</b> {c.kind}{c.label ? ` · ${c.label}` : ""}</span><b style={{ paddingRight: 10 }}>{c.days === 0 ? "today" : `${c.days} days`}</b></div>
+            <div key={c.subjectId + c.date + c.kind} className="memrow"><span className="hic"><Icon name={c.kind === "mock" ? "note" : c.kind === "exam" ? "cap" : "pin"} size={18} /></span><span className="t"><b>{c.subject}</b> {c.kind}{c.label ? ` · ${c.label}` : ""}</span><b style={{ paddingRight: 10 }}>{c.days === 0 ? "today" : `${c.days} days`}</b></div>
           ))}
           {v.tooLate ? <div className="notice" style={{ alignSelf: "stretch" }}>It’s late, so no plan tonight. Sleep helps memory more than one more hour. See you tomorrow.</div> : v.plan.length > 0 && v.subjects.length > 0 && (
             <div className="card">
@@ -245,7 +246,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
               {v.plan.map((d) => (
                 <div key={d.date} className="row" style={{ alignItems: "flex-start", fontSize: 14 }}>
                   <b style={{ width: 92, flex: "none" }}>{day(d.date)}</b>
-                  <span style={{ color: "var(--text-3)" }}>{d.sessions.length ? d.sessions.map((s) => `${s.subject} (${s.minutes}m, ${s.why})`).join(" · ") : "Rest day 🌿"}</span>
+                  <span style={{ color: "var(--text-3)" }}>{d.sessions.length ? d.sessions.map((s) => `${s.subject} (${s.minutes}m, ${s.why})`).join(" · ") : "Rest day"}</span>
                 </div>
               ))}
               <span className="small">Short sessions, one rest day, nothing after {v.profile.latestStudy}. Move things around: it’s a guide, not a rule.</span>
@@ -267,7 +268,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
           {editing ? <SubjectEditor row={editing === "new" ? null : editing} boards={v.boards} onDone={() => { setEditing(null); void load(); }} /> : <button className="btn primary small" onClick={() => setEditing("new")}>+ Add a subject</button>}
           {v.subjects.map((s) => (
             <div key={s.id} className="memrow">
-              <span>{s.subject.coursework ? "🎨" : "📘"}</span>
+              <span className="hic"><Icon name={s.subject.coursework ? "art" : "study"} size={18} /></span>
               <span className="t"><b>{s.subject.name}</b> · {s.subject.board}{s.subject.coursework ? " · coursework" : ""}</span>
               <button className="btn ghost small" onClick={() => setEditing(s)}>Edit</button>
               <button className="x" aria-label={`Remove ${s.subject.name}`} onClick={async () => { if (confirm(`Remove ${s.subject.name}?`)) { await api(`/api/study/subjects/${s.id}`, { method: "DELETE" }); void load(); } }}>✕</button>

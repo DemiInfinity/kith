@@ -75,13 +75,25 @@ async function main() {
   });
 
   app.get("/api/public/health", async () => ({ ok: true }));
-  // The egress proxy asks for the desk browser's safe list here (shared token; not a user API).
+  // The egress proxy asks for the desk browser's rules here (shared token; not a user API).
   app.get("/internal/egress", async (req, reply) => {
     const got = Buffer.from(req.headers.authorization ?? "");
     const want = Buffer.from(`Bearer ${config.desk.token}`);
     if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return reply.code(401).send({ error: "unauthorised" });
     const b = loadParentSettings(db).browser;
-    return { enabled: b.enabled, hosts: [...b.sites, ...b.assetHosts] };
+    const r = studio.browser.deskRules(b);
+    return { enabled: b.enabled, mode: b.mode, hosts: [...b.sites, ...b.assetHosts], blocked: r.blocked, words: r.words, listVersion: studio.browser.lists.version };
+  });
+  // The big public block list, as plain text (one domain a line), fetched by the proxy when it changes.
+  app.get("/internal/egress/list", async (req, reply) => {
+    const got = Buffer.from(req.headers.authorization ?? "");
+    const want = Buffer.from(`Bearer ${config.desk.token}`);
+    if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return reply.code(401).send({ error: "unauthorised" });
+    const b = loadParentSettings(db).browser;
+    studio.browser.rules(b);
+    const own = new Set(b.sites.map((x) => x.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/:].*$/, "")));
+    reply.header("content-type", "text/plain; charset=utf-8");
+    return [...studio.browser.lists.domains()].filter((d) => !own.has(d)).join("\n");
   });
   app.get("/api/public/signin", async () => ({ oidc: Boolean(config.oidc.issuer), label: config.oidc.label, dev: config.devLogin }));
 

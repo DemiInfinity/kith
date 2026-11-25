@@ -70,9 +70,9 @@ function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
     <div className="screen narrow">
       <span className="hand">make something</span>
       <h2 className="screen-title">Create</h2>
-      {[["/stories", "✍️", "Stories with a friend", "Write together; every part credited"], ["/art", "🎨", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "⭐", "OC workshop", "Your characters and their world"], ["/pip", "🖥️", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
+      {[["/stories", "pencil", "Stories with a friend", "Write together; every part credited"], ["/art", "art", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "oc", "OC workshop", "Your characters and their world"], ["/pip", "desk", `Ask ${me.profile.name} to make something`, "On its desk: quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
-          <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
+          <span style={{ display: "inline-flex", color: "var(--lilac)" }}><Icon name={ic as IconName} size={26} /></span><span><b>{t}</b><br /><span className="small">{d}</span></span>
         </button>
       ))}
     </div>
@@ -110,7 +110,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
     ? {
         mode: q.get("mode") as ChatContext["mode"],
         ctx: { subjectId: Number(q.get("subject")) || undefined, coursework: q.get("coursework") === "1" || undefined },
-        label: q.get("label") || (q.get("mode") === "study" ? "📚 Studying" : q.get("mode") === "art" ? "🎨 Art" : "⭐ OC workshop"),
+        label: q.get("label") || (q.get("mode") === "study" ? "Studying" : q.get("mode") === "art" ? "Art" : "OC workshop"),
       }
     : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
@@ -124,7 +124,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const onTurn = (t: Turn) => { setState((s) => (s ? { ...s, energy: t.energy } : s)); void load(); };
   const name = me.profile.name;
   const working = state?.desk.working;
-  const moodText = `${baseMood === "happy" ? "😊 happy" : baseMood === "thinking" ? "🤔 thinking" : baseMood === "sleepy" ? "😌 sleepy" : baseMood === "resting" ? "😴 resting" : "💛 here for you"}${working ? " · " + (working.kind === "story" ? "writing a story" : `making ${working.title}`) : ""}`;
+  const moodText = `${baseMood === "happy" ? "happy" : baseMood === "thinking" ? "thinking" : baseMood === "sleepy" ? "sleepy" : baseMood === "resting" ? "resting" : "here for you"}${working ? " · " + (working.kind === "story" ? "writing a story" : `making ${working.title}`) : ""}`;
   const openHelp = () => setHelp(true);
   const showAside = path === "/" || path === "/talk";
 
@@ -178,7 +178,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             </button>
           );
         })}
-        <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic"><Icon name="grownup" size={22} /></span>Need a grown-up?</button>
+        <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic"><Icon name="grownup" size={22} /></span>Grown-up?</button>
         <div className="foot">
           <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
           <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}><Icon name="call" size={18} /> Call {name}</button>
@@ -199,7 +199,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><Icon name={t.icon} on={on} /><span>{t.label}</span></button>;
           })}
-          <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Need a grown-up?</span></button>
+          <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Grown-up?</span></button>
         </nav>
       </div>
       {showAside && <DeskAside me={me} go={go} />}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CATEGORY_KEYS, type Category } from "./desk/blocklist.js";
 import type { DB } from "./db.js";
 import { get, run } from "./db.js";
 
@@ -53,18 +54,29 @@ export const Connection = z.object({
 export type Connection = z.infer<typeof Connection>;
 
 export const BrowserSettings = z.object({
-  // Pip's browser on the desk: reading only, safe-listed sites only, every page logged.
+  // Pip's browser on the desk: reading only, every page logged. By default it can reach the whole
+  // web except what the block list stops; "safelist" mode limits it to the sites below.
   enabled: z.boolean().default(true),
+  mode: z.enum(["blocklist", "safelist"]).default("blocklist"),
+  // Favourite sites: always allowed, searched first, and the only sites in "safelist" mode.
   sites: z.array(z.string().max(120)).max(60).default([
     "en.wikipedia.org", "simple.wikipedia.org", "www.bbc.co.uk/bitesize", "www.thenational.academy",
     "www.natgeokids.com", "www.nhm.ac.uk", "www.tate.org.uk", "www.metmuseum.org", "www.corbettmaths.com",
   ]),
-  // Images and styles only (never scripts) may also come from these.
+  // In "safelist" mode, images and styles (never scripts) may also come from these.
   assetHosts: z.array(z.string().max(120)).max(60).default([
     "upload.wikimedia.org", "static.files.bbci.co.uk", "ichef.bbci.co.uk", "media.tate.org.uk", "images.metmuseum.org",
   ]),
-  // "wikipedia" needs no key. "brave" uses the Brave Search API with SafeSearch strict (KITH_BRAVE_API_KEY).
-  search: z.enum(["wikipedia", "brave"]).default("wikipedia"),
+  // The family's own blocked sites, on top of the categories and public lists.
+  blocked: z.array(z.string().max(120)).max(500).default([]),
+  categories: z.array(z.enum(CATEGORY_KEYS as [Category, ...Category[]])).default([...CATEGORY_KEYS]),
+  // Public block lists in hosts-file format, fetched once a day.
+  blockLists: z.array(z.string().url().max(300)).max(5).default([
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn/hosts",
+  ]),
+  // "duckduckgo" (SafeSearch strict) and "wikipedia" need no key. "brave" uses the Brave Search API
+  // with SafeSearch strict (KITH_BRAVE_API_KEY).
+  search: z.enum(["duckduckgo", "wikipedia", "brave"]).default("duckduckgo"),
 });
 export type BrowserSettings = z.infer<typeof BrowserSettings>;
 
@@ -100,7 +112,7 @@ export function defaultConnections(): Connection[] {
       url: "https://api.dictionaryapi.dev/api/v2/entries/en/", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
     { id: "google", kind: "google-drive", name: "Google Drive (their own account)", enabled: false, level: "act",
       url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
-    { id: "web", kind: "web", name: "Allowed websites", enabled: false, level: "look",
+    { id: "web", kind: "web", name: "Websites", enabled: false, level: "look",
       url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" },
   ];
 }

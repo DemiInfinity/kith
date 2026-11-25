@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "./Icons";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Energy, type Helpline } from "../api";
 
@@ -44,14 +45,14 @@ export function dayLabel(ts: number) {
 export function energyWords(e: Energy) {
   const resets = DAYS[new Date(e.weekResetsAt).getDay()];
   if (e.mode === "full") {
-    return { icon: "🔥", title: "Full power", pct: `${e.percent}% left`, sub: `this week’s energy · tops up ${resets}` };
+    return { icon: "fire" as IconName, title: "Full power", pct: `${e.percent}% left`, sub: `this week’s energy · tops up ${resets}` };
   }
   if (e.mode === "low") {
     const back = e.fullBackAt ? ` Full power is back ${when(e.fullBackAt)}.` : "";
-    return { icon: "🔋", title: "Low power", pct: `${e.percent}% left · resets ${resets}`, sub: `I can still chat, just a bit simpler.${back} “Need a grown-up?” always works.` };
+    return { icon: "battery" as IconName, title: "Low power", pct: `${e.percent}% left · resets ${resets}`, sub: `I can still chat, just a bit simpler.${back} “Grown-up?” always works.` };
   }
   const back = e.limitedBy === "month" ? "Back when topped up" : e.fullBackAt ? `Back ${when(e.fullBackAt)}` : "Back soon";
-  return { icon: "😴", title: "Resting", pct: back, sub: "I’m out of energy for now. “Need a grown-up?” always works, even while I rest." };
+  return { icon: "moon" as IconName, title: "Resting", pct: back, sub: "I’m out of energy for now. “Grown-up?” always works, even while I rest." };
 }
 
 export function EnergyCard({ energy, compact }: { energy: Energy; compact?: boolean }) {
@@ -60,15 +61,15 @@ export function EnergyCard({ energy, compact }: { energy: Energy; compact?: bool
   if (compact) {
     return (
       <div className={`energy compact ${energy.mode}`}>
-        <span className="spread"><b style={{ fontSize: 14 }}>{w.icon} {w.title}</b><span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--lilac-soft)" }}>{energy.mode === "resting" ? w.pct : `${energy.percent}% left`}</span></span>
+        <span className="spread"><b style={{ fontSize: 14, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={w.icon} size={16} />{w.title}</b><span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--lilac-soft)" }}>{energy.mode === "resting" ? w.pct : `${energy.percent}% left`}</span></span>
         {fill}
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{energy.mode === "full" ? w.sub : energy.mode === "low" ? "simpler for now · Need a grown-up? always works" : w.pct}</span>
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{energy.mode === "full" ? w.sub : energy.mode === "low" ? "simpler for now · Grown-up? always works" : w.pct}</span>
       </div>
     );
   }
   return (
     <div className={`energy ${energy.mode}`} role="status">
-      <span className="big" aria-hidden>{w.icon}</span>
+      <span className="big" aria-hidden><Icon name={w.icon} size={30} /></span>
       <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
         <span className="spread"><b style={{ fontSize: 16 }}>{w.title}</b><span style={{ fontSize: 12, fontWeight: 800, color: "var(--lilac-soft)" }}>{w.pct}</span></span>
         {fill}
@@ -79,11 +80,11 @@ export function EnergyCard({ energy, compact }: { energy: Energy; compact?: bool
 }
 
 export function PowerChip({ energy }: { energy: Energy }) {
-  const t = energy.mode === "full" ? "🔥 Full power" : energy.mode === "low" ? "🔋 Low power" : "😴 Resting";
-  return <span className={`powerchip ${energy.mode}`}>{t}</span>;
+  const t = energy.mode === "full" ? "Full power" : energy.mode === "low" ? "Low power" : "Resting";
+  return <span className={`powerchip ${energy.mode}`}><Icon name={energy.mode === "full" ? "fire" : energy.mode === "low" ? "battery" : "moon"} size={14} /> {t}</span>;
 }
 
-// ── Need a grown-up? ────────────────────────────────────────────────────────────────────────
+// ── Grown-up? ────────────────────────────────────────────────────────────────────────
 
 export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = true }: {
   open: boolean; onClose: () => void; parentLabel: string; helplines: Helpline[]; canMessage?: boolean;
@@ -118,7 +119,7 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
         <span style={{ fontSize: 15, lineHeight: 1.5, color: "#5a4a63" }}>Whatever it is, a real person can help. You won’t be in trouble.</span>
         {stage === "pick" && canMessage && (
           <button className="helper parent" onClick={() => setStage("write")}>
-            <span style={{ fontSize: 24 }}>🧡</span><span><b>Message {parentLabel}</b><span className="sub">They get it straight away</span></span>
+            <span className="hic"><Icon name="heart" size={26} /></span><span><b>Message {parentLabel}</b><span className="sub">They get it straight away</span></span>
           </button>
         )}
         {stage === "write" && (
@@ -127,11 +128,11 @@ export function HelpSheet({ open, onClose, parentLabel, helplines, canMessage = 
             <button className="btn ember block" onClick={send}>Send to {parentLabel}</button>
           </div>
         )}
-        {stage === "sent" && <div className="helper parent"><span style={{ fontSize: 24 }}>✅</span><span><b>Sent</b><span className="sub">{parentLabel} knows you’d like them.</span></span></div>}
-        {stage === "failed" && <div className="helper line"><span style={{ fontSize: 24 }}>⚠️</span><span><b>That didn’t send</b><span className="sub">Please go and find {parentLabel}, or call someone below.</span></span></div>}
+        {stage === "sent" && <div className="helper parent"><span className="hic"><Icon name="check" size={26} /></span><span><b>Sent</b><span className="sub">{parentLabel} knows you’d like them.</span></span></div>}
+        {stage === "failed" && <div className="helper line"><span className="hic"><Icon name="warn" size={26} /></span><span><b>That didn’t send</b><span className="sub">Please go and find {parentLabel}, or call someone below.</span></span></div>}
         {helplines.map((h) => (
           <a key={h.name + h.number} className={`helper ${h.kind === "emergency" ? "sos" : "line"}`} href={tel(h.number)}>
-            <span style={{ fontSize: 24 }}>{h.kind === "emergency" ? "🚨" : "📞"}</span>
+            <span className="hic"><Icon name={h.kind === "emergency" ? "siren" : "phone"} size={26} /></span>
             <span><b>{h.name} · {h.number}</b><span className="sub">{h.sub}</span></span>
           </a>
         ))}

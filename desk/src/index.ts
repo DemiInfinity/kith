@@ -2,6 +2,7 @@
 // container on a network with no internet access. It holds no API key: the Kith server does the
 // thinking and hands finished things here. Only the Kith server can reach it (shared token).
 
+import type { BrowseRules } from "./rules.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
@@ -40,6 +41,12 @@ function authorised(req: http.IncomingMessage) {
   return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
 
+function readRules(b: Record<string, unknown>): BrowseRules {
+  const r = (b.rules ?? b) as Record<string, unknown>;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 5000) : []);
+  return { mode: r.mode === "blocklist" ? "blocklist" : "safelist", sites: list(r.sites), assetHosts: list(r.assetHosts), blocked: list(r.blocked), words: list(r.words) };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", "http://desk");
@@ -57,7 +64,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (parts[0] === "browse" && req.method === "POST") {
       const b = await readJson(req);
-      const rules = { sites: (b.sites as string[]) ?? [], assetHosts: (b.assetHosts as string[]) ?? [] };
+      const rules = readRules(b);
       try {
         return send(res, 200, await browse(String(b.url), String(b.why ?? "").slice(0, 200), Number.isInteger(b.jobId) ? (b.jobId as number) : null, rules));
       } catch (err) {
@@ -69,7 +76,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readJson(req);
       try {
         if (parts[1] === "takeover") {
-          return send(res, 200, await takeOver(String(b.who ?? "someone").slice(0, 20), { sites: (b.sites as string[]) ?? [], assetHosts: (b.assetHosts as string[]) ?? [] }, b.url as string | undefined));
+          return send(res, 200, await takeOver(String(b.who ?? "someone").slice(0, 20), readRules(b), b.url as string | undefined));
         }
         if (parts[1] === "action") return send(res, 200, await act(b as never));
         if (parts[1] === "release") { await release(); return send(res, 200, { ok: true }); }

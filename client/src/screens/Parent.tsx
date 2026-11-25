@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
@@ -6,7 +7,12 @@ import { DeskComputer } from "./DeskComputer";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
-interface BrowserSettings { enabled: boolean; sites: string[]; assetHosts: string[]; search: "wikipedia" | "brave" }
+type Category = "adult" | "gambling" | "dating" | "social" | "harm" | "proxies";
+interface BrowserSettings { enabled: boolean; mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; categories: Category[]; blockLists: string[]; search: "duckduckgo" | "wikipedia" | "brave" }
+const CATEGORIES: [Category, string][] = [
+  ["adult", "Adult and explicit"], ["gambling", "Gambling"], ["dating", "Dating"], ["social", "Social media and stranger chat"],
+  ["harm", "Weapons, drugs, gore and self-harm"], ["proxies", "Proxies, VPNs and ways around filters"],
+];
 interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
@@ -47,6 +53,7 @@ function money(n: number, cap: number) {
 
 function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => void }) {
   const [s, setS] = useState<Settings>(initial);
+  const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
   const [msg, setMsg] = useState("");
   const [builtIn, setBuiltIn] = useState("");
   useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
@@ -57,7 +64,7 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
   const save = async () => {
     try {
       await api("/api/parent/settings", { method: "PUT", body: s });
-      setMsg("Saved ✓");
+      setMsg("Saved.");
       onSaved();
     } catch (e) {
       setMsg((e as Error).message);
@@ -101,7 +108,7 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
       </div>
 
       <div className="card">
-        <b>Need a grown-up? numbers</b>
+        <b>Grown-up? numbers</b>
         {s.helplines.map((h, i) => (
           <div key={i} className="grid2">
             <input className="input" aria-label="Name" value={h.name} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
@@ -109,7 +116,7 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
             <input className="input" aria-label="Line under it" value={h.sub} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, sub: e.target.value } : x)) })} />
             <span className="row">
               <select className="select" value={h.kind} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, kind: e.target.value as Helpline["kind"] } : x)) })}><option value="helpline">helpline</option><option value="emergency">emergency</option></select>
-              <button className="x" aria-label="Remove" onClick={() => setS({ ...s, helplines: s.helplines.filter((_, j) => j !== i) })}>✕</button>
+              <button className="x" aria-label="Remove" onClick={() => setS({ ...s, helplines: s.helplines.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
             </span>
           </div>
         ))}
@@ -130,16 +137,37 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
 
       <div className="card">
         <b>The desk’s browser</b>
-        <span className="small">Reads websites only for tasks your child asked for, only from this safe list, with JavaScript, sign-ins, forms and downloads off. Every page is logged and can be watched live.</span>
-        <Toggle label="Browsing switched on" checked={s.browser.enabled} onChange={(v) => setS({ ...s, browser: { ...s.browser, enabled: v } })} />
-        <label className="field">Safe list (one per line; a path limits it, e.g. www.bbc.co.uk/bitesize)
-          <textarea className="textarea" value={s.browser.sites.join("\n")} onChange={(e) => setS({ ...s, browser: { ...s.browser, sites: list(e.target.value) } })} /></label>
-        <label className="field">Image and style hosts those sites need (no scripts ever load)
-          <textarea className="textarea" value={s.browser.assetHosts.join("\n")} onChange={(e) => setS({ ...s, browser: { ...s.browser, assetHosts: list(e.target.value) } })} /></label>
+        <span className="small">Reads websites only for tasks your child asked for, with JavaScript, sign-ins, forms and downloads off. It stops at robot checks (CAPTCHAs) and never tries to get past them. Every page is logged, safety-checked and can be watched live, and the proxy on the server applies the same rules again.</span>
+        <Toggle label="Browsing switched on" checked={s.browser.enabled} onChange={(v) => setWeb({ enabled: v })} />
+        <label className="field">What it can reach
+          <select className="select" value={s.browser.mode} onChange={(e) => setWeb({ mode: e.target.value as BrowserSettings["mode"] })}>
+            <option value="blocklist">The whole web, except what’s blocked (recommended)</option>
+            <option value="safelist">Only the favourite sites below</option>
+          </select></label>
+        {s.browser.mode === "blocklist" && (
+          <>
+            <b style={{ fontSize: 14 }}>Always blocked</b>
+            {CATEGORIES.map(([k, label]) => (
+              <Toggle key={k} label={label} checked={s.browser.categories.includes(k)}
+                onChange={(v) => setWeb({ categories: v ? [...s.browser.categories, k] : s.browser.categories.filter((c) => c !== k) })} />
+            ))}
+            <label className="field">Your own blocked sites (one per line; subdomains are blocked too)
+              <textarea className="textarea" value={s.browser.blocked.join("\n")} onChange={(e) => setWeb({ blocked: list(e.target.value) })} /></label>
+            <label className="field">Public block lists, fetched daily (hosts-file format)
+              <textarea className="textarea" value={s.browser.blockLists.join("\n")} onChange={(e) => setWeb({ blockLists: list(e.target.value) })} /></label>
+          </>
+        )}
+        <label className="field">{s.browser.mode === "safelist" ? "Safe list" : "Favourite sites (searched first, never blocked by a public list)"} (one per line; a path limits it, e.g. www.bbc.co.uk/bitesize)
+          <textarea className="textarea" value={s.browser.sites.join("\n")} onChange={(e) => setWeb({ sites: list(e.target.value) })} /></label>
+        {s.browser.mode === "safelist" && (
+          <label className="field">Image and style hosts those sites need (no scripts ever load)
+            <textarea className="textarea" value={s.browser.assetHosts.join("\n")} onChange={(e) => setWeb({ assetHosts: list(e.target.value) })} /></label>
+        )}
         <label className="field">Search
-          <select className="select" value={s.browser.search} onChange={(e) => setS({ ...s, browser: { ...s.browser, search: e.target.value as BrowserSettings["search"] } })}>
-            <option value="wikipedia">Wikipedia’s own search (no key needed)</option>
+          <select className="select" value={s.browser.search} onChange={(e) => setWeb({ search: e.target.value as BrowserSettings["search"] })}>
+            <option value="duckduckgo">DuckDuckGo, SafeSearch strict (no key needed)</option>
             <option value="brave">Brave Search, SafeSearch strict (needs KITH_BRAVE_API_KEY)</option>
+            <option value="wikipedia">Wikipedia’s own search only</option>
           </select></label>
       </div>
 
@@ -148,7 +176,7 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
         <span className="small">Only you can add or switch these on. Each is “look only” or “can act”. Nothing that spends money, messages people or posts online is ever offered, whatever a connection allows. Tokens live in the server’s environment (the variable named here), never in this page.</span>
         {s.connections.map((c, i) => (
           <details key={c.id} className="card" style={{ background: "var(--card-2)" }}>
-            <summary className="spread" style={{ cursor: "pointer" }}><b>{c.enabled ? "🟢" : "⚪️"} {c.name}</b><span className="small">{c.level === "act" ? "can act" : "look only"}</span></summary>
+            <summary className="spread" style={{ cursor: "pointer" }}><b className="il"><span className={`onoff ${c.enabled ? "on" : ""}`} aria-label={c.enabled ? "on" : "off"} />{c.name}</b><span className="small">{c.level === "act" ? "can act" : "look only"}</span></summary>
             <span className="small">{KIND_HELP[c.kind]}</span>
             <Toggle label="Switched on" checked={c.enabled} onChange={(v) => setC(i, { enabled: v })} />
             <label className="field">Level
@@ -182,7 +210,7 @@ export function Parent({ me }: { me: Me }) {
   useEffect(() => { load(); const i = setInterval(load, 30_000); return () => clearInterval(i); }, [load]);
   const test = async () => {
     setTestMsg("Sending…");
-    try { const r = await api<{ ok: boolean }>("/api/parent/test-report", { body: {} }); setTestMsg(r.ok ? "Delivered ✓" : "It didn’t get through: check the reporter settings."); } catch (e) { setTestMsg((e as Error).message); }
+    try { const r = await api<{ ok: boolean }>("/api/parent/test-report", { body: {} }); setTestMsg(r.ok ? "Delivered." : "It didn’t get through: check the reporter settings."); } catch (e) { setTestMsg((e as Error).message); }
   };
   const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
   const cname = o?.childName || "your child";

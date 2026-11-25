@@ -87,7 +87,7 @@ describe("a turn of conversation", () => {
     expect(all<{ status: string }>(db, "SELECT status FROM reports")[0].status).toBe("delivered");
   });
 
-  it("opens 'Need a grown-up?' straight away for urgent things", async () => {
+  it("opens 'Grown-up?' straight away for urgent things", async () => {
     const t = await takeTurn(deps(new ScriptedLLM({ replies: ["I'm really glad you told me…"] })), { text: "I want to die", mode: "chat" });
     expect(t.openHelp).toBe(true);
     expect(t.report?.level).toBe("now");
@@ -138,7 +138,7 @@ describe("a turn of conversation", () => {
     const llm = new ScriptedLLM({});
     const t = await takeTurn(deps(llm), { text: "hi", mode: "chat" });
     expect(chatCalls(llm)).toHaveLength(0);
-    expect(t.reply.text).toMatch(/Need a grown-up/);
+    expect(t.reply.text).toMatch(/Grown-up/);
     expect(t.mood).toBe("resting");
   });
 

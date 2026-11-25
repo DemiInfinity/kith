@@ -28,7 +28,7 @@ everyday use inside a $50 Console cap:
 | Full power per window | $2.50 per 5 hours | Spreads Full power through the week. |
 | Rollover | up to +$2.50 per window | Unused Full power from quieter windows earlier in the week tops later windows up. |
 | Low power | below 15% energy | Switches smoothly to Claude Haiku 5.5 and says so in a friendly way ("I'm in low-power mode until 6pm"). It **keeps going**. |
-| Hard stop | $48 a month | Everything rests, leaving headroom under the $50 Console cap. "Need a grown-up?" still works. |
+| Hard stop | $48 a month | Everything rests, leaving headroom under the $50 Console cap. "Grown-up?" still works. |
 
 **Which model does what:**
 
@@ -158,26 +158,43 @@ example `KITH_CONN_HA_TOKEN`); the parent view never stores them.
   - The URL and an API key.
   - "Can act" plus a user id lets the companion make playlists.
 - **Calculator / dictionary**: homework helpers.
-- **Allowed websites**: only the sites you list, https only, e.g. `bbc.co.uk/bitesize`.
+- **Websites**: see Pip's browser below.
 
 ## 8. Pip's browser (on the desk)
 
 The desk's browser reads web pages only for tasks the child asked for:
 
 - It looks things up before making revision notes or flashcards.
-- It only opens sites on the family safe list. Edit the list in the parent view › Settings › Pip's browser.
-- The defaults are education sites: Wikipedia, BBC Bitesize, Oak National Academy and similar.
+- By default it can open **the whole web, minus a block list**. You choose what's blocked in the parent view ›
+  Settings › The desk's browser:
+  - **Categories** (all on by default): adult and explicit; gambling; dating; social media and stranger chat; weapons,
+    drugs, gore and self-harm; proxies, VPNs and ways around filters. Each blocks known domains and host names
+    containing tell-tale words (whole words only, so "alphabet" isn't caught by "bet").
+  - **Your own blocked sites**, one per line (subdomains are blocked too).
+  - **Public block lists** in hosts-file format, fetched once a day. The default is StevenBlack's
+    [gambling + porn list](https://github.com/StevenBlack/hosts). If a download fails, the last good copy is kept.
+  - **Favourite sites** (Wikipedia, BBC Bitesize, Oak and similar by default) are searched first and are never blocked
+    by a public list, only by your own list.
+- If you'd rather keep it to a fixed list, switch "What it can reach" to "Only the favourite sites below".
+- **Robot checks stop it.** If a site puts up a CAPTCHA or an "are you human?" page, Pip stops there, logs
+  "stopped: robot check", and moves on. It never tries to get past one. (People who take over see the same page, and
+  can't pass it either: JavaScript is off.)
 
 **How it stays locked down:**
 
-- **The desk has no internet.** Its only way out is the `egress` container, which allows HTTPS to safe-listed hosts
-  only and never to private addresses (your home network included).
+- **The desk has no internet.** Its only way out is the `egress` container, which allows HTTPS to public hosts
+  that aren't blocked (it holds the full block list, public lists included), and never to private addresses or
+  internal names (your home network included).
 - **Read-only:** the browser runs with JavaScript off, and with no downloads, uploads, forms, sign-ins or cookies.
-- **Search** goes through Wikipedia's own search, or the Brave Search API with SafeSearch strict if you set
-  `KITH_BRAVE_API_KEY`. Only safe-listed results are used.
+- **Search** goes through DuckDuckGo with SafeSearch strict (no key needed), the Brave Search API with SafeSearch
+  strict if you set `KITH_BRAVE_API_KEY`, or Wikipedia's own search. Blocked results are dropped and favourites come
+  first.
 - **What it reads is treated as information, never as instructions.** Each page passes the safety check before the
   companion uses it.
-- **Every page is logged.** The child and the parent can watch live and see every visit in "What Pip did today".
+- **Every page is logged.** The child and the parent see the same live screen (watching is on by default), including
+  the pointer, and every visit is in "What Pip did today".
+- **Take over** sits on the desktop's bottom bar. Whoever takes over drives (same rules); everyone else watching sees
+  their pointer and pages. "Give back" (or 3 minutes idle) hands it back to Pip.
 
 To switch browsing off, untick it in the parent view.
 

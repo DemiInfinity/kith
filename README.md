@@ -47,7 +47,7 @@ It's a phone web app (installable PWA) and the same app laid out for a laptop or
     timelines.
   - Interactive things run in a locked sandbox (no network, no storage, no access to the app).
   - The child can ask for changes ("make it harder"). The desk has its own daily slice of the budget.
-  - **Pip's browser** reads safe-listed sites only, read-only, behind an egress proxy. Every page is logged and can be
+  - **Pip's browser** reads the web through a block list (adult, gambling, dating, social and stranger chat, harm, proxies, plus the family's own list and a public list), read-only, behind an egress proxy, and stops at robot checks. Every page is logged and can be
     watched live.
 - **OC workshop**:
   - Original characters: sheets, relationships, a world, and a gallery on the desk.
@@ -74,7 +74,7 @@ Safety sits underneath the personality and doesn't change with it. Full details:
   companion never asks for them.
 - **No romance, nothing sexual, no money, no meet-ups, no grown-up content.** It always says it's an AI, and nudges
   back to real friends and family.
-- **"Need a grown-up?" is on every screen**: message the parent, Childline (0800 1111), 999. UK by default; the
+- **"Grown-up?" is on every screen**: message the parent, Childline (0800 1111), 999. UK by default; the
   numbers are configurable.
 - **Told first, then reported**:
   - When something is worrying, the companion tells the child what it will share and why.

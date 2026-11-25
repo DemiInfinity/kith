@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Me, type Mood, type Turn } from "../api";
 import { Toggle } from "../components/bits";
@@ -19,14 +20,14 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
 
   const tabs = (
     <div className="chips" role="tablist">
-      {([["today", "✨ Today"], ["sketchbook", "📓 Sketchbook"], ["mood", "🎨 Mood board"], ["talk", `💬 Talk art with ${name}`]] as const).map(([k, l]) => (
+      {([["today", "Today"], ["sketchbook", "Sketchbook"], ["mood", "Mood board"], ["talk", `Talk art with ${name}`]] as const).map(([k, l]) => (
         <button key={k} role="tab" aria-selected={tab === k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>
       ))}
     </div>
   );
   const head = <div><span className="hand">make something today</span><h2 className="screen-title" style={{ marginTop: 0 }}>Art</h2></div>;
 
-  const askInChat = () => go(`/?mode=art${coursework ? "&coursework=1" : ""}&label=${encodeURIComponent(`🎨 Art${coursework ? " · coursework" : ""}`)}`);
+  const askInChat = () => go(`/?mode=art${coursework ? "&coursework=1" : ""}&label=${encodeURIComponent(`Art${coursework ? " · coursework" : ""}`)}`);
 
   return (
     <div className="screen narrow">
@@ -45,12 +46,12 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
           <div className="card glow"><span className="eyebrow">Today’s challenge</span><span style={{ fontSize: 17, lineHeight: 1.45 }}>{v.challenge}</span></div>
           <div className="card">
             <b>Show {name} your work</b>
-            <button className="btn ghost small" disabled title={v.uploads.reason}>📷 Add a photo (coming later)</button>
+            <button className="btn ghost small" disabled title={v.uploads.reason}><Icon name="camera" size={16} /> Add a photo (coming later)</button>
             <span className="small">{v.uploads.reason}</span>
-            <button className="btn primary small" onClick={() => go(`/?mode=art&label=${encodeURIComponent("🎨 Art")}`)}>Describe it to {name}</button>
+            <button className="btn primary small" onClick={() => go(`/?mode=art&label=${encodeURIComponent("Art")}`)}>Describe it to {name}</button>
           </div>
           <button className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go("/oc")}>
-            <span style={{ fontSize: 24 }}>⭐</span><span><b>OC workshop</b><br /><span className="small">Your characters, their world and the gallery</span></span>
+            <span style={{ display: "inline-flex", color: "var(--lilac)" }}><Icon name="oc" size={26} /></span><span><b>OC workshop</b><br /><span className="small">Your characters, their world and the gallery</span></span>
           </button>
         </>
       )}
@@ -90,7 +91,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
             {v.mood.map((m) => (
               <button key={m.id} className="card" style={{ padding: 10, minWidth: 90, alignItems: "center", background: m.kind === "colour" ? m.value : undefined, color: m.kind === "colour" ? "#2A1D3A" : undefined }}
                 title="Tap to remove" onClick={async () => { if (confirm("Unpin this?")) { await api(`/api/art/mood/${m.id}`, { method: "DELETE" }); void load(); } }}>
-                <span style={{ fontWeight: 800, fontSize: 14 }}>{m.kind === "reference" ? "🏛️ " : m.kind === "word" ? "“" : ""}{m.value}{m.kind === "word" ? "”" : ""}</span>
+                <span style={{ fontWeight: 800, fontSize: 14 }}>{m.kind === "reference" ? <Icon name="landmark" size={14} style={{ verticalAlign: -2, marginRight: 4 }} /> : m.kind === "word" ? "“" : ""}{m.value}{m.kind === "word" ? "”" : ""}</span>
               </button>
             ))}
           </div>

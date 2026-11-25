@@ -1,3 +1,4 @@
+import { IL } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Me } from "../api";
 import { pickGoogleDoc, type GoogleStatus } from "./Google";
@@ -73,9 +74,9 @@ function StoryView({ me, id, onBack }: { me: Me; id: number; onBack: () => void 
         </div>
       </div>
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <button className="btn ghost small" disabled={!!busy} onClick={() => suggest("idea")}>{busy === "idea" ? "Thinking…" : "💡 Ideas for what’s next"}</button>
-        <button className="btn ghost small" disabled={!!busy} onClick={() => suggest("continue")}>{busy === "continue" ? "Writing…" : "✍️ Suggest a next bit"}</button>
-        <button className="btn ghost small" disabled={!!busy} onClick={bible}>{busy === "bible" ? "Updating…" : "📖 Update story bible"}</button>
+        <button className="btn ghost small" disabled={!!busy} onClick={() => suggest("idea")}>{busy === "idea" ? "Thinking…" : <IL i="bulb">Ideas for what’s next</IL>}</button>
+        <button className="btn ghost small" disabled={!!busy} onClick={() => suggest("continue")}>{busy === "continue" ? "Writing…" : <IL i="pencil">Suggest a next bit</IL>}</button>
+        <button className="btn ghost small" disabled={!!busy} onClick={bible}>{busy === "bible" ? "Updating…" : <IL i="stories">Update story bible</IL>}</button>
         {google?.connected && google.enabled && <button className="btn ghost small" onClick={exportDoc}>Save to Google Docs</button>}
       </div>
       {s.bible && <div className="card"><b>Story bible</b><span style={{ fontSize: 14, whiteSpace: "pre-wrap", color: "var(--text-3)" }}>{s.bible}</span></div>}

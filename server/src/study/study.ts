@@ -219,7 +219,7 @@ export function studyNote(db: DB, ctx: { subjectId?: number; coursework?: boolea
   return [
     `You're in study mode: a ${p.curriculum}${p.year ? ` student in ${p.year}` : " student"}.${subject ? ` Subject: ${subject.subject.name} (${subject.subject.board}).` : ""}${next ? ` Next: ${next.subject} ${next.kind} in ${next.days} days.` : ""}`,
     "Help them learn it: short explanations, check their understanding with a question, use worked examples for maths and science, and exam technique (command words, how marks are given). Encourage, never pressure. Suggest a short break after a while.",
-    "If they seem stressed or overwhelmed, slow down, be kind, suggest a break or talking to someone they trust, and remember the safety rules (Need a grown-up?, Childline).",
+    "If they seem stressed or overwhelmed, slow down, be kind, suggest a break or talking to someone they trust, and remember the safety rules (Grown-up?, Childline).",
     tooLateToStudy(db) ? "It's late. Don't push more revision: gently suggest rest and picking it up tomorrow (no nagging, no guilt). If they want to carry on briefly, keep it light." : "",
     coursework ? COURSEWORK_RULES : "",
   ].filter(Boolean).join("\n");

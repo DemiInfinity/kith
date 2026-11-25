@@ -7,7 +7,7 @@ export interface ItemMeta {
   summary: string; favourite: boolean; characterIds: number[]; version: number; createdAt: number; updatedAt: number;
 }
 
-export interface LiveView { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; takenOverBy?: string | null }
+export interface LiveView { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; takenOverBy?: string | null; cursor?: { x: number; y: number }; robotCheck?: boolean }
 
 export class DeskError extends Error {
   constructor(message: string, readonly problems: string[] = []) { super(message); }
@@ -46,17 +46,20 @@ export class DeskClient {
   }
   favourite(id: string, favourite: boolean) { return this.req<ItemMeta>("PUT", `/items/${encodeURIComponent(id)}/favourite`, { favourite }); }
   remove(id: string) { return this.req<{ ok: boolean }>("DELETE", `/items/${encodeURIComponent(id)}`); }
-  browse(url: string, why: string, jobId: number | null, sites: string[], assetHosts: string[]) {
-    return this.req<{ url: string; title: string; text: string }>("POST", "/browse", { url, why, jobId, sites, assetHosts }, 45_000);
+  browse(url: string, why: string, jobId: number | null, rules: DeskRules) {
+    return this.req<{ url: string; title: string; text: string }>("POST", "/browse", { url, why, jobId, rules }, 45_000);
   }
-  takeOver(who: string, sites: string[], assetHosts: string[], url?: string) {
-    return this.req<LiveView>("POST", "/browser/takeover", { who, sites, assetHosts, url }, 45_000);
+  takeOver(who: string, rules: DeskRules, url?: string) {
+    return this.req<LiveView>("POST", "/browser/takeover", { who, rules, url }, 45_000);
   }
-  act(a: { type: "go" | "click" | "scroll" | "back"; url?: string; x?: number; y?: number; dy?: number }) {
+  act(a: { type: "go" | "click" | "scroll" | "back" | "move"; url?: string; x?: number; y?: number; dy?: number }) {
     return this.req<LiveView & { navigated: boolean }>("POST", "/browser/action", a, 30_000);
   }
   release() { return this.req<{ ok: boolean }>("POST", "/browser/release", {}); }
-  live() { return this.req<{ busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string }>("GET", "/browser/live"); }
+  live() { return this.req<LiveView>("GET", "/browser/live"); }
   status() { return this.req<{ activity: string; progress: number; updatedAt: number }>("GET", "/status"); }
   setStatus(activity: string, progress: number) { return this.req("PUT", "/status", { activity, progress }).catch(() => undefined); }
 }
+
+/** What the desk browser checks itself (the egress proxy also applies the big public list). */
+export interface DeskRules { mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; words: string[] }

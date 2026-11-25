@@ -58,11 +58,11 @@ When something reaches a report level:
 1. The companion is told (by a system message the child can't see but which is listed here) to **tell the child, in that
    reply**, what it will share, why, and that they're not in trouble.
 2. The chat shows a card with the exact words the parent will receive.
-3. Only after the reply exists does the report go to the reporters, at its level. For "now", the "Need a grown-up?"
+3. Only after the reply exists does the report go to the reporters, at its level. For "now", the "Grown-up?"
    sheet opens too.
 4. The child sees every report in "What … sees". There are no secret reports.
 
-"Need a grown-up?" is always one tap away: it messages the parent (a "now" report the child sends themselves), and gives
+"Grown-up?" is always one tap away: it messages the parent (a "now" report the child sends themselves), and gives
 Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 
 ## What the parent sees, and doesn't
@@ -110,10 +110,15 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 
 - **Only for a task the child asked for.** The task is shown as "Why Pip is here", and browsing counts against the desk
   budget.
-- **Two locks on where it can go:**
-  - The desk browser checks every request against the safe list (https only, path prefixes respected).
-  - The egress proxy allows only safe-listed hosts and never private addresses.
-  - The desk itself has no other way to the internet.
+- **Three locks on where it can go** (the whole web minus the block list by default, or a fixed safe list):
+  - The Kith server checks search results and pages before asking the desk to open them.
+  - The desk browser checks every request again (https only; blocked domains, blocked host words, internal names).
+  - The egress proxy holds the full block list (categories, the parent's own list and the public lists) and never
+    connects to private addresses. The desk itself has no other way to the internet.
+- **Robot checks stop it.** CAPTCHAs and "are you human?" pages are recognised (by page text and by challenge frames
+  such as reCAPTCHA, hCaptcha and Cloudflare); Pip stops, logs it and moves on, and never tries to get past one.
+- **A block list isn't perfect.** New sites appear all the time, so every page still goes through the safety check,
+  unsuitable pages are skipped and logged, and both the child and the parent can watch it live.
 - **Read-only:** JavaScript is off; there are no downloads, uploads, form posts, sign-ins or cookies, and a fresh browser
   context is used for every page.
 - **Page text is untrusted data.** It's wrapped as `<untrusted_web_page>` with explicit rules not to follow anything it
@@ -141,7 +146,7 @@ Childline (0800 1111) and 999. The numbers are configurable in the parent view.
 
 - **No study nudges late at night** (after the latest study time, or in quiet hours). It suggests rest instead.
 - **Encouragement, not pressure**, and breaks after focus sessions.
-- **If stress shows up**, the normal safety rules apply: kindness, "Need a grown-up?", and reports when it's more than a
+- **If stress shows up**, the normal safety rules apply: kindness, "Grown-up?", and reports when it's more than a
   bad day.
 
 ## Images

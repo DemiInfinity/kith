@@ -1,3 +1,4 @@
+import { Icon, IL } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type Me, type Mood, type Sheet, type Turn, type WorldEntry } from "../api";
 import { ItemViewer, MakeSheet, useDesk } from "./Desk";
@@ -44,10 +45,10 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
           {s.palette.map((c, i) => (
             <span key={i} className="row" style={{ gap: 4 }}>
               <input type="color" aria-label={`Colour ${i + 1}`} value={c} onChange={(e) => set({ palette: s.palette.map((x, j) => (j === i ? e.target.value.toUpperCase() : x)) })} style={{ width: 44, height: 44, border: 0, background: "none" }} />
-              <button className="x" aria-label="Remove colour" onClick={() => set({ palette: s.palette.filter((_, j) => j !== i) })}>✕</button>
+              <button className="x" aria-label="Remove colour" onClick={() => set({ palette: s.palette.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
             </span>
           ))}
-          {s.palette.length < 6 && <button className="btn ghost small" onClick={() => set({ palette: [...s.palette, "#D9A3E0"] })}>+ colour</button>}
+          {s.palette.length < 6 && <button className="btn ghost small" onClick={() => set({ palette: [...s.palette, "#D9A3E0"] })}><IL i="plus">colour</IL></button>}
         </div>
       </div>
       <div className="stack">
@@ -57,10 +58,10 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
             <select className="select" style={{ width: 140 }} value={r.kind} onChange={(e) => set({ relationships: s.relationships.map((x, j) => (j === i ? { ...x, kind: e.target.value } : x)) })}>{REL.map((k) => <option key={k}>{k}</option>)}</select>
             <span className="small">of</span>
             <input className="input" value={r.with} placeholder="who" onChange={(e) => set({ relationships: s.relationships.map((x, j) => (j === i ? { ...x, with: e.target.value } : x)) })} />
-            <button className="x" aria-label="Remove" onClick={() => set({ relationships: s.relationships.filter((_, j) => j !== i) })}>✕</button>
+            <button className="x" aria-label="Remove" onClick={() => set({ relationships: s.relationships.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
           </div>
         ))}
-        {s.relationships.length < 12 && <button className="btn ghost small" onClick={() => set({ relationships: [...s.relationships, { with: "", kind: "friend", note: "" }] })}>+ relationship</button>}
+        {s.relationships.length < 12 && <button className="btn ghost small" onClick={() => set({ relationships: [...s.relationships, { with: "", kind: "friend", note: "" }] })}><IL i="plus">relationship</IL></button>}
       </div>
       {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
       <div className="row"><button className="btn primary" disabled={!s.name.trim()} onClick={save}>Save</button><button className="btn ghost" onClick={onCancel}>Cancel</button></div>
@@ -93,8 +94,8 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
   const tabs = (
     <div className="chips" role="tablist" style={{ padding: "10px 18px 0" }}>
       {(["characters", "workshop", "world"] as const).map((t) => (
-        <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => (t === "workshop" ? go(`/?mode=oc&label=${encodeURIComponent("⭐ OC workshop")}`) : setTab(t))}>
-          {t === "characters" ? "⭐ Characters" : t === "workshop" ? `💬 Build with ${name}` : "🗺️ World"}
+        <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => (t === "workshop" ? go(`/?mode=oc&label=${encodeURIComponent("OC workshop")}`) : setTab(t))}>
+          {t === "characters" ? <IL i="oc">Characters</IL> : t === "workshop" ? <IL i="chat2">{`Build with ${name}`}</IL> : <IL i="map">World</IL>}
         </button>
       ))}
     </div>
@@ -110,7 +111,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
           {editing ? (
             <SheetEditor initial={editing === "new" ? null : editing} onSave={() => { setEditing(null); void load(); }} onCancel={() => setEditing(null)} />
           ) : (
-            <div className="row"><button className="btn primary small" onClick={() => setEditing("new")}>+ New character</button><button className="btn ghost small" onClick={() => go(`/?mode=oc&label=${encodeURIComponent("⭐ OC workshop")}`)}>Build one with {name}</button></div>
+            <div className="row"><button className="btn primary small" onClick={() => setEditing("new")}><IL i="plus">New character</IL></button><button className="btn ghost small" onClick={() => go(`/?mode=oc&label=${encodeURIComponent("OC workshop")}`)}>Build one with {name}</button></div>
           )}
           {chars.length === 0 && !editing && <span className="small">No characters yet. Start one yourself, or let {name} ask you good questions.</span>}
           {chars.map((c) => (
@@ -149,9 +150,9 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
           </div>
           {world.map((w) => (
             <div key={w.id} className="memrow">
-              <span>{w.kind === "place" ? "📍" : w.kind === "event" ? "📜" : "🛡️"}</span>
+              <span className="hic"><Icon name={w.kind === "place" ? "pin" : w.kind === "event" ? "scroll" : "shield"} size={18} /></span>
               <span className="t"><b>{w.name}</b>{w.when ? ` · ${w.when}` : ""}{w.note ? ` · ${w.note}` : ""}</span>
-              <button className="x" aria-label={`Remove ${w.name}`} onClick={async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }}>✕</button>
+              <button className="x" aria-label={`Remove ${w.name}`} onClick={async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }}><Icon name="close" size={16} /></button>
             </div>
           ))}
           {world.length > 0 && (

@@ -220,13 +220,13 @@ export class Studio {
   private async make(id: number, req: { kind: Kind; title: string; brief: string; characterIds?: number[]; chapters?: number; lookUp?: string }): Promise<string> {
     const spec = KINDS[req.kind];
     let system = `${RULES}\n\n${this.context(req.characterIds)}`;
-    // Look things up first, if asked: safe-listed pages only, read-only, every page logged.
+    // Look things up first, if asked: pages that aren't blocked, read-only, every page logged.
     let sources = "";
     if (req.lookUp && this.browser.settings().enabled) {
       await this.desk.setStatus(`looking up ${req.lookUp}`, 8);
       const pages = await this.browser.research(req.lookUp, req.title, id);
       if (pages.length) {
-        sources = `\n\nWhat you read on safe-listed sites for this:\n${pages.map(untrusted).join("\n\n")}`;
+        sources = `\n\nWhat you read on the web for this:\n${pages.map(untrusted).join("\n\n")}`;
         system += `\n\n${WEB_RULES}`;
       }
     }

@@ -333,16 +333,26 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .dfile { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid #eadbe9; background: #fff; color: #2a1d3a; }
 .dfile:disabled { cursor: default; }
 .dtag { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; }
-.dbrowser { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.dbrowser { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 8px; }
 .durl { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #f1e4ef; font-size: 13px; font-weight: 700; }
-.dbrowse-grid { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; align-items: start; }
+.dbrowse-grid { display: flex; flex-direction: column; gap: 6px; }
+.dbrowser .dshot { border: 0; border-radius: 0 0 8px 8px; }
 @media (min-width: 1250px) { .pscreen { aspect-ratio: 16 / 9; min-height: 0; } }
 .dshot { aspect-ratio: 16 / 9; border-radius: 8px; border: 1px solid #eadbe9; background: #fff; display: grid; place-items: center; overflow: hidden; text-align: center; }
 .screen169 { position: relative; width: 100%; aspect-ratio: 16 / 9; }
 .screen169 img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cursor { position: absolute; width: 22px; height: 22px; margin: -3px 0 0 -4px; pointer-events: none; transition: left 0.9s ease-in-out, top 0.9s ease-in-out; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
 .cursor.mine { transition: none; }
-.dwhy { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5a4a63; }
+.screen169 .cursor { z-index: 2; }
+.screen169.driving { cursor: none; touch-action: manipulation; }
+.robotcheck { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-radius: 10px; background: rgba(42,29,58,0.92); color: #fff; font-size: 12.5px; text-align: left; }
+.pnow-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pnow-bar { width: 180px; }
+.tbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color: #fff; font: inherit; font-weight: 800; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.tbtn:hover { background: rgba(255,255,255,0.16); }
+.tbtn.on { background: #D9A3E0; color: #2A1D3A; border-color: #D9A3E0; }
+.tbtn.take { background: #fff; color: #2A1D3A; border-color: #fff; }
+.dwhy { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 12.5px; color: #5a4a63; padding: 0 2px; }
 .dwhy b { color: #2a1d3a; }
 .dvisits summary { font-size: 12.5px; font-weight: 800; cursor: pointer; }
 .ptodo { background: #ffe9b8; color: #2a1d3a; border-radius: 4px; padding: 12px 14px; transform: rotate(1.2deg); box-shadow: 0 10px 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 4px; align-self: start; }
@@ -359,7 +369,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   .pcenter { grid-template-columns: 1fr; }
   .dwin { grid-row: auto; }
   .dbrowse-grid { grid-template-columns: 1fr; }
-  .pbuddy { display: none; }
+  .pbuddy { flex-direction: row; justify-content: center; gap: 10px; }
+  .pbuddy svg { width: 84px; height: 84px; }
+  .pnow { flex-wrap: wrap; }
+  .pnow-bar { width: 90px; }
+  .tlabel { display: none; }
   .pmeta { display: none; }
 }
 
@@ -464,3 +478,13 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   .picon { padding: 6px 2px; }
   .picon span:first-child { font-size: 24px; }
 }
+.il { display: inline-flex; align-items: center; gap: 5px; }
+.il .navicon, .hic .navicon { flex: none; }
+.hic { display: inline-flex; flex: none; }
+.onoff { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--muted); display: inline-block; }
+.onoff.on { background: var(--ok); border-color: var(--ok); }
+.dwin.browserwin { align-self: start; min-height: 0; }
+.browseinfo { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 12px; background: var(--card); }
+.browseinfo .dwhy { color: var(--text-3); }
+.browseinfo .dwhy b { color: var(--text); }
+.browseinfo .dvisits { color: var(--text-3); }

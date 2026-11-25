@@ -30,7 +30,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   /** Small-model JSON with the output safety check on the visible text. */
   async function askJson<T>(reply: FastifyReply, opts: { kind: "study" | "story" | "art"; full?: boolean; system: string; prompt: string; schema: Record<string, unknown>; parse: (v: unknown) => T; visible: (v: T) => string }) {
     const e = energyNow(db);
-    if (e.mode === "resting") return reply.code(409).send({ error: "I'm resting until the energy tops up. “Need a grown-up?” always works." });
+    if (e.mode === "resting") return reply.code(409).send({ error: "I'm resting until the energy tops up. “Grown-up?” always works." });
     try {
       const out = await callJson(llm, {
         bucket: "chat", kind: opts.kind,

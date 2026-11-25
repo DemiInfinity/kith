@@ -1,3 +1,4 @@
+import { Icon, IL } from "../components/Icons";
 import { useEffect, useState } from "react";
 import { api, type Me, type Memory, type Profile } from "../api";
 import { Toggle } from "../components/bits";
@@ -46,7 +47,7 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
           <div key={m.id} className="memrow">
             <span style={{ fontSize: 18 }} aria-hidden>{m.icon}</span>
             <span className="t">{m.text}</span>
-            <button className="x" aria-label={`Forget “${m.text}”`} onClick={() => forget(m.id)}>✕</button>
+            <button className="x" aria-label={`Forget “${m.text}”`} onClick={() => forget(m.id)}><Icon name="close" size={16} /></button>
           </div>
         ))}
       </div>
@@ -59,7 +60,7 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
       </div>
       {me.push.ready && push !== "unsupported" && (
         <button className="btn ghost small" onClick={togglePush} disabled={push === "blocked" || push === "…"}>
-          {push === "on" ? "🔔 Check-ins can reach this phone (turn off)" : push === "blocked" ? "Notifications are blocked in settings" : "🔕 Let check-ins reach this phone"}
+          <IL i="bell">{push === "on" ? "Check-ins can reach this phone (turn off)" : push === "blocked" ? "Notifications are blocked in settings" : "Let check-ins reach this phone"}</IL>
         </button>
       )}
       {push === "unsupported" && <span className="small">To get check-ins on an iPhone, add Kith to your Home Screen first (Share › Add to Home Screen).</span>}

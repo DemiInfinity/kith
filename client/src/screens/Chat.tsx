@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type ReportInfo, type Turn } from "../api";
 import { dayLabel } from "../components/bits";
-import { Icon } from "../components/Icons";
+import { Icon, type IconName } from "../components/Icons";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
 export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string }
@@ -28,10 +28,10 @@ function sessionNoticeNeeded(messages: Message[]) {
 }
 
 const QUICK: Record<string, string[][]> = {
-  chat: [["📚", "Can you help with my homework?"], ["💭", "Can I talk something through?"], ["✨", "Write me a story"], ["🗂️", "Make me some flashcards"]],
-  study: [["🧠", "Quiz me on what I revised today"], ["❓", "Explain this simply"], ["📝", "How do I answer an 'evaluate' question?"], ["😮‍💨", "I'm stressed about exams"]],
-  art: [["💡", "Give me a drawing prompt"], ["🖌️", "How do I shade skin tones?"], ["🏛️", "Who should I look at for bold colour?"], ["🗣️", "Here's what I drew today…"]],
-  oc: [["✨", "Help me make a new OC"], ["🎨", "Make a palette for my OC"], ["🗺️", "Let's build their world"], ["🎭", "Let's play a scene"]],
+  chat: [["study", "Can you help with my homework?"], ["chat2", "Can I talk something through?"], ["sparkle", "Write me a story"], ["cards", "Make me some flashcards"]],
+  study: [["brain", "Quiz me on what I revised today"], ["question", "Explain this simply"], ["note", "How do I answer an 'evaluate' question?"], ["breath", "I'm stressed about exams"]],
+  art: [["bulb", "Give me a drawing prompt"], ["brush", "How do I shade skin tones?"], ["landmark", "Who should I look at for bold colour?"], ["chat2", "Here's what I drew today…"]],
+  oc: [["sparkle", "Help me make a new OC"], ["art", "Make a palette for my OC"], ["map", "Let's build their world"], ["mask", "Let's play a scene"]],
 };
 
 export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onMood, openHelp, go }: Props) {
@@ -123,14 +123,14 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
               )}
               {meta?.report && (
                 <div className="reportcard" role="note">
-                  <b>💬 {name} is letting {me.parentLabel} know</b>
+                  <b style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Icon name="heart" size={16} />{name} is letting {me.parentLabel} know</b>
                   <span>“{meta.report.parentText}”</span>
                   <span className="small" style={{ color: "var(--text-3)" }}>You’re not in trouble. You can see everything that’s shared in “What {me.parentLabel} sees”.</span>
                 </div>
               )}
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>
-                  <span style={{ fontSize: 22 }}>📄</span>
+                  <span style={{ display: "inline-flex" }}><Icon name="note" size={22} /></span>
                   <span style={{ display: "flex", flexDirection: "column" }}><b style={{ fontSize: 14 }}>{j.title}</b><span style={{ fontSize: 12, color: "var(--muted)" }}>on {name}’s desk · making it now</span></span>
                 </button>
               ))}
@@ -143,7 +143,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       </div>
       {context && (
         <div className="ctxchip">
-          <span>{context.label}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={context.mode === "study" ? "study" : context.mode === "art" ? "art" : "oc"} size={15} />{context.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "")}</span>
           {context.ctx.coursework && <span className="small" style={{ color: "var(--ember)" }}>tutor only</span>}
           <button className="x" aria-label="Back to everyday chat" onClick={onClearContext}><Icon name="close" size={16} /></button>
         </div>
@@ -153,7 +153,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       )}
       {shown.length < 3 && (
         <div className="quick">
-          {quick.map(([ic, t]) => <button key={t} onClick={() => send(t)}>{ic} {t}</button>)}
+          {quick.map(([ic, t]) => <button key={t} onClick={() => send(t)}><Icon name={ic as IconName} size={15} style={{ verticalAlign: -3, marginRight: 4 }} />{t}</button>)}
         </div>
       )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>

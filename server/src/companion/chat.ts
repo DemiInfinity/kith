@@ -56,7 +56,7 @@ export interface Deps {
 }
 
 const HELD_BACK =
-  "Hmm, I don't think I should answer that one. Want to talk about something else? If something's on your mind, “Need a grown-up?” is always there.";
+  "Hmm, I don't think I should answer that one. Want to talk about something else? If something's on your mind, “Grown-up?” is always there.";
 
 export function recentMessages(db: DB, limit = 40, thread = MAIN_THREAD): StoredMessage[] {
   return all<StoredMessage>(db, "SELECT id, ts, role, text, mode, meta, thread_id FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?", thread, limit).reverse();
@@ -82,7 +82,7 @@ function whenText(ts: number) {
 }
 
 export function restingText(_e: Energy, parent: string) {
-  return `I've used up this month's energy, so I'm resting now 😴 ${parent} can see this too. “Need a grown-up?” always works, even while I'm resting.`;
+  return `I've used up this month's energy, so I'm resting now 😴 ${parent} can see this too. “Grown-up?” always works, even while I'm resting.`;
 }
 
 export { whenText };
@@ -131,7 +131,7 @@ export async function takeTurn(deps: Deps, input: { text: string; mode: Mode; ct
       if (err instanceof OfflineError) {
         replyText = report
           ? fallbackSafetyReply(verdict, parent, settings.helplines)
-          : `I'm not switched on yet: ${parent} needs to add my API key. “Need a grown-up?” already works.`;
+          : `I'm not switched on yet: ${parent} needs to add my API key. “Grown-up?” already works.`;
       } else {
         console.error("[chat] reply failed", err);
         replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : "Sorry, my brain went fuzzy for a second. Can you say that again?";

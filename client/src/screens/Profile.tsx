@@ -3,7 +3,7 @@ import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
-import { Icon } from "../components/Icons";
+import { Icon, IL, type IconName } from "../components/Icons";
 
 interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
@@ -24,7 +24,7 @@ interface Schedule {
 type Tab = "desk" | "scheduled" | "who";
 
 /** A section the child can read nicely, and edit. */
-function Section({ title, hint, text, editable, onSave, placeholder }: { title: string; hint: string; text: string; editable?: boolean; onSave?: (t: string) => Promise<void>; placeholder?: string }) {
+function Section({ icon, title, hint, text, editable, onSave, placeholder }: { icon: IconName; title: string; hint: string; text: string; editable?: boolean; onSave?: (t: string) => Promise<void>; placeholder?: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
   const [err, setErr] = useState("");
@@ -35,8 +35,8 @@ function Section({ title, hint, text, editable, onSave, placeholder }: { title: 
   return (
     <div className="mdfile">
       <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
-        <span>{title}</span>
-        {editable && !editing && <button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => setEditing(true)}>✏️ Edit</button>}
+        <IL i={icon}>{title}</IL>
+        {editable && !editing && <button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => setEditing(true)}><IL i="pencil">Edit</IL></button>}
       </div>
       {editing ? (
         <div className="stack" style={{ padding: 14 }}>
@@ -66,7 +66,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
   }, [tab, files]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
-  const tabs: [Tab, string][] = [["desk", "🖥️ Desk"], ["scheduled", "🗓️ Scheduled"], ["who", `💜 Who ${name} is`]];
+  const tabs: [Tab, IconName, string][] = [["desk", "desk", "Desk"], ["scheduled", "calendar", "Scheduled"], ["who", "heart", `Who ${name} is`]];
   const [newMem, setNewMem] = useState("");
   const saveSoul = async (text: string) => setFiles(await api<Files>("/api/pip/soul", { method: "PUT", body: { text } }));
   const saveNotes = async (notes: string) => setFiles(await api<Files>("/api/pip/identity", { method: "PUT", body: { notes } }));
@@ -85,12 +85,12 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
         </div>
         <div className="row">
           <button className="callbtn" onClick={() => go("/talk")}><Icon name="call" size={17} /> Call</button>
-          <button className="btn ghost small" onClick={() => go("/")}>💬 Message</button>
-          <button className="btn ghost small" onClick={() => go("/me")}>✏️ Edit</button>
+          <button className="btn ghost small" onClick={() => go("/")}><IL i="chat2">Message</IL></button>
+          <button className="btn ghost small" onClick={() => go("/me")}><IL i="pencil">Edit</IL></button>
         </div>
       </div>
       <div className="chips" role="tablist">
-        {tabs.map(([t, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); history.replaceState(null, "", on(t)); }}>{l}</button>)}
+        {tabs.map(([t, ic, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); history.replaceState(null, "", on(t)); }}><IL i={ic}>{l}</IL></button>)}
       </div>
 
       {tab === "desk" && <DeskComputer me={me} go={go} />}
@@ -102,10 +102,10 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
             {mine.length === 0 && <span className="small">Nothing yet. Ask {name} in chat (“remind me at 7 to revise”, “every Sunday make me a quiz”) or add one here.</span>}
             {mine.map((m) => (
               <div key={m.id} className="row" style={{ fontSize: 14, borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
-                <span>{m.kind === "reminder" ? "⏰" : "✨"}</span>
+                <span className="hic"><Icon name={m.kind === "reminder" ? "alarm" : "sparkle"} size={18} /></span>
                 <span style={{ flex: 1 }}>{m.title}<br /><span className="small">{m.active ? new Date(m.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}{m.repeat !== "none" ? ` · ${m.repeat}` : ""}</span></span>
                 <button className="btn ghost small" onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }}>{m.active ? "Pause" : "Resume"}</button>
-                <button className="x" aria-label={`Delete ${m.title}`} onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }}>✕</button>
+                <button className="x" aria-label={`Delete ${m.title}`} onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }}><Icon name="close" size={16} /></button>
               </div>
             ))}
             <form className="stack" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }} onSubmit={async (e) => {
@@ -130,7 +130,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
             {sched?.jobs.length === 0 && <span className="small">Nothing queued. Ask {name} to make something!</span>}
             {sched?.jobs.map((j) => (
               <div key={j.id} className="row" style={{ fontSize: 14, borderTop: "1px solid var(--line-soft)", paddingTop: 6 }}>
-                <span>{j.status === "done" ? "✅" : j.status === "working" ? "⏳" : j.status === "failed" ? "⚠️" : "🕒"}</span>
+                <span className="hic"><Icon name={j.status === "done" ? "check" : j.status === "working" ? "hourglass" : j.status === "failed" ? "warn" : "clock"} size={18} /></span>
                 <span style={{ flex: 1 }}>{j.title}</span>
                 <span className="small">{j.status === "working" ? `${j.progress}%` : j.status} · {clock(j.ts)}</span>
               </div>
@@ -160,26 +160,26 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
       {tab === "who" && (files ? (
         <div className="stack" style={{ maxWidth: 820, gap: 14 }}>
           <span className="small">This is {name}, the way you’ve made it. You can change any of it. (Safety rules sit underneath all of this and don’t change, whatever’s written here.)</span>
-          <Section title="✨ Soul" text={files.soul} editable onSave={saveSoul}
+          <Section icon="sparkle" title="Soul" text={files.soul} editable onSave={saveSoul}
             hint={files.soulIsDefault ? `This is a starting point. Rewrite it however you like: who ${name} is, what it cares about, how it sees the world.` : `Written by you.`}
             placeholder={`Who is ${name}? What does it care about?`} />
           <div className="mdfile">
             <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
-              <span>🎭 Personality</span><button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => go("/me")}>Change look, traits & voice</button>
+              <IL i="mask">Personality</IL><button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => go("/me")}>Change look, traits & voice</button>
             </div>
             <Markdown text={files.identity} />
           </div>
-          <Section title="📝 More about its personality" text={files.identityNotes} editable onSave={saveNotes}
+          <Section icon="note" title="More about its personality" text={files.identityNotes} editable onSave={saveNotes}
             hint="Catchphrases, favourite things, how it talks… anything that makes it feel like yours."
             placeholder={`e.g. ${name} says “brilliant!” a lot, loves rainy days and thinks owls are underrated.`} />
           <div className="mdfile">
-            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13 }}>🧠 Memory</div>
+            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13 }}><IL i="brain">Memory</IL></div>
             <div className="stack" style={{ padding: 14 }}>
               {files.memories.length === 0 && <span className="small">Nothing yet.</span>}
               {files.memories.map((m) => (
                 <div key={m.id} className="memrow">
                   <span>{m.icon}</span><span className="t">{m.text}{m.date ? <span className="small"> · {m.date}</span> : null}</span>
-                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }}>✕</button>
+                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }}><Icon name="close" size={16} /></button>
                 </div>
               ))}
               <form className="row" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; try { await api("/api/memories", { body: { text: newMem } }); setNewMem(""); void reloadFiles(); } catch (err) { alert((err as Error).message); } }}>
@@ -200,13 +200,13 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
 export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; state: AppState | null }) {
   const name = me.profile.name;
   const logout = async () => { const r = await api<{ redirect?: string | null }>("/auth/logout", { body: {} }).catch(() => ({ redirect: null })); location.href = r.redirect || "/"; };
-  const rows: [string, string, string, string][] = [
-    ["/pip", "🪪", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
-    ["/me", "✨", "Personality", "Name, look, traits and voice"],
-    ["/notifications", "🔔", "Notifications", "Turn on, test, and choose what reaches your phone"],
-    ["/memory", "🧠", `What ${name} remembers`, "See and delete memories; check-ins"],
-    ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"],
-    ["/google", "☁️", "Google Drive", "Save what you make to your own Drive"],
+  const rows: [string, IconName, string, string][] = [
+    ["/pip", "idcard", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
+    ["/me", "sparkle", "Personality", "Name, look, traits and voice"],
+    ["/notifications", "bell", "Notifications", "Turn on, test, and choose what reaches your phone"],
+    ["/memory", "brain", `What ${name} remembers`, "See and delete memories; check-ins"],
+    ["/shared", "eye", `What ${me.parentLabel} sees`, "Nothing secret here"],
+    ["/google", "cloud", "Google Drive", "Save what you make to your own Drive"],
   ];
   return (
     <div className="screen narrow">
@@ -218,7 +218,7 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
       <b style={{ marginTop: 6 }}>You and {name}</b>
       {rows.map(([to, ic, t, d]) => (
         <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
-          <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
+          <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={26} /></span><span><b>{t}</b><br /><span className="small">{d}</span></span>
         </button>
       ))}
       <button className="btn ghost small" onClick={logout}>Sign out</button>

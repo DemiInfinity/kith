@@ -25,3 +25,15 @@ describe("safe list", () => {
     for (const ip of ["208.80.154.224", "151.101.0.81", "2a00:1450::1"]) expect(isPrivateAddress(ip)).toBe(false);
   });
 });
+
+describe("block-list mode", () => {
+  it("lets public hosts through, but not blocked ones or blocked words", async () => {
+    const { proxyAllows } = await import("../src/allow.js");
+    const r = { mode: "blocklist" as const, hosts: ["en.wikipedia.org"], blocked: new Set(["bet365.com"]), words: ["casino"] };
+    expect(proxyAllows("www.example.org", r)).toBe(true);
+    expect(proxyAllows("www.bet365.com", r)).toBe(false);
+    expect(proxyAllows("royal-casino.example", r)).toBe(false);
+    expect(proxyAllows("10.0.0.1", r)).toBe(false);
+    expect(proxyAllows("kith", r)).toBe(false);
+  });
+});

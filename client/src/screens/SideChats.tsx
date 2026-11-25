@@ -73,7 +73,7 @@ export function SideChats({ me, open, current, onClose, onPick }: { me: Me; open
                   </button>
                   {t.id !== 1 && (
                     <>
-                      <button className="x" aria-label={`Rename ${t.title}`} onClick={() => { setRenaming(t.id); setTitle(t.title); }}>✎</button>
+                      <button className="x" aria-label={`Rename ${t.title}`} onClick={() => { setRenaming(t.id); setTitle(t.title); }}><Icon name="pencil" size={15} /></button>
                       <button className="x" aria-label={`Put away ${t.title}`} onClick={() => archive(t.id)}><Icon name="archive" size={18} /></button>
                     </>
                   )}
@@ -88,7 +88,7 @@ export function SideChats({ me, open, current, onClose, onPick }: { me: Me; open
             <span className="small">When a chat gets long, {me.profile.name} keeps a short summary and files the rest here. {me.profile.name} only looks back at these when you ask it to remember something. Only you can read them, and they’re deleted after 30 days like chats.</span>
             {history.slice(0, 30).map((h) => (
               <button key={h.file} className="threadpick" onClick={() => read(h)}>
-                <span style={{ fontSize: 18 }}>🗂️</span><span style={{ flex: 1, textAlign: "left", fontSize: 13.5 }}>{h.title}</span>
+                <span className="hic"><Icon name="folder" size={18} /></span><span style={{ flex: 1, textAlign: "left", fontSize: 13.5 }}>{h.title}</span>
               </button>
             ))}
           </>

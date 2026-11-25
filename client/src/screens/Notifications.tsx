@@ -17,7 +17,7 @@ export function Notifications({ me, onSaved }: { me: Me; onSaved: (p: Profile) =
     setMsg("");
     try {
       if (status === "on") { await disablePush(); setStatus("off"); }
-      else { await enablePush(me.push.publicKey); setStatus("on"); setMsg("Notifications are on ✓"); }
+      else { await enablePush(me.push.publicKey); setStatus("on"); setMsg("Notifications are on."); }
     } catch (e) { setMsg((e as Error).message); }
   };
   const test = async () => {

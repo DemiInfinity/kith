@@ -79,7 +79,7 @@ From the Usage Policy and the guidelines for organisations serving minors. Each 
      - Sign-in through Pocket ID for configured users only.
      - A separate safety check on every message, both ways.
      - Reports to the parent at three levels, told to the child first.
-     - "Need a grown-up?" with Childline and 999.
+     - "Grown-up?" with Childline and 999.
      - Quiet hours.
 3. **Anthropic's child-safety system prompt.** If Anthropic provides one, use it as one layer among several. None was
    linked from the pages read. Check again before launch.

@@ -1,11 +1,12 @@
+import { Icon, IL, type IconName } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type CloudLink, type DeskItem, type DeskView, type Energy, type Me } from "../api";
 import { EnergyCard, Markdown } from "../components/bits";
 
-const KIND_LABEL: Record<string, string> = {
-  story: "📖 Story", adventure: "🧭 Choose-your-own adventure", comic: "💬 Comic", slides: "🖼️ Slides", flashcards: "🗂️ Flashcards",
-  quiz: "✅ Quiz that marks itself", timer: "⏱️ Revision timer", game: "🎮 Mini game", poster: "🪧 Poster", card: "💌 Card",
-  sketch: "✏️ Sketch", palette: "🎨 Palette", map: "🗺️ Map", timeline: "📜 Timeline", playlist: "🎵 Playlist idea", notes: "📝 Notes",
+const KIND_LABEL: Record<string, [IconName, string]> = {
+  story: ["stories", "Story"], adventure: ["compass", "Choose-your-own adventure"], comic: ["chat2", "Comic"], slides: ["laptop", "Slides"], flashcards: ["cards", "Flashcards"],
+  quiz: ["check", "Quiz that marks itself"], timer: ["timer", "Revision timer"], game: ["gamepad", "Mini game"], poster: ["pin", "Poster"], card: ["heart", "Card"],
+  sketch: ["pencil", "Sketch"], palette: ["art", "Palette"], map: ["map", "Map"], timeline: ["scroll", "Timeline"], playlist: ["music", "Playlist idea"], notes: ["note", "Notes"],
 };
 
 export function useDesk(poll = 8000) {
@@ -20,7 +21,7 @@ export function useDesk(poll = 8000) {
 }
 
 function subtitle(it: DeskItem) {
-  return it.summary || KIND_LABEL[it.kind]?.split(" ").slice(1).join(" ").toLowerCase() || it.kind;
+  return it.summary || KIND_LABEL[it.kind]?.[1].toLowerCase() || it.kind;
 }
 
 /** A desk item, opened. Interactive things run in a locked sandbox: no network, no storage, no access to the app. */
@@ -65,7 +66,7 @@ export function ItemViewer({ id, canEdit, onClose, onChanged, links = [] }: { id
   const toGoogle = async () => {
     try {
       const r = await api<{ url: string }>(`/api/desk/items/${encodeURIComponent(id)}/google`, { body: {} });
-      setMsg("Saved to your Google Drive ✓");
+      setMsg("Saved to your Google Drive.");
       window.open(r.url, "_blank", "noopener");
       onChanged();
     } catch (e) {
@@ -89,8 +90,8 @@ export function ItemViewer({ id, canEdit, onClose, onChanged, links = [] }: { id
           {mine[0] && <a className="btn ghost small" href={mine[0].url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>Open in Google ↗</a>}
           {mine[0]?.extra && <a className="btn ghost small" href={mine[0].extra} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>Sheet ↗</a>}
           {canEdit && !mine[0] && <button className="btn ghost small" onClick={toGoogle}>Save to Google</button>}
-          {canEdit && <button className="btn ghost small" onClick={fav} aria-pressed={m?.favourite}>{m?.favourite ? "★ Favourite" : "☆ Favourite"}</button>}
-          <button className="x" aria-label="Close" onClick={onClose}>✕</button>
+          {canEdit && <button className="btn ghost small" onClick={fav} aria-pressed={m?.favourite}><IL i="star">{m?.favourite ? "Favourite" : "Add to favourites"}</IL></button>}
+          <button className="x" aria-label="Close" onClick={onClose}><Icon name="close" size={16} /></button>
         </div>
         <div className="body">
           {item && (m!.format === "html" || m!.format === "svg") && (
@@ -102,8 +103,8 @@ export function ItemViewer({ id, canEdit, onClose, onChanged, links = [] }: { id
         {canEdit && (
           <form className="composer" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
             <textarea rows={1} placeholder="Ask for a change, e.g. “make it harder”" value={change} onChange={(e) => setChange(e.target.value)} aria-label="Ask for a change" />
-            <button type="button" className="roundbtn" aria-label="Move to bin" onClick={remove}>🗑️</button>
-            <button type="submit" className="roundbtn send" aria-label="Ask for change" disabled={!change.trim()}>↑</button>
+            <button type="button" className="roundbtn" aria-label="Move to bin" onClick={remove}><Icon name="trash" size={20} /></button>
+            <button type="submit" className="roundbtn send" aria-label="Ask for change" disabled={!change.trim()}><Icon name="send" size={20} /></button>
           </form>
         )}
         {msg && <div className="notice" style={{ margin: 10 }}>{msg}</div>}
@@ -123,7 +124,7 @@ export function MakeSheet({ me, onClose, onStarted, characterIds = [] }: { me: M
   useEffect(() => { api<{ characters: Character[] }>("/api/oc").then((r) => setAll(r.characters)).catch(() => undefined); }, []);
   const go = async () => {
     try {
-      await api("/api/desk/make", { body: { kind, title: title.trim() || KIND_LABEL[kind].split(" ").slice(1).join(" "), brief, chapters: kind === "story" ? chapters : undefined, characterIds: chars } });
+      await api("/api/desk/make", { body: { kind, title: title.trim() || KIND_LABEL[kind][1], brief, chapters: kind === "story" ? chapters : undefined, characterIds: chars } });
       onStarted();
       onClose();
     } catch (e) {
@@ -138,7 +139,7 @@ export function MakeSheet({ me, onClose, onStarted, characterIds = [] }: { me: M
         <h3 style={{ color: "var(--text)" }}>Make something</h3>
         <span className="small">{me.profile.name} makes it on its desk, using the desk’s own energy.</span>
         <div className="chips">
-          {me.kinds.map((k) => <button key={k} className={`chip ${kind === k ? "on" : ""}`} onClick={() => setKind(k)}>{KIND_LABEL[k] ?? k}</button>)}
+          {me.kinds.map((k) => <button key={k} className={`chip ${kind === k ? "on" : ""}`} onClick={() => setKind(k)}>{KIND_LABEL[k] ? <IL i={KIND_LABEL[k][0]}>{KIND_LABEL[k][1]}</IL> : k}</button>)}
         </div>
         <label className="field">Called<input className="input" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Victorians quiz" /></label>
         <label className="field">What should it be like?<textarea className="textarea" value={brief} maxLength={2000} onChange={(e) => setBrief(e.target.value)} placeholder="e.g. 10 questions on the Victorians for Year 9, a bit tricky" /></label>
@@ -153,7 +154,7 @@ export function MakeSheet({ me, onClose, onStarted, characterIds = [] }: { me: M
           </div>
         )}
         {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
-        <button className="btn primary block" disabled={!brief.trim()} onClick={go}>Make it ✨</button>
+        <button className="btn primary block" disabled={!brief.trim()} onClick={go}><IL i="sparkle">Make it</IL></button>
         <button className="btn ghost small" onClick={onClose}>Not now</button>
       </div>
     </>
@@ -177,7 +178,7 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
       {energy && <EnergyCard energy={energy} />}
       {active.map((j) => (
         <div key={j.id} className="card glow" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 26 }}>✍️</span>
+          <span className="hic" style={{ color: "var(--lilac)" }}><Icon name="pencil" size={26} /></span>
           <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
             <b style={{ fontSize: 15 }}>{j.kind === "edit" ? "Changing something for you" : `Making you ${j.title}`}</b>
             <span className="bar" style={{ height: 8 }}><span style={{ width: `${Math.max(j.progress, 5)}%` }} /></span>
@@ -192,8 +193,8 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
       <div className="grid2">
         {items.map((it) => (
           <button key={it.id} className="made" onClick={() => setOpen(it.id)}>
-            {it.favourite && <span className="fav" aria-label="favourite">★</span>}
-            <span className="ic">{it.icon}</span><b>{it.title}</b><span>{subtitle(it)}{desk?.links.some((l) => l.item_id === it.id) ? " · in Google ☁︎" : ""}</span>
+            {it.favourite && <span className="fav" aria-label="favourite"><Icon name="star" size={14} /></span>}
+            <span className="ic">{it.icon}</span><b>{it.title}</b><span>{subtitle(it)}{desk?.links.some((l) => l.item_id === it.id) ? " · in Google Drive" : ""}</span>
           </button>
         ))}
       </div>

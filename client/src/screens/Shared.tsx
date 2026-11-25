@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icons";
 import { useEffect, useState } from "react";
 import { api, type Me, type Transparency } from "../api";
 import { dayLabel, when } from "../components/bits";
@@ -27,7 +28,7 @@ export function Shared({ me }: { me: Me }) {
       <div className="card" style={{ gap: 12 }}>
         {sees.map(([yes, title, d]) => (
           <div key={title} className="row" style={{ alignItems: "flex-start" }}>
-            <span className={`check ${yes ? "yes" : "no"}`} aria-label={yes ? "can see" : "can’t see"}>{yes ? "✓" : "✕"}</span>
+            <span className={`check ${yes ? "yes" : "no"}`} aria-label={yes ? "can see" : "can’t see"}><Icon name={yes ? "check" : "close"} size={14} /></span>
             <span><b style={{ fontSize: 15 }}>{title}</b><br /><span style={{ fontSize: 13.5, color: "var(--text-3)" }}>{d}</span></span>
           </div>
         ))}
@@ -58,13 +59,13 @@ export function Shared({ me }: { me: Me }) {
       {t && t.toolLog.length === 0 && <span className="small">None yet.</span>}
       {t?.toolLog.slice(0, 20).map((l) => (
         <div key={l.id} className="row" style={{ fontSize: 13.5, color: "var(--text-3)" }}>
-          <span>{l.ok ? "•" : "⚠️"}</span><span style={{ flex: 1 }}><b>{l.connection}</b> · {l.tool.replace(/_/g, " ")}</span><span className="small">{when(l.ts)}</span>
+          <span className="hic">{l.ok ? "•" : <Icon name="warn" size={16} />}</span><span style={{ flex: 1 }}><b>{l.connection}</b> · {l.tool.replace(/_/g, " ")}</span><span className="small">{when(l.ts)}</span>
         </div>
       ))}
 
       <div className="card" style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-        <span style={{ fontSize: 22 }}>🌙</span>
-        <span><b>Quiet hours {me.quietHours.start}–{me.quietHours.end}</b><br /><span style={{ fontSize: 13.5, color: "var(--text-3)" }}>{name} sleeps too. “Need a grown-up?” always works.</span></span>
+        <span className="hic"><Icon name="moon" size={22} /></span>
+        <span><b>Quiet hours {me.quietHours.start}–{me.quietHours.end}</b><br /><span style={{ fontSize: 13.5, color: "var(--text-3)" }}>{name} sleeps too. “Grown-up?” always works.</span></span>
       </div>
       <span className="small">Chats are kept for {t?.retentionDays ?? 30} days on the home server, then deleted. They’re never used to train an AI. To think, {name} sends messages to Anthropic’s Claude API, which deletes them within 30 days (longer only if something breaks its safety rules).</span>
     </div>
