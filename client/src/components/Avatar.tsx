@@ -273,7 +273,7 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop 
       {/* At the laptop, the companion sits to the left, turned towards it. */}
       <g transform={laptop ? "translate(-28 6)" : undefined}>
       <g className="breathe">
-        <g className={laptop ? "ears at-screen-head" : idle ? "ears glance-head" : "ears"}>{rig.ears}</g>
+        <g className={laptop ? "ears at-screen-ears" : idle ? "ears glance-ears" : "ears"}>{rig.ears}</g>
         <g className={laptop ? "head at-screen-head" : idle ? "head glance-head" : "head"}>
           {typeof rig.back === "function" ? rig.back(gid) : rig.back}
         </g>
