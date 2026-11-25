@@ -152,9 +152,14 @@ always kept (added back if it's removed). If the list were ever empty, the safet
   only the child, the parent's app only a parent.
 - **Sessions last 30 days for the child and 7 for a grown-up.** The parent view can sign everyone out, or one person,
   everywhere (`POST /api/parent/sessions/sign-out`); taking someone out of the config ends their sessions too.
-- **Installed apps hand over sign-in with a secret.** The app starts a handoff (`POST /auth/handoff/start`) and gets an
-  id and a secret. The id goes in the sign-in address; the secret only ever goes in a header when the app collects the
-  session, and only hashes of both are stored. A made-up or leaked id gets nothing.
+- **Installed apps hand over sign-in with a secret, and only after a yes.** The app starts a handoff
+  (`POST /auth/handoff/start`) and gets an id, a secret and a 4-digit code, which it shows. The id goes in the sign-in
+  address; the secret only ever goes in a header when the app collects the session, and only hashes of both are
+  stored, so a made-up or leaked id gets nothing. After the provider, the sign-in window asks "Finish signing in to
+  Kith on your Mac app? Check it shows the code 4821", with "Yes, that's my app" and "No, cancel", and says "If you
+  didn't just open Kith yourself, press No." No session exists until Yes. That stops someone starting a sign-in on
+  their own device and getting a family member to finish it. No refuses the handoff and sends the parent an fyi ("A
+  sign-in was cancelled"). The page's form carries its own one-time token, and the page expires with the handoff.
 - **Rate limits** count per signed-in session, otherwise per address, with one proxy trusted (`KITH_TRUST_PROXY`).
 - **Logs never keep query strings** (sign-in codes, states, handoff ids), or the Google account's email.
 - **Notifications only go to the browsers' own push services** (Apple, Google, Mozilla, Microsoft).

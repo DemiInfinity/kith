@@ -7,6 +7,8 @@ import * as oidc from "openid-client";
 import type { DB } from "./db.js";
 import { all, get, run } from "./db.js";
 import { config } from "./config.js";
+import { loadProfile } from "./settings.js";
+import { createReport, deliverReport, makeReporters, type Reporter } from "./reporting/reporter.js";
 
 export type Role = "child" | "parent";
 export interface SessionUser { sid: string; sub: string; role: Role; name: string }
@@ -110,13 +112,18 @@ function setCookie(reply: FastifyReply, sid: string, role: Role) {
 // ── Sign-in from an installed web app (Dock or Home Screen) ─────────────────────────────────
 // The provider's page is outside the app, so the system opens it in a separate window, and that
 // window may not share cookies with the app. So the app starts a handoff first:
-//   1. POST /auth/handoff/start {app} → {id, secret}. Only the SHA-256 of each is stored.
+//   1. POST /auth/handoff/start {app, device} → {id, secret, code}. Only the SHA-256 of id and secret is
+//      stored. The app shows the 4-digit code.
 //   2. GET /auth/login?handoff=<id>&json=1 → the provider's address (once per handoff).
-//   3. GET /auth/handoff/<id> with the X-Kith-Handoff-Secret header, until it's done.
-// After the callback the new session is tied to that handoff, for one use within 2 minutes; the poll
-// sets the cookie in the app's own context. The id travels in URLs (and so can end up in logs or
-// history); the secret never does, so knowing an id isn't enough to collect someone's session. No
-// session id ever goes in a URL.
+//   3. After the provider, the sign-in window shows a confirm page with the same code: "Yes, that's my
+//      app" or "No, cancel". Nothing is handed over until Yes.
+//   4. GET /auth/handoff/<id> with the X-Kith-Handoff-Secret header, until it's done.
+// After Yes the new session is tied to that handoff, for one use within 2 minutes; the poll sets the
+// cookie in the app's own context. The id travels in URLs (and so can end up in logs or history); the
+// secret never does, so knowing an id isn't enough to collect someone's session. The confirm step is
+// for the other trick: someone starts a handoff on their own device and gets a family member to sign
+// in with its link. The family member sees a code their own app isn't showing (or no app at all), and
+// presses No. No session id ever goes in a URL.
 export const HANDOFF_ID = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
 export const HANDOFF_SECRET_HEADER = "x-kith-handoff-secret";
 const HANDOFF_MS = 2 * 60_000;
@@ -125,19 +132,39 @@ const HANDOFF_START_MS = 15 * 60_000;
 const hashId = (id: string) => crypto.createHash("sha256").update(id).digest("hex");
 const sameHash = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** The started handoffs (kept here so auth owns its own table). */
+export type HandoffDevice = "mac" | "homescreen";
+export const HANDOFF_DEVICE = /^(mac|homescreen)$/;
+const CONFIRM_COOKIE = "kith_confirm";
+const CONFIRM_PATH = "/auth/handoff/confirm";
+
+/** The started handoffs and the sign-ins waiting for a yes (kept here so auth owns its own tables). */
 export function ensureAuthTables(db: DB) {
   db.exec(`CREATE TABLE IF NOT EXISTS auth_handoff_start (
-    id_hash TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, app TEXT, created INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
+    id_hash TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, app TEXT, created INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0,
+    code TEXT NOT NULL DEFAULT '', device TEXT
+  )`);
+  const cols = (db.prepare("PRAGMA table_info(auth_handoff_start)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("code")) db.exec("ALTER TABLE auth_handoff_start ADD COLUMN code TEXT NOT NULL DEFAULT ''");
+  if (!cols.includes("device")) db.exec("ALTER TABLE auth_handoff_start ADD COLUMN device TEXT");
+  // A finished provider sign-in that hasn't been confirmed yet. No session exists until Yes.
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_handoff_confirm (
+    token_hash TEXT PRIMARY KEY, csrf_hash TEXT, handoff TEXT NOT NULL, sub TEXT NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL,
+    created INTEGER NOT NULL
   )`);
 }
 
-/** Starts a handoff for an installed app: a random id (goes in URLs) and secret (only in a header). */
-export function startHandoff(db: DB, app: AppHint | null): { id: string; secret: string } {
+/** A 4-digit code, the same in the app and on the confirm page. */
+export function handoffCode(): string {
+  return String(crypto.randomInt(0, 10_000)).padStart(4, "0");
+}
+
+/** Starts a handoff for an installed app: a random id (goes in URLs), a secret (only in a header) and a code to show. */
+export function startHandoff(db: DB, app: AppHint | null, device: HandoffDevice | null = null): { id: string; secret: string; code: string } {
   const id = crypto.randomBytes(32).toString("base64url");
   const secret = crypto.randomBytes(32).toString("base64url");
-  run(db, "INSERT INTO auth_handoff_start(id_hash, secret_hash, app, created) VALUES (?,?,?,?)", hashId(id), hashId(secret), app, Date.now());
-  return { id, secret };
+  const code = handoffCode();
+  run(db, "INSERT INTO auth_handoff_start(id_hash, secret_hash, app, created, code, device) VALUES (?,?,?,?,?,?)", hashId(id), hashId(secret), app, Date.now(), code, device);
+  return { id, secret, code };
 }
 
 function finishHandoff(db: DB, handoff: string | null | undefined, result: { sid: string; role: Role } | { error: string }) {
@@ -150,6 +177,46 @@ function finishHandoff(db: DB, handoff: string | null | undefined, result: { sid
 export function expireHandoffs(db: DB, now = Date.now()) {
   run(db, "DELETE FROM auth_handoff WHERE created < ?", now - HANDOFF_MS);
   run(db, "DELETE FROM auth_handoff_start WHERE created < ?", now - HANDOFF_START_MS);
+  // A confirm page lasts as long as the handoff it belongs to.
+  run(db, "DELETE FROM auth_handoff_confirm WHERE created < ? OR handoff NOT IN (SELECT id_hash FROM auth_handoff_start)", now - HANDOFF_START_MS);
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** The confirm page: plain, friendly, no scripts. */
+export function confirmPage(o: { app: AppHint | null; device: HandoffDevice | null; code: string; csrf: string }): string {
+  const name = o.app === "parent" ? "Kith Parent" : "Kith";
+  const where = o.device === "mac" ? "Mac app" : o.device === "homescreen" ? "Home Screen app" : "app";
+  return `<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finish signing in?</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 18px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: #faf7f2; color: #222; display: grid; place-items: center; min-height: 100vh; }
+  main { max-width: 26rem; padding: 2rem 1.25rem; text-align: center; }
+  h1 { font-size: 1.6rem; margin: 0 0 .75rem; }
+  .code { font-size: 2.6rem; font-weight: 700; letter-spacing: .3em; margin: .5rem 0 1rem; padding: .4rem 0 .4rem .3em; border-radius: 12px; background: #fff; border: 2px solid #e4ddd2; }
+  .warn { background: #fff3e0; border-radius: 12px; padding: .75rem 1rem; margin: 1rem 0 1.5rem; }
+  button { display: block; width: 100%; font: inherit; font-weight: 600; padding: .9rem; border-radius: 12px; border: 0; margin: .6rem 0; cursor: pointer; }
+  .yes { background: #2e7d5b; color: #fff; }
+  .no { background: #e9e4dc; color: #222; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1b1a18; color: #eee; } .code { background: #26241f; border-color: #3a362f; }
+    .warn { background: #3a2c15; } .no { background: #34312b; color: #eee; }
+  }
+</style></head>
+<body><main>
+  <h1>Finish signing in?</h1>
+  <p>Finish signing in to ${esc(name)} on your ${esc(where)}?</p>
+  <p>Check it shows this code:</p>
+  <div class="code" aria-label="Code ${esc(o.code.split("").join(" "))}">${esc(o.code)}</div>
+  <p class="warn"><strong>If you didn't just open Kith yourself, press No.</strong> Nobody else should ever ask you to finish signing in for them.</p>
+  <form method="post" action="${CONFIRM_PATH}">
+    <input type="hidden" name="csrf" value="${esc(o.csrf)}">
+    <button class="yes" type="submit" name="answer" value="yes">Yes, that's my app</button>
+    <button class="no" type="submit" name="answer" value="no">No, cancel</button>
+  </form>
+</main></body></html>`;
 }
 
 // Kept in memory only, to hint the provider at sign-out.
@@ -174,8 +241,9 @@ function discover() {
 /** For tests: forget the cached provider metadata. */
 export function resetOidcForTests() { oidcConfig = null; }
 
-export function registerAuth(app: FastifyInstance, db: DB) {
+export function registerAuth(app: FastifyInstance, db: DB, opts: { reporters?: Reporter[] } = {}) {
   ensureAuthTables(db);
+  const reporters = opts.reporters;
   const redirectUri = `${config.publicUrl}/auth/callback`;
 
   app.get("/auth/login", async (req, reply) => {
@@ -244,7 +312,19 @@ export function registerAuth(app: FastifyInstance, db: DB) {
       const viaGroup = role === "parent" ? config.oidc.parentGroup : config.oidc.childGroup;
       const group = viaGroup && groups.some((g) => g.toLowerCase() === viaGroup.toLowerCase()) ? viaGroup : "";
       if (tokens.id_token) idTokens.set(claims.sub, tokens.id_token);
-      const sid = createSession(db, { sub: `${claims.sub}|${verified && email ? email : ""}|${group}`, role, name: firstName(claims as { given_name?: unknown; name?: unknown }) });
+      const who = { sub: `${claims.sub}|${verified && email ? email : ""}|${group}`, role, name: firstName(claims as { given_name?: unknown; name?: unknown }) };
+      if (row.handoff) {
+        // An installed app's sign-in: nothing is handed over until they say it's their app.
+        if (!get(db, "SELECT id_hash FROM auth_handoff_start WHERE id_hash = ?", row.handoff)) return done("/?signin=expired", { error: "expired" });
+        const token = crypto.randomBytes(32).toString("base64url");
+        run(db, "INSERT INTO auth_handoff_confirm(token_hash, csrf_hash, handoff, sub, role, name, created) VALUES (?,?,?,?,?,?,?)",
+          hashId(token), null, row.handoff, who.sub, who.role, who.name, Date.now());
+        reply.setCookie(CONFIRM_COOKIE, token, {
+          path: CONFIRM_PATH, httpOnly: true, sameSite: "lax", secure: config.publicUrl.startsWith("https://"), maxAge: HANDOFF_START_MS / 1000,
+        });
+        return reply.redirect(CONFIRM_PATH);
+      }
+      const sid = createSession(db, who);
       setCookie(reply, sid, role);
       return done(role === "parent" ? "/parent" : "/", { sid, role });
     } catch (err) {
@@ -253,12 +333,62 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     }
   });
 
+  // ── The confirm step for an installed app's sign-in ───────────────────────────────────────
+  type Pending = { token_hash: string; handoff: string; sub: string; role: Role; name: string; csrf_hash: string | null; app: AppHint | null; device: HandoffDevice | null; code: string };
+  const pendingFor = (req: FastifyRequest): Pending | undefined => {
+    const token = req.cookies[CONFIRM_COOKIE];
+    if (!token) return undefined;
+    expireHandoffs(db);
+    return get<Pending>(db, `SELECT c.token_hash, c.handoff, c.sub, c.role, c.name, c.csrf_hash, s.app, s.device, s.code
+      FROM auth_handoff_confirm c JOIN auth_handoff_start s ON s.id_hash = c.handoff WHERE c.token_hash = ?`, hashId(token));
+  };
+  const clearConfirm = (reply: FastifyReply) => reply.clearCookie(CONFIRM_COOKIE, { path: CONFIRM_PATH });
+  const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+
+  app.get(CONFIRM_PATH, async (req, reply) => {
+    const p = pendingFor(req);
+    if (!p) return reply.redirect("/?signin=expired");
+    // A fresh form token each time the page is shown; only its hash is kept, tied to this sign-in.
+    const csrf = crypto.randomBytes(32).toString("base64url");
+    run(db, "UPDATE auth_handoff_confirm SET csrf_hash = ? WHERE token_hash = ?", hashId(csrf), p.token_hash);
+    reply.header("Content-Security-Policy", PAGE_CSP).header("Cache-Control", "no-store").header("X-Frame-Options", "DENY");
+    return reply.type("text/html; charset=utf-8").send(confirmPage({ app: p.app, device: p.device, code: p.code, csrf }));
+  });
+
+  // The page's own form posts here (urlencoded, parsed only for this route).
+  app.register(async (scope) => {
+    scope.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 1024 }, (_req, body, done) => {
+      done(null, Object.fromEntries(new URLSearchParams(body as string)));
+    });
+    scope.post(CONFIRM_PATH, { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+      const b = (req.body ?? {}) as { csrf?: unknown; answer?: unknown };
+      const p = pendingFor(req);
+      if (!p) { clearConfirm(reply); return reply.redirect("/?signin=expired"); }
+      if (typeof b.csrf !== "string" || !p.csrf_hash || !sameHash(hashId(b.csrf), p.csrf_hash)) return reply.code(403).send({ error: "Please go back and try again." });
+      if (b.answer !== "yes" && b.answer !== "no") return reply.code(400).send({ error: "bad answer" });
+      run(db, "DELETE FROM auth_handoff_confirm WHERE token_hash = ?", p.token_hash);
+      clearConfirm(reply);
+      if (b.answer === "no") {
+        finishHandoff(db, p.handoff, { error: "cancelled" });
+        signInCancelled(db, reporters);
+        return reply.redirect("/?signin=done-cancelled");
+      }
+      const sid = createSession(db, { sub: p.sub, role: p.role, name: p.name });
+      setCookie(reply, sid, p.role);
+      finishHandoff(db, p.handoff, { sid, role: p.role });
+      return reply.redirect("/?signin=done");
+    });
+  });
+
   // The installed app starts a handoff here before sign-in. It needs no session (it's for signing in).
   app.post("/auth/handoff/start", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
-    const app = (req.body as { app?: unknown } | undefined)?.app;
+    const body = (req.body ?? {}) as { app?: unknown; device?: unknown };
+    const app = body.app;
     if (app !== undefined && app !== null && (typeof app !== "string" || !APP_HINT.test(app))) return reply.code(400).send({ error: "bad app" });
+    const device = body.device;
+    if (device !== undefined && device !== null && (typeof device !== "string" || !HANDOFF_DEVICE.test(device))) return reply.code(400).send({ error: "bad device" });
     expireHandoffs(db);
-    return { ...startHandoff(db, (app as AppHint | undefined) ?? null), expiresIn: HANDOFF_START_MS / 1000 };
+    return { ...startHandoff(db, (app as AppHint | undefined) ?? null, (device as HandoffDevice | undefined) ?? null), expiresIn: HANDOFF_START_MS / 1000 };
   });
 
   // The installed app polls here, with the handoff's secret. Single use: the first successful poll
@@ -390,6 +520,18 @@ export function registerSessionAdmin(app: FastifyInstance, db: DB) {
     if (!keep) reply.clearCookie(COOKIE, { path: "/" });
     return { ok: true, ended };
   });
+}
+
+/** Someone pressed "No" on the confirm page: a quiet fyi for the parent (also shown to the child, like every report). */
+export function signInCancelled(db: DB, reporters?: Reporter[]) {
+  const report = createReport(db, {
+    level: "fyi", category: "signin_cancelled",
+    childNotice: "A sign-in to Kith was cancelled on the “Finish signing in?” page.",
+    parentText: "A sign-in was cancelled: someone pressed No on Kith's “Finish signing in?” page. If that wasn't expected, it may have been someone else's sign-in link.",
+  });
+  const list = reporters ?? makeReporters(config.reporting.reporters, db);
+  const ctx = { companionName: loadProfile(db).name, childName: childName(db) };
+  setImmediate(() => void deliverReport(db, list, report, ctx).catch(() => undefined));
 }
 
 export function requireRole(...roles: Role[]) {

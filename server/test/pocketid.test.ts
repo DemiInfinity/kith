@@ -11,6 +11,7 @@ import cookie from "@fastify/cookie";
 import { openDb } from "../src/db.js";
 import { config } from "../src/config.js";
 import { registerAuth, resetOidcForTests } from "../src/auth.js";
+import type { Report } from "../src/reporting/reporter.js";
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "RS256", use: "sig" };
@@ -82,6 +83,18 @@ async function startHandoff(app: ReturnType<typeof Fastify>, appName?: string): 
   const r = await app.inject({ method: "POST", url: "/auth/handoff/start", payload: appName ? { app: appName } : {} });
   expect(r.statusCode).toBe(200);
   return r.json() as H;
+}
+/** The sign-in window after the provider: the confirm page, then Yes or No. */
+async function confirm(app: ReturnType<typeof Fastify>, back: { headers: Record<string, unknown> }, answer: "yes" | "no" = "yes") {
+  expect(back.headers.location).toBe("/auth/handoff/confirm");
+  const token = /kith_confirm=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
+  const page = await app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } });
+  const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)![1];
+  const post = await app.inject({
+    method: "POST", url: "/auth/handoff/confirm", cookies: { kith_confirm: token },
+    headers: { "content-type": "application/x-www-form-urlencoded" }, payload: new URLSearchParams({ csrf, answer }).toString(),
+  });
+  return { page, post, token, csrf };
 }
 const pollH = (app: ReturnType<typeof Fastify>, h: H, secret = h.secret) =>
   app.inject({ method: "GET", url: `/auth/handoff/${h.id}`, headers: secret ? { "x-kith-handoff-secret": secret } : {} });
@@ -214,7 +227,9 @@ describe("signing in with Pocket ID", () => {
       const f = await fresh();
       const h = await startHandoff(f.app);
       const first = await signIn({ sub: "u-123", groups: ["kith-child"], given_name: "Sam" }, h.id, f);
-      expect(first.back.headers.location).toBe("/?signin=done");
+      expect(String(first.back.headers["set-cookie"])).not.toContain("kith_sid=");
+      expect((await pollH(f.app, h)).json()).toEqual({ pending: true }); // nothing until Yes
+      expect((await confirm(f.app, first.back)).post.headers.location).toBe("/?signin=done");
       const poll = await pollH(f.app, h);
       expect(poll.json()).toEqual({ ok: true, redirect: "/" });
       const sid = /kith_sid=([^;]+)/.exec(String(poll.headers["set-cookie"]))![1];
@@ -236,7 +251,7 @@ describe("signing in with Pocket ID", () => {
     it("expires after 2 minutes, and rejects malformed ids", async () => {
       const f = await fresh();
       const h = await startHandoff(f.app);
-      await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      await confirm(f.app, (await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f)).back);
       f.db.prepare("UPDATE auth_handoff SET created = ?").run(Date.now() - 3 * 60_000);
       expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
       // And the started handoff itself after 15 minutes.
@@ -256,7 +271,7 @@ describe("signing in with Pocket ID", () => {
       const code = crypto.randomBytes(8).toString("hex");
       codes.set(code, { challenge: auth.searchParams.get("code_challenge")!, nonce: auth.searchParams.get("nonce")! });
       const back = await app.inject({ method: "GET", url: `/auth/callback?code=${code}&state=${auth.searchParams.get("state")}&iss=${encodeURIComponent(issuer)}` });
-      expect(back.headers.location).toBe("/?signin=done");
+      expect((await confirm(app, back)).post.headers.location).toBe("/?signin=done");
       expect((await pollH(app, h)).json()).toEqual({ ok: true, redirect: "/" });
       // Without a handoff, json=1 changes nothing.
       expect((await app.inject({ method: "GET", url: "/auth/login?json=1" })).statusCode).toBe(302);
@@ -265,6 +280,7 @@ describe("signing in with Pocket ID", () => {
       const f = await fresh();
       const h = await startHandoff(f.app);
       const first = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      await confirm(f.app, first.back);
       const stored = f.db.prepare("SELECT id_hash, sid FROM auth_handoff").all() as { id_hash: string; sid: string }[];
       expect(stored[0].id_hash).not.toContain(h.id);
       const started = JSON.stringify(f.db.prepare("SELECT * FROM auth_handoff_start").all());
@@ -290,7 +306,7 @@ describe("signing in with Pocket ID", () => {
     it("only hands the session to a poll with the handoff's secret", async () => {
       const f = await fresh();
       const h = await startHandoff(f.app);
-      await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+      await confirm(f.app, (await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f)).back);
       const noSecret = await pollH(f.app, h, "");
       expect(noSecret.statusCode).toBe(403);
       expect(noSecret.headers["set-cookie"]).toBeUndefined();
@@ -299,6 +315,83 @@ describe("signing in with Pocket ID", () => {
       expect(wrong.headers["set-cookie"]).toBeUndefined();
       // A wrong guess doesn't use it up: the real app still collects it.
       expect((await pollH(f.app, h)).json()).toEqual({ ok: true, redirect: "/" });
+    });
+    // The other trick: someone starts a handoff on their own device and gets a family member to
+    // finish the sign-in with its link. The family member is asked first, with the app's code.
+    describe("the confirm page", () => {
+      it("shows the code from the app, kindly, and hands over nothing until Yes", async () => {
+        const f = await fresh();
+        const h = (await f.app.inject({ method: "POST", url: "/auth/handoff/start", payload: { app: "child", device: "mac" } })).json() as H & { code: string };
+        expect(h.code).toMatch(/^\d{4}$/);
+        const { back } = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+        const { page } = await confirm(f.app, back);
+        expect(page.statusCode).toBe(200);
+        expect(page.headers["content-security-policy"]).toContain("default-src 'none'");
+        expect(page.body).toContain(`Finish signing in to Kith on your Mac app?`);
+        expect(page.body).toContain(`>${h.code}<`);
+        expect(page.body).toContain("If you didn't just open Kith yourself, press No.");
+        expect(page.body).toContain("Yes, that's my app");
+        expect(page.body).toContain("No, cancel");
+        expect(page.body).not.toContain("<script");
+        expect((await pollH(f.app, h)).json()).toEqual({ ok: true, redirect: "/" });
+      });
+      it("No cancels it: the app gets a refusal, no session is made, and the parent hears", async () => {
+        const reports: Report[] = [];
+        const f = { db: openDb(":memory:"), app: Fastify() };
+        await f.app.register(cookie);
+        registerAuth(f.app, f.db, { reporters: [{ name: "mem", send: async (r: Report) => { reports.push(r); } }] });
+        const h = await startHandoff(f.app, "parent");
+        const { back } = await signIn({ sub: "u-456", groups: ["kith-parent"] }, h.id, f);
+        const { post } = await confirm(f.app, back, "no");
+        expect(post.headers.location).toBe("/?signin=done-cancelled");
+        expect(String(post.headers["set-cookie"])).not.toContain("kith_sid=");
+        const poll = await pollH(f.app, h);
+        expect(poll.statusCode).toBe(403);
+        expect(poll.json()).toEqual({ error: "cancelled" });
+        expect(f.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+        await new Promise((r) => setImmediate(r));
+        expect(reports.map((r) => [r.level, r.category])).toEqual([["fyi", "signin_cancelled"]]);
+        expect(reports[0].parentText).toMatch(/A sign-in was cancelled/);
+      });
+      it("needs the page's own form token (a forged form gets nothing), and answers once", async () => {
+        const f = await fresh();
+        const h = await startHandoff(f.app);
+        const { back } = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+        const token = /kith_confirm=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
+        const form = (csrf: string) => ({ method: "POST" as const, url: "/auth/handoff/confirm", cookies: { kith_confirm: token },
+          headers: { "content-type": "application/x-www-form-urlencoded" }, payload: new URLSearchParams({ csrf, answer: "yes" }).toString() });
+        // Before the page is shown there's no token at all; a guessed one doesn't work either.
+        expect((await f.app.inject(form("guess"))).statusCode).toBe(403);
+        await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } });
+        expect((await f.app.inject(form("guess"))).statusCode).toBe(403);
+        expect((await pollH(f.app, h)).json()).toEqual({ pending: true });
+        // Without the cookie (another browser), nothing.
+        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm" })).headers.location).toBe("/?signin=expired");
+        // The real page works once.
+        const page = await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } });
+        const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)![1];
+        expect((await f.app.inject(form(csrf))).headers.location).toBe("/?signin=done");
+        expect((await f.app.inject(form(csrf))).headers.location).toBe("/?signin=expired");
+      });
+      it("expires with the handoff", async () => {
+        const f = await fresh();
+        const h = await startHandoff(f.app);
+        const { back } = await signIn({ sub: "u-123", groups: ["kith-child"] }, h.id, f);
+        f.db.prepare("UPDATE auth_handoff_start SET created = ?").run(Date.now() - 16 * 60_000);
+        const token = /kith_confirm=([^;]+)/.exec(String(back.headers["set-cookie"]))![1];
+        expect((await f.app.inject({ method: "GET", url: "/auth/handoff/confirm", cookies: { kith_confirm: token } })).headers.location).toBe("/?signin=expired");
+        expect(f.db.prepare("SELECT COUNT(*) AS n FROM auth_handoff_confirm").get()).toEqual({ n: 0 });
+      });
+      it("says 'Home Screen app' or just 'app', and Kith Parent for the grown-ups' app", async () => {
+        const { confirmPage } = await import("../src/auth.js");
+        expect(confirmPage({ app: "parent", device: "homescreen", code: "0042", csrf: "x" })).toContain("Finish signing in to Kith Parent on your Home Screen app?");
+        expect(confirmPage({ app: null, device: null, code: "0042", csrf: "x" })).toContain("on your app?");
+        expect(confirmPage({ app: null, device: null, code: "<b>", csrf: "\"><script>" })).not.toMatch(/<b>|<script>/);
+      });
+      it("refuses an unknown device", async () => {
+        const { app } = await fresh();
+        expect((await app.inject({ method: "POST", url: "/auth/handoff/start", payload: { device: "fridge" } })).statusCode).toBe(400);
+      });
     });
     it("refuses an unknown app when starting", async () => {
       const { app } = await fresh();
