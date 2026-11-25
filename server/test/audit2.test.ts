@@ -314,23 +314,30 @@ describe("staged tool effects", () => {
     const d: Deps = { db, llm, safety, reporters: [], studio: new Studio(db, llm, safety), childName: "Sam" };
     return d;
   }
+  // Memories are only ever asked for (a card she says yes to); see selfedit.test.ts for the yes.
+  const asked = () => all<{ payload: string }>(db, "SELECT payload FROM pip_changes WHERE kind = 'memory' AND status = 'pending'").map((m) => JSON.parse(m.payload).text);
   const memories = () => all<{ text: string }>(db, "SELECT text FROM memories").map((m) => m.text);
 
-  it("saves a memory only once the reply passes", async () => {
-    const t = await takeTurn(toolLLM({ memory: "Maths test on Friday", reply: "Good luck on Friday!", replyOk: true }), { text: "I have a maths test on Friday", mode: "chat" });
-    expect(memories()).toEqual(["Maths test on Friday"]);
-    expect(t.effects.memories).toEqual(["Maths test on Friday"]);
+  it("asks to remember only once the reply passes (and saves nothing yet)", async () => {
+    const t = await takeTurn(toolLLM({ memory: "Maths test on Friday", reply: "Want me to remember your test?", replyOk: true }), { text: "I have a maths test on Friday", mode: "chat" });
+    expect(asked()).toEqual(["Maths test on Friday"]);
+    expect(memories()).toEqual([]);
+    expect(t.effects.memories).toEqual([]);
+    expect(t.effects.changes).toHaveLength(1);
+    expect(JSON.parse(t.reply.meta!).changes).toEqual(t.effects.changes);
     expect((t.effects as { staged?: unknown }).staged).toBeUndefined();
   });
 
   it("discards it when the reply is held back and replaced", async () => {
     const t = await takeTurn(toolLLM({ memory: "Maths test on Friday", reply: "A bad reply", replyOk: false }), { text: "I have a maths test on Friday", mode: "chat" });
     expect(t.reply.text).not.toBe("A bad reply");
+    expect(asked()).toEqual([]);
     expect(memories()).toEqual([]);
   });
 
   it("drops a memory whose own words fail the output check", async () => {
     await takeTurn(toolLLM({ memory: "Likes FORBIDDEN things", reply: "Noted!", replyOk: true }), { text: "hi", mode: "chat" });
+    expect(asked()).toEqual([]);
     expect(memories()).toEqual([]);
   });
 

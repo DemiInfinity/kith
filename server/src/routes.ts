@@ -19,6 +19,7 @@ import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, Paren
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
 import { addMemory, deleteMemory, listMemories } from "./companion/memory.js";
 import { sampleLine } from "./companion/prompt.js";
+import { applySoul, decline as declineChange, getChange, listChanges, memoryForAccept, settle, soulForAccept, undoTweak, type Decision } from "./companion/selfEdit.js";
 import { KIND_NAMES, SANDBOX_CSP, sandboxDocument, type Studio } from "./desk/studio.js";
 import { DeskError } from "./desk/deskClient.js";
 import { addWorld, deleteCharacter, deleteWorld, listCharacters, listWorld, saveCharacter, Sheet, sheetWords } from "./desk/oc.js";
@@ -386,6 +387,39 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const r = addMemory(db, { text: b.text, icon: b.icon });
     return r.ok ? r : reply.code(422).send({ error: r.reason });
   });
+  // ── What the companion asked to change, or changed, about itself in chat (selfEdit.ts) ──
+  app.get("/api/pip/changes", { preHandler: child }, async (req) => {
+    const q = z.object({ kind: z.enum(["soul", "memory", "personality", "checkins"]).optional() }).parse(req.query ?? {});
+    return { changes: listChanges(db, { kind: q.kind, limit: q.kind ? 10 : 50 }) };
+  });
+  const changeId = (req: import("fastify").FastifyRequest) => Number((req.params as { id: string }).id);
+  const decided = (reply: import("fastify").FastifyReply, r: Decision) => (r.ok ? { change: r.view, profile: r.profile } : reply.code(r.status).send({ error: r.error }));
+  // A yes: the soul or memory gets exactly the checks it would get if she typed it herself.
+  app.post("/api/pip/changes/:id/accept", { preHandler: child }, async (req, reply) => {
+    const id = changeId(req);
+    const row = getChange(db, id);
+    if (row?.kind === "soul") {
+      const s = soulForAccept(db, id);
+      if (!s.ok) return reply.code(s.status).send({ error: s.error });
+      if (!(await okText(reply, s.text, "Pip's soul.md"))) return;
+      return decided(reply, applySoul(db, id, s.text));
+    }
+    if (row?.kind === "memory") {
+      const m = memoryForAccept(db, id);
+      if (!m.ok) return reply.code(m.status).send({ error: m.error });
+      if (!(await okText(reply, m.memory.text, "a memory"))) return;
+      const r = addMemory(db, { icon: m.memory.icon, text: m.memory.text, aboutDate: m.memory.aboutDate });
+      if (!r.ok) {
+        const view = settle(db, id, r.reason === "Already remembered." ? "accepted" : "failed", r.reason ?? "");
+        return r.reason === "Already remembered." ? { change: view } : reply.code(422).send({ error: r.reason, change: view });
+      }
+      return { change: settle(db, id, "accepted") };
+    }
+    return reply.code(404).send({ error: "That suggestion isn't here any more." });
+  });
+  app.post("/api/pip/changes/:id/decline", { preHandler: child }, async (req, reply) => decided(reply, declineChange(db, changeId(req))));
+  app.post("/api/pip/changes/:id/undo", { preHandler: child }, async (req, reply) => decided(reply, undoTweak(db, changeId(req))));
+
   app.get("/api/parent/safeguards", { preHandler: parent }, async () => safeguardsDoc(db, childName(db)));
   app.get("/api/pip/schedule", { preHandler: child }, async () => {
     const s = loadParentSettings(db);

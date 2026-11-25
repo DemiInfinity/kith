@@ -18,7 +18,7 @@ import { CHECK_UNAVAILABLE, type SafetyChecker } from "../safety/check.js";
 import { noteSafetyUnavailable } from "../safety/unavailable.js";
 import type { InputVerdict } from "../safety/types.js";
 import { createReport, deliverReport, markTold, type Reporter, type ReportLevel } from "../reporting/reporter.js";
-import { identity, safeguards, soulText, type PromptCtx } from "./prompt.js";
+import { identity, safeguards, selfEditNote, soulText, type PromptCtx } from "./prompt.js";
 import { memoriesForPrompt } from "./memory.js";
 import { builtinTools, stage, type Staged, type TurnEffects } from "./tools.js";
 import { googleTools, proposalText } from "./googleTools.js";
@@ -104,7 +104,7 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
   const settings = loadParentSettings(db);
   const profile = loadProfile(db);
   const parent = config.people.parentLabel;
-  const effects: TurnEffects = { memories: [], jobs: [], characters: [], confirms: [] };
+  const effects: TurnEffects = { memories: [], jobs: [], characters: [], confirms: [], changes: [] };
 
   const raw = input.text.trim().slice(0, 4000);
   const history = recentMessages(db, 40, thread);
@@ -169,7 +169,11 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
 
   // Characters made or changed this turn show as cards under the reply, now and when the chat is reopened.
   const madeChars = [...new Set(effects.characters)];
-  const meta = report || madeChars.length ? { ...(report ? { report } : {}), ...(madeChars.length ? { characters: madeChars } : {}) } : undefined;
+  // So do proposals (soul, memories) and tweaks (how it talks, check-ins), with their outcome after a reload.
+  const changes = [...new Set(effects.changes ?? [])];
+  const meta = report || madeChars.length || changes.length
+    ? { ...(report ? { report } : {}), ...(madeChars.length ? { characters: madeChars } : {}), ...(changes.length ? { changes } : {}) }
+    : undefined;
   const reply = store(db, "companion", replyText, input.mode, meta, thread);
   energy = energyNow(db);
 
@@ -181,7 +185,7 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
 
   // Only what the app shows: the staging and outside text stay on the server.
   const { memories, jobs, characters, confirms } = effects;
-  return { child, reply, mood, energy, report, openHelp: verdict.level === "now", effects: { memories, jobs, characters, confirms } };
+  return { child, reply, mood, energy, report, openHelp: verdict.level === "now", effects: { memories, jobs, characters, confirms, changes } };
 }
 
 /** The helplines as words, never empty: Childline if the list somehow has nothing usable. */
@@ -224,7 +228,7 @@ async function generateReply(
   if (cal) fx.untrusted.push(...cal.events.map((e) => e.title), ...cal.reminders.map((r) => r.title));
   const outsideTools = [...(await connectionTools(db, settings.connections)), ...nativeTools(db)].map((t) => heldTool(t, fx));
   const tools: ToolDef[] = [
-    ...builtinTools(db, deps.studio, fx, llm).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
+    ...builtinTools(db, deps.studio, fx, llm, safety).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...outsideTools,
     ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, fx as { confirms: Pending[]; staged: Staged[]; untrusted: string[] }, { coursework, safety }),
   ];
@@ -259,7 +263,7 @@ async function generateReply(
     // 2. Who the companion is, in the child's words (soul.md, identity.md) and what it remembers (memory.md).
     {
       type: "text",
-      text: [soulText(ctx), identity(ctx), memoriesForPrompt(db), convo.summary ? `Earlier in your conversations (summary):\n${convo.summary}` : ""].filter(Boolean).join("\n\n"),
+      text: [soulText(ctx), identity(ctx), selfEditNote(profile.name), memoriesForPrompt(db), convo.summary ? `Earlier in your conversations (summary):\n${convo.summary}` : ""].filter(Boolean).join("\n\n"),
       cache_control: { type: "ephemeral" },
     },
     {
