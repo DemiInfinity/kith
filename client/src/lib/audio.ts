@@ -1,9 +1,19 @@
 // Voice in and out for calls. The microphone audio is held in memory, turned into 16 kHz mono
 // PCM and sent to the home server for speech-to-text. Nothing is recorded or saved.
 
+/** An AudioContext made (and resumed) inside a tap, which iOS Safari needs before it plays or records.
+ *  Calls make one when the mic is first tapped and reuse it for listening and speaking. */
+export function audioContextFromTap(existing: AudioContext | null): AudioContext {
+  const ctx = existing && existing.state !== "closed" ? existing : new AudioContext();
+  if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
+  return ctx;
+}
+
 export class MicCapture {
   private ctx: AudioContext | null = null;
+  private ownsCtx = false;
   private stream: MediaStream | null = null;
+  private src: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
   private chunks: Float32Array[] = [];
   private heardSpeech = false;
@@ -12,11 +22,24 @@ export class MicCapture {
   /** Called when they stop talking (after some speech, ~1.2 s of quiet). */
   onSilence: () => void = () => {};
 
-  async start() {
+  /** Starts listening. Pass the call's AudioContext (made in the tap) to reuse it; otherwise one is made here. */
+  async start(shared?: AudioContext) {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
-    this.ctx = new AudioContext();
-    await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
+    try {
+      this.ownsCtx = !shared;
+      this.ctx = shared ?? new AudioContext();
+      if (this.ctx.state === "suspended") await this.ctx.resume().catch(() => undefined);
+      await this.ctx.audioWorklet.addModule("/pcm-worklet.js");
+    } catch (e) {
+      // Don't leave the microphone on (and its indicator showing) if the worklet couldn't load.
+      this.stream.getTracks().forEach((t) => t.stop());
+      this.stream = null;
+      if (this.ownsCtx) await this.ctx?.close().catch(() => undefined);
+      this.ctx = null;
+      throw e;
+    }
     const src = this.ctx.createMediaStreamSource(this.stream);
+    this.src = src;
     this.node = new AudioWorkletNode(this.ctx, "pcm-collector");
     this.chunks = [];
     this.heardSpeech = false;
@@ -38,8 +61,11 @@ export class MicCapture {
   async stop(): Promise<ArrayBuffer> {
     const rate = this.ctx?.sampleRate ?? 48000;
     this.stream?.getTracks().forEach((t) => t.stop());
-    this.node?.disconnect();
-    await this.ctx?.close().catch(() => undefined);
+    this.stream = null;
+    this.src?.disconnect();
+    this.src = null;
+    if (this.node) { this.node.port.onmessage = null; this.node.disconnect(); this.node = null; }
+    if (this.ownsCtx) await this.ctx?.close().catch(() => undefined);
     this.ctx = null;
     const total = this.chunks.reduce((n, c) => n + c.length, 0);
     const all = new Float32Array(total);
@@ -66,10 +92,12 @@ export function toPcm16(input: Float32Array, fromRate: number, toRate: number): 
 }
 
 /** Plays a WAV and reports how loud it is, frame by frame, so the avatar's mouth can follow. */
-export async function playWithMouth(wav: Blob, onMouth: (open: number) => void, signal?: AbortSignal): Promise<void> {
-  const ctx = new AudioContext();
+export async function playWithMouth(wav: Blob, onMouth: (open: number) => void, signal?: AbortSignal, shared?: AudioContext): Promise<void> {
+  const ctx = shared && shared.state !== "closed" ? shared : new AudioContext();
   try {
+    if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
     const buf = await ctx.decodeAudioData(await wav.arrayBuffer());
+    if (signal?.aborted) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const analyser = ctx.createAnalyser();
@@ -91,13 +119,13 @@ export async function playWithMouth(wav: Blob, onMouth: (open: number) => void, 
     };
     await new Promise<void>((resolve) => {
       src.onended = () => resolve();
-      signal?.addEventListener("abort", () => { try { src.stop(); } catch { /* already stopped */ } resolve(); });
+      signal?.addEventListener("abort", () => { try { src.stop(); } catch { /* already stopped */ } resolve(); }, { once: true });
       src.start();
       frame();
     });
     cancelAnimationFrame(raf);
     onMouth(0);
   } finally {
-    await ctx.close().catch(() => undefined);
+    if (ctx !== shared) await ctx.close().catch(() => undefined);
   }
 }

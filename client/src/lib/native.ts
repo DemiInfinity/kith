@@ -8,6 +8,7 @@
 // - ⌃⌥Space (or Call Pip in the menu bar) opens a call.
 // - A document dropped on the window is handed to the chat (a "kith-file" event on window).
 
+import { pollWhileVisible } from "./poll";
 import { api } from "../api";
 
 type Tauri = {
@@ -93,12 +94,13 @@ export function startNative(go: (to: string) => void) {
       /* offline for a moment */
     }
   };
+  // The notification inbox keeps going while the window is hidden or closed: that's when a Mac
+  // notification is most useful. Calendar sync and the actions check rest until Kith is on screen.
   void poll();
   setInterval(poll, 30_000);
 
-  void syncCalendar();
-  setInterval(syncCalendar, 10 * 60_000);
-  setInterval(checkNativeActions, 30_000);
+  pollWhileVisible(syncCalendar, 10 * 60_000);
+  pollWhileVisible(checkNativeActions, 30_000, false);
 
   void t.event.listen("kith:calendar", () => void syncCalendar());
   void t.event.listen("kith:call", () => go("/talk"));

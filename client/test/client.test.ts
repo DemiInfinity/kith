@@ -52,50 +52,85 @@ describe("personality preview", () => {
 });
 
 describe("signing in from an installed app", () => {
-  it("makes a 32-byte, URL-safe one-time id", async () => {
-    const { newHandoffId } = await import("../src/lib/signin");
-    const a = newHandoffId(), b = newHandoffId();
-    expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(a).not.toBe(b);
+  const ID = "i".repeat(43), SECRET = "s".repeat(43);
+  type Call = { url: string; init?: RequestInit };
+  const json = (status: number, j: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => j }) as Response;
+  it("starts a handoff on the server and keeps its secret in memory", async () => {
+    const { startHandoff } = await import("../src/lib/signin");
+    const calls: Call[] = [];
+    const f = (async (url: string, init?: RequestInit) => { calls.push({ url, init }); return json(200, { id: ID, secret: SECRET, code: "4821", expiresIn: 900 }); }) as unknown as typeof fetch;
+    const h = await startHandoff("child", f, 1000, "homescreen");
+    expect(h).toEqual({ id: ID, secret: SECRET, code: "4821", at: 1000, expiresAt: 1000 + 900_000 });
+    expect(calls[0].url).toBe("/auth/handoff/start");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ app: "child", device: "homescreen" });
+    // An older server has no code (and no confirm step).
+    const old = (async () => json(200, { id: ID, secret: SECRET })) as unknown as typeof fetch;
+    expect((await startHandoff(null, old))?.code).toBe("");
+    const bad = (async () => json(200, { id: "short", secret: SECRET })) as unknown as typeof fetch;
+    expect(await startHandoff(null, bad)).toBeNull();
+    const limited = (async () => json(429, { error: "slow down" })) as unknown as typeof fetch;
+    expect(await startHandoff(null, limited)).toBeNull();
   });
-  it("polls until the session is handed over, then says where to go", async () => {
+  it("polls with the secret in a header until the session is handed over", async () => {
     const { vi } = await import("vitest");
     vi.useFakeTimers();
     (globalThis as { document?: unknown }).document = { visibilityState: "visible" };
     const { waitForHandoff } = await import("../src/lib/signin");
     const replies = [{ pending: true }, { pending: true }, { ok: true, redirect: "/" }];
-    const seen: string[] = [];
-    const fake = (async (url: string) => { seen.push(url); const j = replies.shift()!; return { ok: true, status: 200, json: async () => j } as Response; }) as unknown as typeof fetch;
-    const p = waitForHandoff("x".repeat(43), new AbortController().signal, fake);
+    const seen: Call[] = [];
+    const fake = (async (url: string, init?: RequestInit) => { seen.push({ url, init }); return json(200, replies.shift()); }) as unknown as typeof fetch;
+    const p = waitForHandoff({ id: ID, secret: SECRET, expiresAt: Date.now() + 900_000 }, new AbortController().signal, fake);
     await vi.advanceTimersByTimeAsync(5000);
     expect(await p).toEqual({ ok: true, redirect: "/" });
     expect(seen).toHaveLength(3);
-    expect(seen[0]).toBe(`/auth/handoff/${"x".repeat(43)}`);
+    expect(seen[0].url).toBe(`/auth/handoff/${ID}`);
+    expect(seen[0].url).not.toContain(SECRET);
+    expect((seen[0].init?.headers as Record<string, string>)["X-Kith-Handoff-Secret"]).toBe(SECRET);
     vi.useRealTimers();
   });
-  it("stops on a refusal", async () => {
+  it("stops on a refusal, and on an expired handoff", async () => {
     const { vi } = await import("vitest");
     vi.useFakeTimers();
     const { waitForHandoff } = await import("../src/lib/signin");
-    const fake = (async () => ({ ok: false, status: 403, json: async () => ({ error: "not-allowed" }) }) as Response) as unknown as typeof fetch;
-    const p = waitForHandoff("y".repeat(43), new AbortController().signal, fake);
+    const h = { id: ID, secret: SECRET, expiresAt: Date.now() + 900_000 };
+    const refused = (async () => json(403, { error: "not-allowed" })) as unknown as typeof fetch;
+    let p = waitForHandoff(h, new AbortController().signal, refused);
     await vi.advanceTimersByTimeAsync(2000);
     expect(await p).toEqual({ ok: false, error: "not-allowed" });
+    const gone = (async () => json(410, { error: "expired" })) as unknown as typeof fetch;
+    p = waitForHandoff(h, new AbortController().signal, gone);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await p).toEqual({ ok: false, error: "expired" });
     vi.useRealTimers();
   });
-  it("gets the provider's address ready before the click, and copes with an older server", async () => {
+  it("says what went wrong in plain words", async () => {
+    const { handoffWords } = await import("../src/lib/signin");
+    const { wrongAppWords } = await import("../src/lib/appHint");
+    expect(handoffWords("expired", wrongAppWords)).toBe("Sign-in timed out. Try again?");
+    expect(handoffWords("not-allowed", wrongAppWords)).toMatch(/isn’t set up for Kith/);
+    expect(handoffWords("use-parent-app", wrongAppWords)).toMatch(/Kith Parent/);
+    expect(handoffWords("cancelled", wrongAppWords)).toMatch(/^Sign-in was cancelled/);
+    expect(handoffWords("bad handoff secret", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
+    expect(handoffWords("failed", wrongAppWords)).toBe("Sign-in didn’t finish. Try again?");
+  });
+  it("gets a started handoff and the provider's address ready before the click", async () => {
     const { prepareSignIn, preparedFresh } = await import("../src/lib/signin");
     const seen: string[] = [];
-    const ok = (async (url: string) => { seen.push(url); return { ok: true, status: 200, json: async () => ({ url: "https://auth.example.com/authorize?state=s" }) } as Response; }) as unknown as typeof fetch;
+    const ok = (async (url: string) => {
+      seen.push(url);
+      return url === "/auth/handoff/start" ? json(200, { id: ID, secret: SECRET, expiresIn: 900 }) : json(200, { url: "https://auth.example.com/authorize?state=s" });
+    }) as unknown as typeof fetch;
     const p = await prepareSignIn(ok);
     expect(p?.url).toBe("https://auth.example.com/authorize?state=s");
-    expect(seen[0]).toBe(`/auth/login?handoff=${p!.id}&json=1`);
+    expect(p?.secret).toBe(SECRET);
+    expect(seen).toEqual(["/auth/handoff/start", `/auth/login?handoff=${ID}&json=1`]);
     expect(preparedFresh(p)).toBe(true);
     expect(preparedFresh(p, p!.at + 11 * 60_000)).toBe(false);
-    // An older server redirects to the provider, which the fetch can't follow.
-    const old = (async () => { throw new TypeError("Load failed"); }) as unknown as typeof fetch;
+    // An older server has no /auth/handoff/start.
+    const old = (async () => json(404, {})) as unknown as typeof fetch;
     expect(await prepareSignIn(old)).toBeNull();
-    const odd = (async () => ({ ok: true, status: 200, json: async () => ({ url: "javascript:alert(1)" }) }) as Response) as unknown as typeof fetch;
+    const odd = (async (url: string) => (url === "/auth/handoff/start" ? json(200, { id: ID, secret: SECRET }) : json(200, { url: "javascript:alert(1)" }))) as unknown as typeof fetch;
     expect(await prepareSignIn(odd)).toBeNull();
   });
 });

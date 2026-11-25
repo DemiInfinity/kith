@@ -21,7 +21,7 @@ function Editor({ initial, onSave, onCancel }: { initial: Draft; onSave: (d: Dra
       </div>
       <label className="field">When to use it<input className="input" value={d.description} maxLength={300} onChange={(e) => set({ description: e.target.value })} placeholder="e.g. When they're stuck on maths homework." /></label>
       <label className="field">How to do it
-        <textarea className="textarea" style={{ minHeight: 180, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13.5 }} maxLength={8000} value={d.body} onChange={(e) => set({ body: e.target.value })}
+        <textarea className="textarea" style={{ minHeight: 180, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "max(16px, 1rem)" }} maxLength={8000} value={d.body} onChange={(e) => set({ body: e.target.value })}
           placeholder={"Write it like you'd explain it to a tutor. Steps, tone, things to avoid.\n\n1. Ask what they've tried.\n2. One hint at a time…"} /></label>
       <Toggle label="Switched on" checked={d.enabled} onChange={(v) => set({ enabled: v })} />
       {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
@@ -69,7 +69,7 @@ export function ParentSkills({ companion, childName }: { companion: string; chil
           <div key={k.id} className={`card pconn ${k.enabled ? "on" : ""}`}>
             <div className="pconn-head">
               <span className="psec-ic"><Icon name="bulb" size={18} /></span>
-              <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: 18 }}>{k.name}</b>
+              <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: "1.125rem" }}>{k.name}</b>
               <Toggle label="" checked={!!k.enabled} onChange={(v) => void toggle(k, v)} />
             </div>
             {k.command && <span className="pcmd">/{k.command}</span>}

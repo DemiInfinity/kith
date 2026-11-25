@@ -1,9 +1,12 @@
 // Kith service worker: makes the app installable, keeps the app shell for flaky signal, and shows
 // check-in notifications. It never caches conversations or API responses.
-const SHELL = "kith-shell-v1";
+const SHELL = "kith-shell-v2";
+// "/" is the app for someone signed in and the public welcome page for a visitor, so only the app's
+// own page (the one marked noindex) is kept as the offline shell.
+const isAppShell = (res) => res.clone().text().then((t) => t.includes('name="robots" content="noindex'));
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/manifest.webmanifest", "/favicon.svg"])).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/manifest.webmanifest", "/favicon.svg"])).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -20,9 +23,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        if (res.ok && (url.pathname.startsWith("/assets/") || url.pathname === "/")) {
+        if (res.ok && url.pathname.startsWith("/assets/")) {
           const copy = res.clone();
           caches.open(SHELL).then((c) => c.put(event.request, copy));
+        } else if (res.ok && url.pathname === "/") {
+          const copy = res.clone();
+          isAppShell(res).then((app) => { if (app) caches.open(SHELL).then((c) => c.put("/", copy)); }).catch(() => undefined);
         }
         return res;
       })

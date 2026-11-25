@@ -96,6 +96,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   const [notice, setNotice] = useState(false);
   const [picked, setPicked] = useState<number | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // One quiet status line for screen readers: it says only the newest reply (or what went wrong).
+  const [announce, setAnnounce] = useState("");
   const name = me.profile.name;
   const mode: Mode = context?.mode ?? "chat";
   // Language practice: English hints shown, or one tap away (her choice, remembered on this device).
@@ -114,6 +117,13 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     }).catch((e) => setErr((e as Error).message));
   }, [thread]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
+  // The composer grows with what's typed (up to its max height), and shrinks again after sending.
+  useEffect(() => {
+    const t = box.current;
+    if (!t) return;
+    t.style.height = "auto";
+    t.style.height = `${t.scrollHeight + 3}px`;
+  }, [text]);
   // The command card floats over the chat; Esc or a click elsewhere closes it.
   useEffect(() => {
     if (!cards.length) return;
@@ -151,14 +161,14 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           : <span className="small">Nothing’s connected yet. {me.parentLabel} chooses connectors.</span>);
       } else if (cmd === "reload-skills") {
         const list = await loadSkills();
-        card(<span style={{ fontSize: 14 }}>{list.length ? <>Got the latest: <b>{list.length}</b> skill{list.length === 1 ? "" : "s"} on{list.some((k) => k.command) ? <>, with {list.filter((k) => k.command).map((k) => `/${k.command}`).join(", ")}</> : null}.</> : "No skills are on right now."}</span>);
+        card(<span style={{ fontSize: "0.875rem" }}>{list.length ? <>Got the latest: <b>{list.length}</b> skill{list.length === 1 ? "" : "s"} on{list.some((k) => k.command) ? <>, with {list.filter((k) => k.command).map((k) => `/${k.command}`).join(", ")}</> : null}.</> : "No skills are on right now."}</span>);
       } else if (cmd === "skills") {
         const r = await api<{ skills: { id: number; name: string; description: string; command: string | null }[] }>("/api/skills");
         card(r.skills.length ? <div className="stack" style={{ gap: 6 }}>{r.skills.map((k) => <span key={k.id} className="row" style={{ gap: 8 }}>{k.command ? <span className="pcmd">/{k.command}</span> : <Icon name="bulb" size={16} />}<span><b>{k.name}</b><span className="small"> · {k.description}</span></span></span>)}</div>
           : <span className="small">No skills yet. {me.parentLabel} can add some.</span>);
       } else if (cmd === "memory") {
         const r = await api<{ memories: Memory[] }>("/api/memories");
-        card(<div className="stack" style={{ gap: 6 }}>{r.memories.length ? r.memories.slice(0, 12).map((mm) => <span key={mm.id} style={{ fontSize: 14 }}>{mm.icon} {mm.text}</span>) : <span className="small">Nothing yet.</span>}<button className="btn ghost small" onClick={() => go("/memory")}>See and delete memories</button></div>);
+        card(<div className="stack" style={{ gap: 6 }}>{r.memories.length ? r.memories.slice(0, 12).map((mm) => <span key={mm.id} style={{ fontSize: "0.875rem" }}>{mm.icon} {mm.text}</span>) : <span className="small">Nothing yet.</span>}<button className="btn ghost small" onClick={() => go("/memory")}>See and delete memories</button></div>);
       }
     } catch (e) {
       setErr((e as Error).message);
@@ -188,12 +198,14 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       if (turn.effects.jobs.length || turn.effects.confirms?.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
       onTurn(turn);
       onMood(turn.mood);
+      setAnnounce(`${name}: ${turn.reply.text}`);
       if (turn.openHelp) openHelp();
     } catch (e) {
       setMessages((m) => (m ?? []).filter((x) => x.id !== temp.id));
       setText(t.trim());
       setFile(shared);
       setErr((e as Error).message);
+      setAnnounce((e as Error).message);
       onMood("happy");
     } finally {
       setBusy(false);
@@ -215,7 +227,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
 
   return (
     <>
-      <div className="messages" aria-live="polite" onClick={(e) => { if ((e.target as HTMLElement).classList.contains("messages")) setPicked(null); }}>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announce}</div>
+      <div className="messages" onClick={(e) => { if ((e.target as HTMLElement).classList.contains("messages")) setPicked(null); }}>
         {notice && (
           <div className="notice">
             I’m {name}, an AI, not a person. I live on your family’s home server. Our everyday chats stay between us; if something worries me, I’ll tell you first before I tell {me.parentLabel}.
@@ -233,6 +246,10 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
                 <div className="bubble" onClick={() => m.id > 0 && setPicked(picked === m.id ? null : m.id)}>
                   {m.mode === "language" && m.role === "companion" ? <Lesson text={m.text} hints={hints} lang={lang} voice={context?.voice} /> : m.text}
                 </div>
+                {m.id > 0 && (
+                  <button type="button" className={`msgmore ${picked === m.id ? "on" : ""}`} aria-label="More for this message" aria-expanded={picked === m.id}
+                    onClick={() => setPicked(picked === m.id ? null : m.id)}>…</button>
+                )}
               </div>
               {picked === m.id && (
                 <div className={`msgactions ${m.role === "child" ? "me" : ""}`}>
@@ -250,13 +267,13 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>
                   <span style={{ display: "inline-flex" }}><Icon name="note" size={22} /></span>
-                  <span style={{ display: "flex", flexDirection: "column" }}><b style={{ fontSize: 14 }}>{j.title}</b><span style={{ fontSize: 12, color: "var(--muted)" }}>on {name}’s desk · making it now</span></span>
+                  <span style={{ display: "flex", flexDirection: "column" }}><b style={{ fontSize: "0.875rem" }}>{j.title}</b><span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>on {name}’s desk · making it now</span></span>
                 </button>
               ))}
             </div>
           );
         })}
-        {busy && <div className="msg pip"><div className="bubble" aria-label={`${name} is thinking`}><span className="typing"><i /><i /><i /></span></div></div>}
+        {busy && <div className="msg pip"><div className="bubble" role="img" aria-label={`${name} is thinking`}><span className="typing"><i /><i /><i /></span></div></div>}
         {err && <div className="notice" style={{ borderColor: "var(--ember)" }}>{err}</div>}
         <div ref={end} />
       </div>
@@ -264,7 +281,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         <div className="ctxchip">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={context.mode === "study" ? "study" : context.mode === "art" ? "art" : context.mode === "language" ? "globe" : "oc"} size={15} />{context.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "")}</span>
           {context.ctx.coursework && <span className="small" style={{ color: "var(--ember)" }}>tutor only</span>}
-          {context.mode === "language" && <button className={`chip ${hints ? "on" : ""}`} style={{ minHeight: 28, padding: "0 10px" }} aria-pressed={hints} onClick={() => setHintsSaved(!hints)}>English hints</button>}
+          {context.mode === "language" && <button className={`chip ${hints ? "on" : ""}`} style={{ minHeight: 32, padding: "0 10px" }} aria-pressed={hints} onClick={() => setHintsSaved(!hints)}>English hints</button>}
           <button className="x" aria-label="Back to everyday chat" onClick={onClearContext}><Icon name="close" size={16} /></button>
         </div>
       )}
@@ -282,7 +299,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         const b = BUILTIN.find((x) => x.cmd === c.cmd);
         return (
           <div className="cmdpop" role="dialog" aria-label={b?.name ?? c.cmd}>
-            <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: 13 }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
+            <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: "0.8125rem" }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
               <button className="x" aria-label="Close" onClick={() => setCards([])}><Icon name="close" size={14} /></button></div>
             <div className="cmdpop-body">{c.body}</div>
             <span className="small" style={{ color: "var(--faint)" }}>Only you see this. {name} wasn’t asked, so no energy was used.</span>
@@ -310,6 +327,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <textarea
+          ref={box}
           aria-label={`Message ${name}`} placeholder={`Message ${name}…`} value={text} rows={1} maxLength={4000}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

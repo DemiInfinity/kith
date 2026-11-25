@@ -1,13 +1,16 @@
 import { Icon, IL, type IconName } from "../components/Icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
-import { dayLabel, Toggle, when } from "../components/bits";
-import { DeskComputer } from "./DeskComputer";
+import { clock, dayLabel, Toggle, when } from "../components/bits";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
+import { usePoll } from "../lib/poll";
 import { isMacApp } from "../lib/native";
 import { ParentHelp } from "./HelpCentre";
+
+// The desk is big (a whole little computer), so it loads the first time it's opened.
+const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string; features?: { edit: boolean; calendar: boolean; tasks: boolean } }
@@ -387,14 +390,98 @@ function ApiKeyCard({ onChanged, companion }: { onChanged: () => void; companion
   );
 }
 
+interface SignedIn { person: string; role: "child" | "parent"; name: string; sessions: number; lastSignIn: number }
+
+/** Who's signed in, and signing them out: one person, or everyone (this device stays signed in). */
+function SessionsCard({ child }: { child: string }) {
+  const [people, setPeople] = useState<SignedIn[] | null>(null);
+  const [gone, setGone] = useState(false);
+  const [msg, setMsg] = useState("");
+  const load = useCallback(() => api<{ people: SignedIn[] }>("/api/parent/sessions").then((r) => setPeople(r.people)).catch((e) => { if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) setGone(true); }), []);
+  useEffect(() => { void load(); }, [load]);
+  if (gone) return null; // an older server
+  const signOut = async (person?: SignedIn) => {
+    const who = person ? `${person.name || (person.role === "child" ? child : "this grown-up")} on every device` : "everyone, everywhere, except this device";
+    if (!confirm(`Sign out ${who}? They’ll need to sign in again.`)) return;
+    setMsg("");
+    try {
+      const r = await api<{ ended: number }>("/api/parent/sessions/sign-out", { body: person ? { person: person.person } : {} });
+      setMsg(r.ended ? `Signed out ${r.ended} ${r.ended === 1 ? "session" : "sessions"}.` : "Nobody else was signed in.");
+    } catch (e) { setMsg((e as Error).message); }
+    void load();
+  };
+  return (
+    <section className="card psec" id="set-sessions">
+      <h3 className="psec-h"><span className="psec-ic"><Icon name="people" size={18} /></span>Who’s signed in</h3>
+      <span className="small">Everyone with Kith open on a phone, computer or Mac. If a device is lost or shared, sign that person out; they’ll need your family’s sign-in to get back in. Grown-up sessions last 7 days.</span>
+      {!people ? <span className="small">Checking…</span> : people.length === 0 ? <span className="small">Nobody else is signed in.</span> : people.map((p) => (
+        <div key={p.person} className="memrow" style={{ padding: "10px 12px", gap: 10, flexWrap: "wrap" }}>
+          <span className="t" style={{ flex: 1, minWidth: 180 }}>
+            <b>{p.name || (p.role === "child" ? child : "Grown-up")}</b> <span className="small">· {p.role === "child" ? "Kith" : "Kith Parent"}</span><br />
+            <span className="small">{p.sessions} {p.sessions === 1 ? "device" : "devices"} · last signed in {dayLabel(p.lastSignIn).toLowerCase()} {when(p.lastSignIn)}</span>
+          </span>
+          <button type="button" className="btn ghost small" onClick={() => void signOut(p)}>Sign out</button>
+        </div>
+      ))}
+      <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className="btn ghost small" onClick={() => void signOut()}><IL i="close">Sign out everywhere</IL></button>
+        {msg && <span className="small" role="status">{msg}</span>}
+      </div>
+    </section>
+  );
+}
+
 const KIND_ICON: Record<string, IconName> = { "home-assistant": "home", kin: "calendar", mcp: "sparkle", jellyfin: "music", calculator: "note", dictionary: "stories", web: "compass", "google-drive": "cloud" };
 const ADDABLE: [Connection["kind"], string][] = [["mcp", "MCP server"], ["home-assistant", "Home Assistant"], ["kin", "Kin"], ["jellyfin", "Jellyfin"], ["web", "Allowed websites"]];
 const BUILT_IN = new Set(["room", "kin", "jellyfin", "calculator", "dictionary", "google", "web"]);
 
-function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip", publicKey = "" }: { initial: Settings; onSaved: () => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string }) {
+// What each budget box may hold. The server checks the same limits; an empty box is never 0.
+const BUDGET_LIMITS: Record<keyof Budgets, { min: number; max: number; label: string; step: number }> = {
+  weeklyUsd: { min: 0, max: 500, label: "Each week ($, up to 500)", step: 0.5 },
+  windowUsd: { min: 0, max: 100, label: "Full power per window ($, up to 100)", step: 0.5 },
+  windowHours: { min: 1, max: 24, label: "Window length (hours, 1 to 24)", step: 1 },
+  rolloverCapUsd: { min: 0, max: 50, label: "Max rollover per window ($, up to 50)", step: 0.5 },
+  hardStopUsd: { min: 1, max: 1000, label: "Hard stop for the month ($, 1 to 1000)", step: 1 },
+  lowPowerAtPercent: { min: 0, max: 100, label: "Low power below (%, 0 to 100)", step: 1 },
+  deskSharePercent: { min: 0, max: 50, label: "Desk share (%)", step: 1 },
+  weekResetDay: { min: 0, max: 6, label: "Energy tops up on", step: 1 },
+};
+const BUDGET_BOXES: (keyof Budgets)[] = ["weeklyUsd", "windowUsd", "windowHours", "rolloverCapUsd", "hardStopUsd", "lowPowerAtPercent"];
+
+/** Why a budget box can't be saved, or "" when it's fine. */
+export function budgetProblem(k: keyof Budgets, raw: string): string {
+  const lim = BUDGET_LIMITS[k];
+  if (raw.trim() === "") return "This can’t be empty.";
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "This needs a number.";
+  if (k === "hardStopUsd" && n <= 0) return "A hard stop of $0 would stop nothing. Use at least $1.";
+  if (n < lim.min || n > lim.max) return `Between ${lim.min} and ${lim.max}, please.`;
+  return "";
+}
+
+/** Why the Grown-up? numbers can't be saved, or "" when they're fine. 999 and at least one number always stay. */
+export function helplineProblem(lines: Helpline[]): string {
+  if (lines.length === 0) return "Keep at least one number.";
+  if (!lines.some((h) => h.number.replace(/\s+/g, "") === "999")) return "999 has to stay on the list.";
+  if (lines.some((h) => !h.name.trim() || !h.number.trim())) return "Each number needs a name and a number.";
+  return "";
+}
+
+/** The top-level settings that differ from what was loaded, so a save only touches what changed here. */
+export function changedSettings<T extends object>(before: T, after: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of Object.keys(after) as (keyof T)[]) {
+    if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) out[k] = after[k];
+  }
+  return out;
+}
+
+function SettingsForm({ initial, onSaved, onDirty, section = "settings", companion = "Pip", publicKey = "", childName = "your child" }: { initial: Settings; onSaved: () => void; onDirty: (d: boolean) => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string; childName?: string }) {
   const [s, setS] = useState<Settings>(initial);
+  const [base, setBase] = useState<Settings>(initial);
   const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
   const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
   const [builtIn, setBuiltIn] = useState("");
   useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
   const docText = s.safeguardsDoc || builtIn;
@@ -402,26 +489,68 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   useEffect(() => { api<DiskUsage>("/api/parent/disk").then(setDisk).catch(() => undefined); }, []);
   const b = s.budgets;
-  const setB = (k: keyof Budgets, v: number) => setS({ ...s, budgets: { ...b, [k]: v } });
+  // The budget boxes as typed, so an empty box stays empty (and unsaveable) instead of becoming 0.
+  const [braw, setBraw] = useState<Record<string, string>>(() => Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(initial.budgets[k])])));
+  const setB = (k: keyof Budgets, v: number) => setS((x) => ({ ...x, budgets: { ...x.budgets, [k]: v } }));
   const setC = (i: number, patch: Partial<Connection>) => setS({ ...s, connections: s.connections.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
   const list = (v: string) => v.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  const changes = changedSettings(base, s);
+  const budgetBoxesChanged = BUDGET_BOXES.some((k) => braw[k] !== String(base.budgets[k]));
+  const dirty = Object.keys(changes).length > 0 || budgetBoxesChanged;
+  useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
+  useEffect(() => () => onDirty(false), [onDirty]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    addEventListener("beforeunload", warn);
+    return () => removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const budgetErrors = section === "settings" ? BUDGET_BOXES.map((k) => [k, budgetProblem(k, braw[k] ?? "")] as const).filter(([, e]) => e) : [];
+  const helpErr = section === "settings" ? helplineProblem(s.helplines) : "";
+  const blocked = budgetErrors.length > 0 ? "Fix the budget boxes marked above first." : helpErr ? `Grown-up? numbers: ${helpErr}` : "";
   const save = async () => {
+    if (blocked) { setMsg(blocked); return; }
+    // Only the parts changed here are sent: the server keeps everything else as it is, so the
+    // Settings and Connectors tabs (or two devices) can't overwrite each other's changes.
+    const body = changedSettings(base, s);
+    if (Object.keys(body).length === 0) { setBase(s); setBraw(Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(s.budgets[k])]))); setMsg("Nothing to save."); return; }
+    setSaving(true);
     try {
-      await api("/api/parent/settings", { method: "PUT", body: s });
+      await api("/api/parent/settings", { method: "PUT", body });
+      setBase(s);
+      setBraw(Object.fromEntries(BUDGET_BOXES.map((k) => [k, String(s.budgets[k])])));
       setMsg("Saved.");
       onSaved();
     } catch (e) {
       setMsg((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
-  const num = (label: string, k: keyof Budgets, step = 0.5) => (
-    <label className="field">{label}<input className="input" type="number" step={step} min={0} value={b[k]} onChange={(e) => setB(k, Number(e.target.value))} /></label>
-  );
+  const num = (k: keyof Budgets) => {
+    const lim = BUDGET_LIMITS[k];
+    const err = budgetProblem(k, braw[k] ?? "");
+    const id = `budget-${k}`;
+    return (
+      <label className="field" key={k}>{lim.label}
+        <input className="input" id={id} type="number" inputMode="decimal" step={lim.step} min={lim.min} max={lim.max} required value={braw[k] ?? ""}
+          aria-invalid={err ? true : undefined} aria-describedby={err ? `${id}-err` : undefined}
+          onChange={(e) => { const v = e.target.value; setBraw((r) => ({ ...r, [k]: v })); if (!budgetProblem(k, v)) setB(k, Number(v)); }} />
+        {err && <span className="small field-err" id={`${id}-err`}>{err}</span>}
+      </label>
+    );
+  };
+  const removeHelpline = (i: number) => {
+    const h = s.helplines[i];
+    if (!confirm(`Remove ${h.name || "this number"}${h.number ? ` (${h.number})` : ""} from the Grown-up? sheet? Your child won’t see it any more once you save.`)) return;
+    setS((x) => ({ ...x, helplines: x.helplines.filter((_, j) => j !== i) }));
+  };
+  const nine99 = (h: Helpline) => h.number.replace(/\s+/g, "") === "999";
 
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
       {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-notify", "bell", "Notifications"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
+        {([["set-claude", "sparkle", "Claude"], ["set-notify", "bell", "Notifications"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"], ["set-sessions", "people", "Signed in"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
       </nav>}
@@ -432,14 +561,14 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
           <h3 className="psec-h"><span className="psec-ic"><Icon name="bell" size={18} /></span>Notifications to you</h3>
           <span className="small">Notifications to your own phone or computer, separate from your child’s. Turn them on on each device you want them on. “Right now” reports come through even in quiet hours; everything else waits until quiet hours end. Your child’s chat text is never sent.</span>
           <ParentPushControls publicKey={publicKey} />
-          <b style={{ fontSize: 14 }}>Reports</b>
+          <b style={{ fontSize: "0.875rem" }}>Reports</b>
           <Toggle label="Right now (urgent)" checked={s.notify.now} onChange={(v) => setS({ ...s, notify: { ...s.notify, now: v } })} />
           <Toggle label="Today" checked={s.notify.today} onChange={(v) => setS({ ...s, notify: { ...s.notify, today: v } })} />
           <Toggle label="Just so you know" checked={s.notify.fyi} onChange={(v) => setS({ ...s, notify: { ...s.notify, fyi: v } })} />
-          <b style={{ fontSize: 14 }}>Also</b>
+          <b style={{ fontSize: "0.875rem" }}>Also</b>
           <Toggle label="The weekly summary is ready" checked={s.notify.weekly} onChange={(v) => setS({ ...s, notify: { ...s.notify, weekly: v } })} />
           <Toggle label="Budget alerts (Low power started, the monthly hard stop reached)" checked={s.notify.budget} onChange={(v) => setS({ ...s, notify: { ...s.notify, budget: v } })} />
-          <b style={{ fontSize: 14 }}>On the lock screen</b>
+          <b style={{ fontSize: "0.875rem" }}>On the lock screen</b>
           <Toggle label="Show the report’s one-line summary" checked={s.notify.showSummary} onChange={(v) => setS({ ...s, notify: { ...s.notify, showSummary: v } })} />
           <span className="small">{s.notify.showSummary ? "Notifications show the one-line summary you’d see under Reports (never chat text). Anyone who can see your lock screen can read it." : "Notifications only say something needs you (e.g. “Kith: needs you. Something needs you now. Open Kith to read it.”). Open Kith to read the report."}</span>
         </section>
@@ -457,12 +586,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
           <input type="range" min={0} max={50} value={b.deskSharePercent} aria-label="Split between chat and the desk" style={{ ["--v" as string]: `${b.deskSharePercent * 2}%` }} onChange={(e) => setB("deskSharePercent", Number(e.target.value))} /></label>
         <span className="small">That’s ${(b.weeklyUsd * (1 - b.deskSharePercent / 100)).toFixed(2)} a week for chat and calls, and ${((b.weeklyUsd * b.deskSharePercent) / 100 / 7).toFixed(2)} a day for the desk (unused days roll on within the week).</span>
         <div className="grid2">
-          {num("Each week ($)", "weeklyUsd")}
-          {num("Full power per window ($)", "windowUsd")}
-          {num("Window length (hours)", "windowHours", 1)}
-          {num("Max rollover per window ($)", "rolloverCapUsd")}
-          {num("Hard stop for the month ($)", "hardStopUsd", 1)}
-          {num("Low power below (%)", "lowPowerAtPercent", 1)}
+          {BUDGET_BOXES.map(num)}
           <label className="field">Energy tops up on
             <select className="select" value={b.weekResetDay} onChange={(e) => setB("weekResetDay", Number(e.target.value))}>
               {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => <option key={d} value={i}>{d}</option>)}
@@ -481,7 +605,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
             <option value="base-int8">base (better, about 250 MB)</option>
             <option value="small-int8">small (best of these, about 600 MB; needs a bigger machine)</option>
           </select></label>
-        <b style={{ fontSize: 14 }}>Voices your child can pick (Piper)</b>
+        <b style={{ fontSize: "0.875rem" }}>Voices your child can pick (Piper)</b>
         <span className="small">A name your child sees, and a Piper voice (e.g. en_GB-alba-medium). Piper fetches voices it doesn’t have yet. Leave all empty to use the .env voices.</span>
         {vrows.map((row, i) => {
           const setRow = (p: Partial<{ label: string; voice: string }>) => {
@@ -537,10 +661,14 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
             <input className="input" aria-label="Line under it" value={h.sub} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, sub: e.target.value } : x)) })} />
             <span className="row">
               <select className="select" value={h.kind} onChange={(e) => setS({ ...s, helplines: s.helplines.map((x, j) => (j === i ? { ...x, kind: e.target.value as Helpline["kind"] } : x)) })}><option value="helpline">helpline</option><option value="emergency">emergency</option></select>
-              <button className="x" aria-label="Remove" onClick={() => setS({ ...s, helplines: s.helplines.filter((_, j) => j !== i) })}><Icon name="close" size={16} /></button>
+              <button type="button" className="x" aria-label={`Remove ${h.name || "this number"}`} disabled={nine99(h) || s.helplines.length <= 1}
+                title={nine99(h) ? "999 always stays" : s.helplines.length <= 1 ? "Keep at least one number" : undefined}
+                onClick={() => removeHelpline(i)}><Icon name="close" size={16} /></button>
             </span>
           </div>
         ))}
+        <span className="small">999 always stays, and there’s always at least one number.</span>
+        {helpErr && <span className="small field-err" role="alert">{helpErr}</span>}
         {s.helplines.length < 6 && <button className="btn ghost small" onClick={() => setS({ ...s, helplines: [...s.helplines, { name: "", number: "", sub: "", kind: "helpline" }] })}>+ number</button>}
       </section>
 
@@ -550,7 +678,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
         <label className="field">
           <span className="spread"><span>The safeguards document {s.safeguardsDoc ? <span className="pcmd">edited</span> : <span className="small">(the built-in version)</span>}</span>
             {s.safeguardsDoc && <button type="button" className="btn ghost small" onClick={() => { if (confirm("Go back to the built-in safeguards?")) setS({ ...s, safeguardsDoc: "" }); }}>Reset to the built-in version</button>}</span>
-          <textarea className="textarea" style={{ minHeight: 260, fontSize: 13.5, lineHeight: 1.5 }} maxLength={12000} value={docText}
+          <textarea className="textarea" style={{ minHeight: 260, fontSize: "max(16px, 1rem)", lineHeight: 1.5 }} maxLength={12000} value={docText}
             onChange={(e) => setS({ ...s, safeguardsDoc: e.target.value === builtIn ? "" : e.target.value })} />
         </label>
         <div className="pwarn"><Icon name="shield" size={18} /><span>Edit with care: this is what keeps the companion’s behaviour safe. Whatever it says, every message is still checked by the separate safety check, worries are still reported (and your child is told first), and Grown-up?, Childline and 999 always work.</span></div>
@@ -572,7 +700,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
           </select></label>
         {s.browser.mode === "blocklist" && (
           <>
-            <b style={{ fontSize: 14 }}>Always blocked</b>
+            <b style={{ fontSize: "0.875rem" }}>Always blocked</b>
             {CATEGORIES.map(([k, label]) => (
               <Toggle key={k} label={label} checked={s.browser.categories.includes(k)}
                 onChange={(v) => setWeb({ categories: v ? [...s.browser.categories, k] : s.browser.categories.filter((c) => c !== k) })} />
@@ -598,6 +726,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
           </select></label>
       </section>
 
+      <SessionsCard child={childName} />
         </>}
         {section === "connectors" && <>
         <div className="pintro">
@@ -652,7 +781,10 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
         </div>
         </>}
       </div>
-      <div className="psave"><span className="small" aria-live="polite">{msg || "Changes are saved when you press Save."}</span><button className="btn primary" onClick={save}>{section === "connectors" ? "Save connectors" : "Save settings"}</button></div>
+      <div className={`psave ${dirty ? "dirty" : ""}`}>
+        <span className="small" role="status">{dirty ? <><b>Unsaved changes.</b> {blocked || (msg && msg !== "Saved." ? msg : "Press Save to keep them.")}</> : msg || "Changes are saved when you press Save."}</span>
+        <button className="btn primary" onClick={save} disabled={saving || !dirty || !!blocked}>{saving ? "Saving…" : section === "connectors" ? "Save connectors" : "Save settings"}</button>
+      </div>
     </div>
   );
 }
@@ -676,7 +808,16 @@ function Tile({ icon, label, value, cap, sub }: { icon: IconName; label: string;
 export function Parent({ me }: { me: Me }) {
   const [o, setO] = useState<Overview | null>(null);
   const [t, setT] = useState<Transparency | null>(null);
-  const [tab, setTab] = useState<PTab>("overview");
+  const [tab, setTabRaw] = useState<PTab>("overview");
+  // Settings and Connectors say when they have unsaved changes, so switching tab can ask first.
+  const dirty = useRef(false);
+  const onDirty = useCallback((d: boolean) => { dirty.current = d; }, []);
+  const setTab = (k: PTab) => {
+    if (k === tab) return;
+    if (dirty.current && !confirm("You have unsaved changes on this tab. Leave without saving them?")) return;
+    dirty.current = false;
+    setTabRaw(k);
+  };
   const [testMsg, setTestMsg] = useState("");
   const [disk, setDisk] = useState<DiskUsage | null>(null);
   const load = useCallback(() => {
@@ -684,7 +825,7 @@ export function Parent({ me }: { me: Me }) {
     api<Overview>("/api/parent/overview").then(setO).catch(() => undefined);
     api<Transparency>("/api/transparency").then(setT).catch(() => undefined);
   }, []);
-  useEffect(() => { load(); const i = setInterval(load, 30_000); return () => clearInterval(i); }, [load]);
+  usePoll(load, 30_000);
   // "Kith Parent" in the tab, and when added to the Dock or Home Screen (the manifest says so too).
   useEffect(() => {
     const before = document.title;
@@ -732,8 +873,8 @@ export function Parent({ me }: { me: Me }) {
       {t?.reports.map((r) => (
         <div key={r.id} className="preport">
           <span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span>
-          <span style={{ flex: 1, fontSize: 14 }}>{r.parentText}</span>
-          <span className="small" style={{ whiteSpace: "nowrap" }}>{dayLabel(r.ts)} {when(r.ts)} · {r.status}</span>
+          <span style={{ flex: 1, fontSize: "0.875rem" }}>{r.parentText}</span>
+          <span className="small preport-when">{dayLabel(r.ts)}, {clock(r.ts)} · {r.status}</span>
         </div>
       ))}
     </div>
@@ -765,7 +906,7 @@ export function Parent({ me }: { me: Me }) {
         <header className="phead">
           <span className="phead-dp"><Avatar look={comp.look} size={56} variant="ring" mood={mode === "low" ? "sleepy" : mode === "resting" ? "resting" : "happy"} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span className="hand" style={{ fontSize: 20 }}>parent view</span>
+            <span className="hand" style={{ fontSize: "1.25rem" }}>parent view</span>
             <h2>{comp.name}<span className="pwith">, with {cname}</span></h2>
           </div>
           {o && <span className={`ppower ${mode}`}><Icon name={powerIcon} size={16} /><span className="pw">{powerWord} · </span>{o.energy.percent}%</span>}
@@ -836,11 +977,11 @@ export function Parent({ me }: { me: Me }) {
             </>
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
-          {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
-          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} publicKey={me.push.ready ? me.push.publicKey : ""} />}
+          {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={meChild} canEdit={false} /></Suspense>}
+          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} onDirty={onDirty} companion={comp.name} childName={cname} publicKey={me.push.ready ? me.push.publicKey : ""} />}
           {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
-          {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}
+          {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} onDirty={onDirty} />}
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { AvatarSvg } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icons";
 import { clock } from "../components/bits";
 import { ItemViewer, MakeSheet } from "./Desk";
+import { pollWhileVisible } from "../lib/poll";
 
 interface BrowserView {
   enabled: boolean; mode?: "blocklist" | "safelist"; sites: string[]; you?: string;
@@ -182,22 +183,20 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     load();
     api<{ stories: StoryRow[] }>("/api/stories").then((r) => setStories(r.stories)).catch(() => undefined);
     api<{ characters: Character[] }>("/api/oc").then((r) => setChars(r.characters)).catch(() => undefined);
-    const t = setInterval(() => { load(); setNow(Date.now()); }, 6000);
-    return () => clearInterval(t);
+    return pollWhileVisible(() => { load(); setNow(Date.now()); }, 6000, false);
   }, [load]);
   // Watching live (on by default): everyone looking at the desk sees the same screen and pointer,
   // refreshed every second, whether Pip, the child or the parent is driving.
   useEffect(() => {
     if ((!watch || !awake) && !driving) return;
-    const t = setInterval(() => api<BrowserView>("/api/desk/browser").then((b) => {
+    return pollWhileVisible(() => api<BrowserView>("/api/desk/browser").then((b) => {
       setBr((old) => {
         // Keep our own pointer while we drive; take everything else from the desk.
         if (driving && old?.live && b.live) b = { ...b, live: { ...b.live, cursor: old.live.cursor } };
         return b;
       });
       if (driving && b.live && b.live.takenOverBy !== me2.current) setDriving(false); // handed back, timed out, or someone else took over
-    }).catch(() => undefined), 1000);
-    return () => clearInterval(t);
+    }).catch(() => undefined), 1000, false);
   }, [watch, driving, awake]);
   useEffect(() => {
     if (!awake || driving) return;
@@ -226,12 +225,12 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const fileList = (list: { key: string; icon: string; name: string; meta: string; tag: [string, string]; onClick?: () => void }[], path: string, note: string) => (
     <div className="dwin-body">
       <span className="small" style={{ color: "#7A5C76" }}>{path}</span>
-      <span style={{ fontSize: 13, color: "#5a4a63" }}>{note}</span>
-      {list.length === 0 && <span style={{ fontSize: 13, color: "#7A5C76" }}>Nothing here yet.</span>}
+      <span style={{ fontSize: "0.8125rem", color: "#5a4a63" }}>{note}</span>
+      {list.length === 0 && <span style={{ fontSize: "0.8125rem", color: "#7A5C76" }}>Nothing here yet.</span>}
       {list.map((f) => (
         <button key={f.key} className="dfile" onClick={f.onClick} disabled={!f.onClick}>
-          <span style={{ fontSize: 20, display: "inline-flex" }}>{f.icon || <Icon name="note" size={20} />}</span>
-          <span style={{ flex: 1, textAlign: "left" }}><b style={{ display: "block", fontSize: 14 }}>{f.name}</b><span style={{ fontSize: 12, color: "#7A5C76" }}>{f.meta}</span></span>
+          <span style={{ fontSize: "1.25rem", display: "inline-flex" }}>{f.icon || <Icon name="note" size={20} />}</span>
+          <span style={{ flex: 1, textAlign: "left" }}><b style={{ display: "block", fontSize: "0.875rem" }}>{f.name}</b><span style={{ fontSize: "0.75rem", color: "#7A5C76" }}>{f.meta}</span></span>
           <span className="dtag" style={TAG[f.tag[1]]}>{f.tag[0]}</span>
         </button>
       ))}
@@ -264,10 +263,10 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                 <span>{visitsForLive ? `${visitsForLive} page${visitsForLive > 1 ? "s" : ""}, all checked.` : "—"} {name} only reads: it never types, signs in or downloads, and it stops at robot checks.</span>
               </>
             )}
-            {browseErr && <span style={{ color: "#A8402E", fontSize: 12.5 }}>{browseErr}</span>}
+            {browseErr && <span style={{ color: "#A8402E", fontSize: "0.7812rem" }}>{browseErr}</span>}
           </div>
                 <details className="dvisits"><summary>Every page today ({br?.visits.length ?? 0})</summary>
-          {br?.visits.map((v) => <div key={v.id} style={{ fontSize: 12.5 }}>{clock(v.ts)} · {v.outcome} · {v.title || v.url.replace(/^https:\/\//, "")}<span style={{ color: "#7A5C76" }}> · for {v.why}</span></div>)}
+          {br?.visits.map((v) => <div key={v.id} style={{ fontSize: "0.7812rem" }}>{clock(v.ts)} · {v.outcome} · {v.title || v.url.replace(/^https:\/\//, "")}<span style={{ color: "#7A5C76" }}> · for {v.why}</span></div>)}
         </details>
       </div>
     );
@@ -288,7 +287,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Forward" onClick={() => act({ type: "forward" })}><Icon name="arrow" size={16} /></button>
             <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Reload" onClick={() => act({ type: "reload" })}><Icon name="newchat" size={16} /></button>
             <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Home" onClick={() => act({ type: "home" })}><Icon name="home" size={16} /></button>
-            <input aria-label="Address" placeholder="Search or type an address" value={urlText} onChange={(e) => setUrlText(e.target.value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontWeight: 700, fontSize: 13, color: "#2a1d3a" }} />
+            <input aria-label="Address" placeholder="Search or type an address" value={urlText} onChange={(e) => setUrlText(e.target.value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontWeight: 700, fontSize: "max(16px, 1rem)", color: "#2a1d3a" }} />
             <button type="submit" className="dtag" style={{ background: "#2A1D3A", color: "#fff", border: 0 }}>Go</button>
           </form>
         ) : (
@@ -296,7 +295,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
         )}
         <div className="dbrowse-grid">
           <div className="dshot" style={driving ? { outline: "2px solid #D9A3E0", outlineOffset: -2 } : {}}>
-            {!br?.enabled && <span style={{ color: "#7A5C76", fontSize: 13 }}>{me.parentLabel} has switched browsing off.</span>}
+            {!br?.enabled && <span style={{ color: "#7A5C76", fontSize: "0.8125rem" }}>{me.parentLabel} has switched browsing off.</span>}
             {br?.enabled && live?.frame && (
               <div ref={screenRef} className={`screen169 ${driving ? "driving" : ""}`} tabIndex={driving ? 0 : -1} onKeyDown={onKey}
                 aria-label={driving ? "The page. Click to use it; type to type into it." : undefined}
@@ -332,7 +331,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                 {live.signIn && !live.robotCheck && !browseErr && <div className="robotcheck"><Icon name="lock" size={18} /><span>This page asks for a password. Signing in isn’t allowed on {name}’s computer.</span></div>}
               </div>
             )}
-            {br?.enabled && !live?.frame && <span style={{ color: "#7A5C76", fontSize: 13 }}>{name} only browses when it’s looking something up for you.</span>}
+            {br?.enabled && !live?.frame && <span style={{ color: "#7A5C76", fontSize: "0.8125rem" }}>{name} only browses when it’s looking something up for you.</span>}
           </div>
         </div>
 
@@ -402,18 +401,18 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
               </div>}
               {win === "closed" && <div className="pempty">Open something from the desktop.</div>}
               <div className="ptodo" role="list" aria-label={`${name}’s to-do`}>
-                <b className="hand" style={{ color: "#2A1D3A", fontSize: 28 }}>{name}’s to-do</b>
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: "#8A5A12" }}>You asked for these · {name} works on them in its own time</span>
-                {todo.length === 0 && <span style={{ fontSize: 13 }}>Nothing yet. Ask {name} to make something!</span>}
+                <b className="hand" style={{ color: "#2A1D3A", fontSize: "1.75rem" }}>{name}’s to-do</b>
+                <span style={{ fontSize: "0.7188rem", fontWeight: 800, color: "#8A5A12" }}>You asked for these · {name} works on them in its own time</span>
+                {todo.length === 0 && <span style={{ fontSize: "0.8125rem" }}>Nothing yet. Ask {name} to make something!</span>}
                 {todo.map((j: Job) => (
-                  <span key={j.id} role="listitem" style={{ fontSize: 13.5, borderTop: "1px dashed #E8C98A", paddingTop: 5, textDecoration: j.status === "done" ? "line-through" : "none", opacity: j.status === "done" ? 0.6 : 1 }}>
+                  <span key={j.id} role="listitem" style={{ fontSize: "0.8438rem", borderTop: "1px dashed #E8C98A", paddingTop: 5, textDecoration: j.status === "done" ? "line-through" : "none", opacity: j.status === "done" ? 0.6 : 1 }}>
                     <Icon name={j.status === "done" ? "check" : j.status === "working" ? "hourglass" : j.status === "failed" ? "close" : "clock"} size={13} /> {j.title}
                   </span>
                 ))}
               </div>
               <div className="pbuddy">
                 <AvatarSvg look={me.profile.look} mood={power?.mode === "low" ? "sleepy" : "happy"} laptop={!!working} size={110} />
-                <span className="hand" style={{ fontSize: 22 }}>{working ? "concentrating…" : "free for now"}</span>
+                <span className="hand" style={{ fontSize: "1.375rem" }}>{working ? "concentrating…" : "free for now"}</span>
               </div>
             </div>
           </div>
@@ -468,7 +467,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
 
       <aside className="deskside">
         <div className="card">
-          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: 20 }}>Desk budget today</b><span className="small">{today ? `${today.budget.percent}% left` : ""}</span></div>
+          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>Desk budget today</b><span className="small">{today ? `${today.budget.percent}% left` : ""}</span></div>
           <span className="bar" style={{ display: "flex", height: 10 }}>
             <span style={{ width: `${Math.min(100, (today?.budget.full ?? 0) / slice * 100)}%`, background: "var(--lilac)", borderRadius: 0 }} />
             <span style={{ width: `${Math.min(100, (today?.budget.low ?? 0) / slice * 100)}%`, background: "var(--ember)", borderRadius: 0 }} />
@@ -477,24 +476,24 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
           <span className="small">Flashcards, summaries and planning always run on Low power. Stories and games you ask for get Full power, and the desk can never eat into your chat.</span>
         </div>
         <div className="card">
-          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: 20 }}>What {name} did today</b><span className="small" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Icon name="eye" size={14} /> {me.parentLabel} sees this too</span></div>
+          <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>What {name} did today</b><span className="small" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Icon name="eye" size={14} /> {me.parentLabel} sees this too</span></div>
           {(today?.activity ?? []).length === 0 && <span className="small">Nothing yet today.</span>}
           {today?.activity.slice(0, 12).map((a) => (
-            <div key={a.id} className="row" style={{ fontSize: 13.5, borderTop: "1px solid var(--line-soft)", paddingTop: 6, alignItems: "flex-start" }}>
+            <div key={a.id} className="row" style={{ fontSize: "0.8438rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, alignItems: "flex-start" }}>
               <b style={{ width: 44, flex: "none", color: "var(--faint)" }}>{new Date(a.ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>
               <span style={{ flex: 1 }}>{a.text}</span><span>{a.icon}</span>
             </div>
           ))}
         </div>
         <div className="card">
-          <b style={{ fontFamily: "var(--serif)", fontSize: 20 }}>Desk rules</b>
-          <div className="grid2" style={{ fontSize: 13 }}>
+          <b style={{ fontFamily: "var(--serif)", fontSize: "1.25rem" }}>Desk rules</b>
+          <div className="grid2" style={{ fontSize: "0.8125rem" }}>
             <div className="stack" style={{ gap: 3 }}><b style={{ color: "var(--ok)" }}>{name} can</b><span>write, draw and build little things</span><span>read websites that aren’t blocked</span><span>save new files to Kith on Drive</span><span>make flashcards and plans</span><span>keep its own journal</span></div>
             <div className="stack" style={{ gap: 3 }}><b style={{ color: "var(--ember)" }}>{name} can’t</b><span>do coursework for you</span><span>sign in, fill forms, download or pass robot checks</span><span>share, email or post anything</span><span>delete or overwrite your files</span><span>contact your friends</span></div>
           </div>
         </div>
         {desk?.journal[0] && (
-          <div className="card"><span className="journal">“{desk.journal[0].text}”</span><span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--faint)" }}>{name.toUpperCase()}’S JOURNAL</span></div>
+          <div className="card"><span className="journal">“{desk.journal[0].text}”</span><span style={{ fontSize: "0.7188rem", fontWeight: 800, color: "var(--faint)" }}>{name.toUpperCase()}’S JOURNAL</span></div>
         )}
       </aside>
       {item && <ItemViewer id={item} canEdit={canEdit} links={links} onClose={() => setItem(null)} onChanged={load} />}

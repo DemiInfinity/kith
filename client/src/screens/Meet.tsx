@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type Me, type Profile } from "../api";
 import { Avatar } from "../components/Avatar";
-import { Toggle } from "../components/bits";
+import { HelpSheet, Toggle } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
 import { playWithMouth } from "../lib/audio";
 import { enablePush, pushStatus } from "../lib/push";
@@ -9,6 +9,13 @@ import { sampleLine, TRAITS } from "./Personality";
 
 type Step = "hello" | "name" | "personality" | "voice" | "help" | "notify" | "safe";
 const STEPS: Step[] = ["hello", "name", "personality", "voice", "help", "notify", "safe"];
+
+/** "Childline or 999", "Childline, Shout or 999": the Grown-up? numbers as words. */
+export function helplineWords(names: string[]): string {
+  const n = names.filter(Boolean);
+  if (n.length <= 1) return n[0] ?? "999";
+  return `${n.slice(0, -1).join(", ")} or ${n[n.length - 1]}`;
+}
 
 /** First run: a short wizard where the child sets up their pal. Honest from the first screen. */
 export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
@@ -19,6 +26,7 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
   const [mouth, setMouth] = useState(0);
   const [playing, setPlaying] = useState("");
   const [push, setPush] = useState<"" | "on" | "blocked" | "unsupported" | "…">("");
+  const [help, setHelp] = useState(false);
   const step = STEPS[i];
   const set = (patch: Partial<Profile>) => setP((x) => ({ ...x, ...patch }));
   const name = p.name.trim() || "Pip";
@@ -52,8 +60,11 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
     <div className="main">
       <div className="wizard">
         <div className="wiz-top">
-          <div className="wiz-dots" aria-label={`Step ${i + 1} of ${STEPS.length}`}>{STEPS.map((s, j) => <span key={s} className={j === i ? "on" : j < i ? "done" : ""} />)}</div>
-          {i > 0 && <button className="btn ghost small" onClick={back}><IL i="back">Back</IL></button>}
+          <div className="wiz-dots" role="progressbar" aria-label="Setting up" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={i + 1} aria-valuetext={`Step ${i + 1} of ${STEPS.length}`}>{STEPS.map((s, j) => <span key={s} aria-hidden className={j === i ? "on" : j < i ? "done" : ""} />)}</div>
+          <span className="row" style={{ gap: 8 }}>
+            {i > 0 && <button className="btn ghost small" onClick={back}><IL i="back">Back</IL></button>}
+            <button className="btn ghost small" style={{ color: "var(--ember)" }} onClick={() => setHelp(true)}><IL i="grownup">Grown-up?</IL></button>
+          </span>
         </div>
         <div className="wiz-pal">
           <Avatar look={p.look} size={step === "hello" ? 150 : 120} variant="ring" mouth={mouth} talking={step === "voice" && !!playing && !mouth}
@@ -62,7 +73,7 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
 
         <div className="wiz-body" key={step}>
           {step === "hello" && <>
-            <span className="hand" style={{ fontSize: 28 }}>hello{me.name ? `, ${me.name}` : ""}!</span>
+            <span className="hand" style={{ fontSize: "1.75rem" }}>hello{me.name ? `, ${me.name}` : ""}!</span>
             <h2>Let’s set up your pal</h2>
             <p>I’m an AI, not a person. I live on your family’s home server, not out on the internet. I can chat, help you learn, make things with you and be good company. It takes about a minute to make me yours.</p>
           </>}
@@ -116,18 +127,20 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
             <h2>How we stay safe</h2>
             <div className="wiz-safe">
               <span><Icon name="heart" size={20} /><span>Our everyday chats are between us. {me.parentLabel} doesn’t read them.</span></span>
+              <span><Icon name="compass" size={20} /><span>{me.parentLabel} <b>can</b> see my desk: what I make, my browser live as it happens, and the pages it opened. They also see your language progress (levels, words learned and topics), but not the practice chats.</span></span>
               <span><Icon name="shield" size={20} /><span>If something worries me, I’ll <b>tell you first</b>, then let {me.parentLabel} know. You won’t be in trouble.</span></span>
-              <span><Icon name="grownup" size={20} /><span><b>Grown-up?</b> is always there, on every screen: message {me.parentLabel}, or call Childline or 999.</span></span>
+              <span><Icon name="grownup" size={20} /><span><b>Grown-up?</b> is always there, on every screen: message {me.parentLabel}, or call {helplineWords(me.helplines.map((h) => h.name))}.</span></span>
               <span><Icon name="question" size={20} /><span>Stuck? Settings › Help has the answers, and typing <b>/</b> in chat shows what you can do.</span></span>
             </div>
           </>}
         </div>
 
-        {err && <span className="small" style={{ color: "var(--ember)" }}>{err}</span>}
+        {err && <span className="small" role="alert" style={{ color: "var(--ember)" }}>{err}</span>}
         <button className="btn primary block wiz-next" disabled={busy || (step === "name" && !p.name.trim())} onClick={next}>
           {step === "hello" ? "Let’s go" : step === "safe" ? `Say hi to ${name}` : step === "notify" && push !== "on" ? "Maybe later" : "Next"}
         </button>
       </div>
+      <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>
   );
 }

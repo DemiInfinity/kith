@@ -1,6 +1,7 @@
 import { Icon, IL, type IconName } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type CloudLink, type DeskItem, type DeskView, type Energy, type Me } from "../api";
+import { usePoll } from "../lib/poll";
 import { EnergyCard, Markdown } from "../components/bits";
 
 const KIND_LABEL: Record<string, [IconName, string]> = {
@@ -12,11 +13,7 @@ const KIND_LABEL: Record<string, [IconName, string]> = {
 export function useDesk(poll = 8000) {
   const [desk, setDesk] = useState<DeskView | null>(null);
   const load = useCallback(() => api<DeskView>("/api/desk").then(setDesk).catch(() => undefined), []);
-  useEffect(() => {
-    void load();
-    const t = setInterval(load, poll);
-    return () => clearInterval(t);
-  }, [load, poll]);
+  usePoll(load, poll);
   return { desk, reload: load };
 }
 
@@ -80,8 +77,8 @@ export function ItemViewer({ id, canEdit, onClose, onChanged, links = [] }: { id
       <div className="scrim" onClick={onClose} />
       <div className="dialog" role="dialog" aria-modal="true" aria-label={m?.title ?? "Desk item"}>
         <div className="bar-top">
-          <span style={{ fontSize: 22 }}>{m?.icon}</span>
-          <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: 18 }}>{m?.title ?? "…"}</b>
+          <span style={{ fontSize: "1.375rem" }}>{m?.icon}</span>
+          <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: "1.125rem" }}>{m?.title ?? "…"}</b>
           {item && item.versions.length > 1 && (
             <select className="select" style={{ width: "auto", minHeight: 36, padding: "0 10px" }} aria-label="Version" value={v ?? m?.version} onChange={(e) => setV(Number(e.target.value))}>
               {item.versions.map((n) => <option key={n} value={n}>v{n}</option>)}
@@ -149,7 +146,7 @@ export function MakeSheet({ me, onClose, onStarted, characterIds = [] }: { me: M
           </label>
         )}
         {all.length > 0 && (
-          <div className="stack"><b style={{ fontSize: 14 }}>Starring</b>
+          <div className="stack"><b style={{ fontSize: "0.875rem" }}>Starring</b>
             <div className="chips">{all.map((c) => <button key={c.id} className={`chip ${chars.includes(c.id) ? "on" : ""}`} onClick={() => setChars((x) => x.includes(c.id) ? x.filter((y) => y !== c.id) : [...x, c.id])}>{c.sheet.icon} {c.sheet.name}</button>)}</div>
           </div>
         )}
@@ -180,9 +177,9 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
         <div key={j.id} className="card glow" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <span className="hic" style={{ color: "var(--lilac)" }}><Icon name="pencil" size={26} /></span>
           <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-            <b style={{ fontSize: 15 }}>{j.kind === "edit" ? "Changing something for you" : `Making you ${j.title}`}</b>
+            <b style={{ fontSize: "0.9375rem" }}>{j.kind === "edit" ? "Changing something for you" : `Making you ${j.title}`}</b>
             <span className="bar" style={{ height: 8 }}><span style={{ width: `${Math.max(j.progress, 5)}%` }} /></span>
-            <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{j.status === "queued" ? "next up" : desk?.status.activity || "working on it"}</span>
+            <span style={{ fontSize: "0.7812rem", color: "var(--muted)" }}>{j.status === "queued" ? "next up" : desk?.status.activity || "working on it"}</span>
           </span>
         </div>
       ))}
@@ -200,7 +197,7 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
       </div>
       {desk?.journal[0] && (
         <div className="card">
-          <b style={{ fontSize: 15 }}>{name}’s journal</b>
+          <b style={{ fontSize: "0.9375rem" }}>{name}’s journal</b>
           <span className="journal">“{desk.journal[0].text}”</span>
         </div>
       )}
@@ -236,7 +233,7 @@ export function DeskAside({ me, go }: { me: Me; go: (to: string) => void }) {
 
   return (
     <aside className="deskaside" aria-label={`${name}’s desk`}>
-      <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 600 }}>{name}’s desk</b><button className="btn ghost small" onClick={() => go("/desk")}>live from home</button></div>
+      <div className="spread"><b style={{ fontFamily: "var(--serif)", fontSize: "1.375rem", fontWeight: 600 }}>{name}’s desk</b><button className="btn ghost small" onClick={() => go("/desk")}>live from home</button></div>
       <div className="computer">
         <div className="menubar"><span>{name}’s computer</span><span>offline from the internet · {time}</span></div>
         <div className="icons">
@@ -245,12 +242,12 @@ export function DeskAside({ me, go }: { me: Me; go: (to: string) => void }) {
               <span>{it.icon}</span><span>{it.title.length > 22 ? it.title.slice(0, 20) + "…" : it.title}</span>
             </button>
           ))}
-          {desk && items.length === 0 && <span style={{ gridColumn: "1 / -1", fontSize: 12, color: "rgba(255,255,255,0.8)" }}>An empty desk, for now.</span>}
+          {desk && items.length === 0 && <span style={{ gridColumn: "1 / -1", fontSize: "0.75rem", color: "rgba(255,255,255,0.8)" }}>An empty desk, for now.</span>}
         </div>
         {preview && file && (
           <button className="window" onClick={() => setOpen(file.id)} aria-label={`Open ${file.title}`}>
-            <div className="tb"><i style={{ background: "#FF5F57" }} /><i style={{ background: "#FEBC2E" }} /><i style={{ background: "#28C840" }} /><span style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 800 }}>{file.title}</span></div>
-            <div className="content"><b style={{ display: "block", fontFamily: "var(--serif)", fontSize: 15, marginBottom: 4 }}>{preview.title}</b>{preview.body}</div>
+            <div className="tb"><i style={{ background: "#FF5F57" }} /><i style={{ background: "#FEBC2E" }} /><i style={{ background: "#28C840" }} /><span style={{ flex: 1, textAlign: "center", fontSize: "0.6562rem", fontWeight: 800 }}>{file.title}</span></div>
+            <div className="content"><b style={{ display: "block", fontFamily: "var(--serif)", fontSize: "0.9375rem", marginBottom: 4 }}>{preview.title}</b>{preview.body}</div>
           </button>
         )}
         <div className="status">
@@ -261,8 +258,8 @@ export function DeskAside({ me, go }: { me: Me; go: (to: string) => void }) {
       </div>
       {desk?.journal[0] && (
         <div className="card" style={{ background: "var(--card-2)", borderColor: "#3a2836" }}>
-          <span className="journal" style={{ fontSize: 20 }}>“{desk.journal[0].text}”</span>
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--faint)" }}>{name.toUpperCase()}’S JOURNAL · {desk.journal[0].day === new Date().toISOString().slice(0, 10) ? "TODAY" : desk.journal[0].day}</span>
+          <span className="journal" style={{ fontSize: "1.25rem" }}>“{desk.journal[0].text}”</span>
+          <span style={{ fontSize: "0.7188rem", fontWeight: 800, color: "var(--faint)" }}>{name.toUpperCase()}’S JOURNAL · {desk.journal[0].day === new Date().toISOString().slice(0, 10) ? "TODAY" : desk.journal[0].day}</span>
         </div>
       )}
       <span className="small">{name}’s desk is a small sandboxed computer on the home server (a container). {name} can write, draw and build little things there in its own time. It can’t browse the internet by itself, install apps or touch the rest of the house, and you and {me.parentLabel} can always see everything on it.</span>

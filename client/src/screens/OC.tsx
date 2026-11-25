@@ -2,6 +2,7 @@ import { Icon, IL } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type Me, type Mood, type Sheet, type Turn, type WorldEntry } from "../api";
 import { ItemViewer, MakeSheet, useDesk } from "./Desk";
+import { action } from "../lib/action";
 
 const EMPTY: Sheet = { name: "", icon: "⭐", look: "", personality: "", powers: "", backstory: "", likes: "", dislikes: "", palette: [], themeSong: "", relationships: [] };
 const REL = ["friend", "best friend", "rival", "family", "mentor", "teammate", "nemesis", "pet", "sidekick"];
@@ -29,7 +30,7 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
   return (
     <div className="card full" style={{ gap: 12 }}>
       <div className="row">
-        <input className="input" aria-label="Icon" value={s.icon} onChange={(e) => set({ icon: e.target.value.slice(0, 4) })} style={{ width: 64, textAlign: "center", fontSize: 24 }} />
+        <input className="input" aria-label="Icon" value={s.icon} onChange={(e) => set({ icon: e.target.value.slice(0, 4) })} style={{ width: 64, textAlign: "center", fontSize: "1.5rem" }} />
         {field("name", "Name")}
       </div>
       {field("look", "Look", true)}
@@ -40,7 +41,7 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
       {field("dislikes", "Dislikes")}
       {field("themeSong", "Theme song (an idea, or a song you love)")}
       <div className="stack">
-        <b style={{ fontSize: 14 }}>Palette</b>
+        <b style={{ fontSize: "0.875rem" }}>Palette</b>
         <div className="row" style={{ flexWrap: "wrap" }}>
           {s.palette.map((c, i) => (
             <span key={i} className="row" style={{ gap: 4 }}>
@@ -52,7 +53,7 @@ function SheetEditor({ initial, onSave, onCancel }: { initial: Character | null;
         </div>
       </div>
       <div className="stack">
-        <b style={{ fontSize: 14 }}>Relationships</b>
+        <b style={{ fontSize: "0.875rem" }}>Relationships</b>
         {s.relationships.map((r, i) => (
           <div key={i} className="row">
             <select className="select" style={{ width: 140 }} value={r.kind} onChange={(e) => set({ relationships: s.relationships.map((x, j) => (j === i ? { ...x, kind: e.target.value } : x)) })}>{REL.map((k) => <option key={k}>{k}</option>)}</select>
@@ -117,16 +118,16 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
           {chars.map((c) => (
             <div key={c.id} className="card">
               <div className="spread">
-                <b style={{ fontFamily: "var(--serif)", fontSize: 19 }}>{c.sheet.icon} {c.sheet.name}</b>
+                <b style={{ fontFamily: "var(--serif)", fontSize: "1.1875rem" }}>{c.sheet.icon} {c.sheet.name}</b>
                 <span className="row" style={{ gap: 4 }}>{c.sheet.palette.map((p) => <span key={p} style={{ width: 16, height: 16, borderRadius: 5, background: p, display: "inline-block" }} />)}</span>
               </div>
-              {c.sheet.personality && <span style={{ fontSize: 14, color: "var(--text-3)" }}>{c.sheet.personality}</span>}
-              {c.sheet.powers && <span style={{ fontSize: 13.5 }}><b>Powers:</b> {c.sheet.powers}</span>}
-              {c.sheet.relationships.length > 0 && <span style={{ fontSize: 13.5 }}>{c.sheet.relationships.map((r) => `${r.kind} of ${r.with}`).join(" · ")}</span>}
+              {c.sheet.personality && <span style={{ fontSize: "0.875rem", color: "var(--text-3)" }}>{c.sheet.personality}</span>}
+              {c.sheet.powers && <span style={{ fontSize: "0.8438rem" }}><b>Powers:</b> {c.sheet.powers}</span>}
+              {c.sheet.relationships.length > 0 && <span style={{ fontSize: "0.8438rem" }}>{c.sheet.relationships.map((r) => `${r.kind} of ${r.with}`).join(" · ")}</span>}
               <div className="row" style={{ flexWrap: "wrap" }}>
                 <button className="btn ghost small" onClick={() => setEditing(c)}>Edit</button>
                 <button className="btn ghost small" onClick={() => setMaking([c.id])}>Make something with {c.sheet.name}</button>
-                <button className="btn ghost small" onClick={async () => { if (confirm(`Delete ${c.sheet.name}?`)) { await api(`/api/oc/characters/${c.id}`, { method: "DELETE" }); void load(); } }}>Delete</button>
+                <button className="btn ghost small" onClick={action(async () => { if (confirm(`Delete ${c.sheet.name}?`)) { await api(`/api/oc/characters/${c.id}`, { method: "DELETE" }); void load(); } }, "delete that character")}>Delete</button>
               </div>
             </div>
           ))}
@@ -152,7 +153,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
             <div key={w.id} className="memrow">
               <span className="hic"><Icon name={w.kind === "place" ? "pin" : w.kind === "event" ? "scroll" : "shield"} size={18} /></span>
               <span className="t"><b>{w.name}</b>{w.when ? ` · ${w.when}` : ""}{w.note ? ` · ${w.note}` : ""}</span>
-              <button className="x" aria-label={`Remove ${w.name}`} onClick={async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }}><Icon name="close" size={16} /></button>
+              <button className="x" aria-label={`Remove ${w.name}`} onClick={action(async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }, "remove that")}><Icon name="close" size={16} /></button>
             </div>
           ))}
           {world.length > 0 && (

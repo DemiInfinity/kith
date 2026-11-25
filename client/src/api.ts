@@ -9,7 +9,22 @@ import { appHint } from "./lib/appHint";
 
 const BASE = (import.meta.env.VITE_KITH_API as string | undefined) ?? "";
 
-export async function api<T>(path: string, opts: { method?: string; body?: unknown; raw?: BodyInit; type?: string } = {}): Promise<T> {
+/** What a child sees when home can't be reached (the network, the server, or a timeout). */
+export const OFFLINE_WORDS = "Can’t reach home right now. Try again in a moment.";
+
+// Anything that waits on Claude, the voice servers, Google or an upload gets about a minute;
+// everything else 15 seconds, so a hung request never leaves a spinner going for ever.
+const SLOW = /^\/api\/(chat|voice\/|uploads\/|parent\/(test-chat|test-report|apikey)|desk\/make|languages\/(ask|[^/]+\/(starter|cards\/generate))|study\/(cards\/generate|practice)|stories\/[^/]+\/(suggest|passages|import-google)|google\/(read-picked|picked|actions\/))/;
+export function timeoutFor(path: string, method: string): number {
+  return method !== "GET" && SLOW.test(path.split("?")[0]) ? 60_000 : 15_000;
+}
+
+/** True when the request was stopped on purpose (the caller's signal), not by a failure. */
+export function isAbort(e: unknown): boolean {
+  return (e as { name?: string })?.name === "AbortError";
+}
+
+export async function api<T>(path: string, opts: { method?: string; body?: unknown; raw?: BodyInit; type?: string; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<T> {
   const method = opts.method ?? (opts.body !== undefined || opts.raw ? "POST" : "GET");
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["X-Kith"] = "1";
@@ -18,18 +33,45 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   // An installed app says which one it is, so the server only accepts its own person's session.
   const hint = appHint();
   if (hint) headers["X-Kith-App"] = hint;
-  const res = await fetch(BASE + path, {
-    method,
-    headers,
-    credentials: "include",
-    body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
-  });
-  if (!res.ok) {
-    const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-    throw new ApiError(j.error ?? `Something went wrong (${res.status}).`, res.status, j.code);
+  // One controller for both the caller's signal (End call, leaving a screen) and the timeout.
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, opts.timeoutMs ?? timeoutFor(path, method));
+  const onAbort = () => ctrl.abort();
+  if (opts.signal?.aborted) ctrl.abort();
+  else opts.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    let res: Response;
+    try {
+      res = await fetch(BASE + path, {
+        method,
+        headers,
+        credentials: "include",
+        body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      // Stopped on purpose: pass the AbortError on so the caller can tell it apart.
+      if (!timedOut && opts.signal?.aborted) throw e;
+      throw new ApiError(OFFLINE_WORDS, 0, timedOut ? "timeout" : "offline");
+    }
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      // A gateway in front of Kith answering for it means home itself isn't there.
+      if (!j.error && [502, 503, 504].includes(res.status)) throw new ApiError(OFFLINE_WORDS, res.status, "offline");
+      throw new ApiError(j.error ?? `Something went wrong (${res.status}).`, res.status, j.code);
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    try {
+      return (await (ct.includes("application/json") ? res.json() : res.blob())) as T;
+    } catch (e) {
+      if (!timedOut && opts.signal?.aborted) throw e;
+      throw new ApiError(OFFLINE_WORDS, 0, timedOut ? "timeout" : "offline");
+    }
+  } finally {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
   }
-  const ct = res.headers.get("content-type") ?? "";
-  return (ct.includes("application/json") ? res.json() : res.blob()) as Promise<T>;
 }
 
 // ── Shapes shared with the server ───────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { IL } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Me } from "../api";
 import { pickGoogleDoc, type GoogleStatus } from "./Google";
+import { action } from "../lib/action";
 
 interface Story { id: number; ts: number; title: string; friendLabel: string; voice: "light" | "medium"; bible: string }
 interface Passage { id: number; author: "child" | "friend" | "pip"; text: string; status: "accepted" | "suggested" | "rejected"; kind: "passage" | "edit"; replaces: number | null }
@@ -28,7 +29,7 @@ function StoryView({ me, id, onBack }: { me: Me; id: number; onBack: () => void 
     try { await api(`/api/stories/${id}/suggest`, { body: { kind, passageId } }); void load(); } catch (e) { setMsg((e as Error).message); }
     setBusy("");
   };
-  const decide = async (pid: number, accept: boolean) => { await api(`/api/stories/${id}/passages/${pid}/decide`, { body: { accept } }); void load(); };
+  const decide = action(async (pid: number, accept: boolean) => { await api(`/api/stories/${id}/passages/${pid}/decide`, { body: { accept } }); void load(); }, "save that");
   const fromGoogle = async () => {
     try {
       const picked = await pickGoogleDoc();
@@ -43,7 +44,7 @@ function StoryView({ me, id, onBack }: { me: Me; id: number; onBack: () => void 
     catch (e) { setMsg((e as Error).message); }
   };
   const bible = async () => { setBusy("bible"); try { const r = await api<Story>(`/api/stories/${id}/bible`, { body: {} }); setS(r); } catch (e) { setMsg((e as Error).message); } setBusy(""); };
-  const setVoice = async (voice: Story["voice"]) => setS(await api<Story>(`/api/stories/${id}`, { method: "PUT", body: { voice } }));
+  const setVoice = action(async (voice: Story["voice"]) => setS(await api<Story>(`/api/stories/${id}`, { method: "PUT", body: { voice } })), "change that");
 
   const shown = ps.filter((p) => p.status !== "rejected");
   return (
@@ -58,7 +59,7 @@ function StoryView({ me, id, onBack }: { me: Me; id: number; onBack: () => void 
         <div key={p.id} className="card" style={p.status === "suggested" ? { borderStyle: "dashed", borderColor: "var(--lilac)" } : {}}>
           <span className="spread"><span className="eyebrow">{p.status === "suggested" ? `${name} suggests${p.kind === "edit" ? " an edit" : ""}` : who(p.author)}</span>
             {p.status === "accepted" && <button className="btn ghost small" disabled={!!busy} onClick={() => suggest("edit", p.id)}>Suggest light edit</button>}</span>
-          <span style={{ fontSize: 15, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{p.text}</span>
+          <span style={{ fontSize: "0.9375rem", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{p.text}</span>
           {p.status === "suggested" && <div className="row"><button className="btn primary small" onClick={() => decide(p.id, true)}>Use it</button><button className="btn ghost small" onClick={() => decide(p.id, false)}>No thanks</button></div>}
         </div>
       ))}
@@ -79,7 +80,7 @@ function StoryView({ me, id, onBack }: { me: Me; id: number; onBack: () => void 
         <button className="btn ghost small" disabled={!!busy} onClick={bible}>{busy === "bible" ? "Updating…" : <IL i="stories">Update story bible</IL>}</button>
         {google?.connected && google.enabled && <button className="btn ghost small" onClick={exportDoc}>Save to Google Docs</button>}
       </div>
-      {s.bible && <div className="card"><b>Story bible</b><span style={{ fontSize: 14, whiteSpace: "pre-wrap", color: "var(--text-3)" }}>{s.bible}</span></div>}
+      {s.bible && <div className="card"><b>Story bible</b><span style={{ fontSize: "0.875rem", whiteSpace: "pre-wrap", color: "var(--text-3)" }}>{s.bible}</span></div>}
       {msg && <div className="notice" style={{ alignSelf: "stretch" }}>{msg}</div>}
       <span className="small">{name} never contacts {s.friendLabel}, doesn’t keep anything about them, and only uses their writing for this story. Sharing the story is up to you.</span>
     </div>
@@ -103,11 +104,11 @@ export function Stories({ me }: { me: Me }) {
         <b>Start a story</b>
         <input className="input" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} />
         <input className="input" placeholder="What do you call your co-writer? (first name or nickname)" value={friend} onChange={(e) => setFriend(e.target.value)} maxLength={30} />
-        <button className="btn primary small" disabled={!title.trim()} onClick={async () => { const s = await api<Story>("/api/stories", { body: { title, friendLabel: friend.trim() || "my friend" } }); setTitle(""); setFriend(""); setOpen(s.id); }}>Start</button>
+        <button className="btn primary small" disabled={!title.trim()} onClick={action(async () => { const s = await api<Story>("/api/stories", { body: { title, friendLabel: friend.trim() || "my friend" } }); setTitle(""); setFriend(""); setOpen(s.id); }, "start the story")}>Start</button>
       </div>
       {list.map((s) => (
         <button key={s.id} className="card" style={{ textAlign: "left" }} onClick={() => setOpen(s.id)}>
-          <b style={{ fontFamily: "var(--serif)", fontSize: 18 }}>{s.title}</b><span className="small">with {s.friendLabel}</span>
+          <b style={{ fontFamily: "var(--serif)", fontSize: "1.125rem" }}>{s.title}</b><span className="small">with {s.friendLabel}</span>
         </button>
       ))}
     </div>

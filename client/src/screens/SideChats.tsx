@@ -50,9 +50,9 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
   return (
     <>
       {!docked && <div className={`drawer-scrim ${open ? "open" : ""}`} onClick={onClose} />}
-      <aside className={docked ? "chatsdock" : `drawer ${open ? "open" : ""}`} aria-hidden={!open} aria-label="Chats">
+      <aside className={docked ? "chatsdock" : `drawer ${open ? "open" : ""}`} aria-hidden={!open} inert={!open} aria-label="Chats">
         <div className="spread" style={{ alignItems: "center" }}>
-          <b style={{ fontFamily: "var(--serif)", fontSize: 22 }}>Chats</b>
+          <b style={{ fontFamily: "var(--serif)", fontSize: "1.375rem" }}>Chats</b>
           <button className="x" aria-label={docked ? "Close side chats" : "Close"} onClick={onClose}><Icon name="close" /></button>
         </div>
         <button className="btn primary small" onClick={() => newChat()}><Icon name="newchat" size={18} /> New side chat</button>
@@ -75,7 +75,7 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
                   <button className="threadpick" onClick={() => onPick(t.id)}>
                     {t.lang && langs.find((l) => l.code === t.lang) ? <span className="langdot" aria-label={`In ${langs.find((l) => l.code === t.lang)!.name}`}>{langs.find((l) => l.code === t.lang)!.badge}</span> : <Icon name={t.id === 1 ? "chat" : "sidechats"} on={t.id === current} size={20} />}
                     <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                      <b style={{ display: "block", fontSize: 14 }}>{t.id === 1 ? `Main chat with ${me.profile.name}` : t.title}</b>
+                      <b style={{ display: "block", fontSize: "0.875rem" }}>{t.id === 1 ? `Main chat with ${me.profile.name}` : t.title}</b>
                       <span className="small" style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.last ?? (t.from_text ? `from: ${t.from_text}` : "nothing yet")}</span>
                     </span>
                   </button>
@@ -96,7 +96,7 @@ export function SideChats({ me, open, current, onClose, onPick, docked = false }
             <span className="small">When a chat gets long, {me.profile.name} keeps a short summary and files the rest here. {me.profile.name} only looks back at these when you ask it to remember something. Only you can read them, and they’re deleted after 30 days like chats.</span>
             {history.slice(0, 30).map((h) => (
               <button key={h.file} className="threadpick" onClick={() => read(h)}>
-                <span className="hic"><Icon name="folder" size={18} /></span><span style={{ flex: 1, textAlign: "left", fontSize: 13.5 }}>{h.title}</span>
+                <span className="hic"><Icon name="folder" size={18} /></span><span style={{ flex: 1, textAlign: "left", fontSize: "0.8438rem" }}>{h.title}</span>
               </button>
             ))}
           </>

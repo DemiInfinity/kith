@@ -1,14 +1,13 @@
-import { withApp, wrongAppWords } from "./lib/appHint";
-import { isInstalledApp, newHandoffId, prepareSignIn, preparedFresh, waitForHandoff, type PreparedSignIn } from "./lib/signin";
+import { appHint, withApp, wrongAppWords } from "./lib/appHint";
+import { handoffDevice, handoffWords, isInstalledApp, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
 import { doingText, HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat, type ChatContext } from "./screens/Chat";
-import { Languages } from "./screens/Languages";
 import { SideChats, type ChatLang, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
@@ -18,14 +17,49 @@ import { KidHelp } from "./screens/HelpCentre";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
-import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
 import { Google } from "./screens/Google";
-import { AvatarLab } from "./screens/AvatarLab";
 import { Notifications } from "./screens/Notifications";
-import { Study } from "./screens/Study";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
+import { usePoll } from "./lib/poll";
+import { action, Toaster } from "./lib/action";
+
+// The bigger screens load when they're first opened, so the chat starts quickly on a phone.
+const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
+const Languages = lazy(() => import("./screens/Languages").then((m) => ({ default: m.Languages })));
+const Study = lazy(() => import("./screens/Study").then((m) => ({ default: m.Study })));
+// The avatar lab is a tool for working on Kith, so it isn't in the app people install.
+const AvatarLab = import.meta.env.DEV ? lazy(() => import("./screens/AvatarLab").then((m) => ({ default: m.AvatarLab }))) : null;
+
+/** While a lazily loaded screen arrives. */
+export function Loading({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center" }} aria-busy="true">
+      <span className="typing" aria-hidden><i /><i /><i /></span>
+      <span className="sr-only" role="status">{label}</span>
+    </div>
+  );
+}
+
+/** Opening /talk straight away, before the app knows its energy: Grown-up? is still right there. */
+function TalkLoading({ name, openHelp, go }: { name: string; openHelp: () => void; go: (to: string) => void }) {
+  return (
+    <div className="talk">
+      <div className="head">
+        <span style={{ fontSize: "0.875rem", fontWeight: 800, color: "var(--muted)" }}>Calling {name}…</span>
+        <button className="grownup" onClick={openHelp}>Grown-up?</button>
+      </div>
+      <div className="stage" aria-busy="true">
+        <span className="typing" aria-hidden><i /><i /><i /></span>
+        <span role="status" style={{ fontWeight: 800, color: "var(--lilac-soft)" }}>Getting ready…</span>
+      </div>
+      <div className="controls">
+        <button className="end" aria-label="End call" onClick={() => go("/")}><Icon name="endcall" size={26} /></button>
+      </div>
+    </div>
+  );
+}
 
 /** Shown in the sign-in window opened by an installed app, once it's done. */
 function SignInDone({ error }: { error: string | null }) {
@@ -34,7 +68,7 @@ function SignInDone({ error }: { error: string | null }) {
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
-        <h2 style={{ fontSize: 30 }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
+        <h2 style={{ fontSize: "1.875rem" }}>{error ? "That didn’t work" : "You’re signed in"}</h2>
         <span style={{ color: "var(--text-2)" }}>{error && wrongAppWords(error) ? wrongAppWords(error) : error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : error ? "Close this window and try again in the Kith app." : "You can close this window and go back to the Kith app."}</span>
       </div>
     </div>
@@ -51,7 +85,7 @@ function WrongApp({ text }: { text: string }) {
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
         <LogoMark size={72} />
-        <h2 style={{ fontSize: 28 }}>{text}</h2>
+        <h2 style={{ fontSize: "1.75rem" }}>{text}</h2>
         <button className="btn ghost" onClick={signOut}>Sign out</button>
       </div>
     </div>
@@ -61,6 +95,8 @@ function WrongApp({ text }: { text: string }) {
 function SignIn() {
   const [info, setInfo] = useState<{ oidc: boolean; label: string; dev: boolean } | null>(null);
   const [waiting, setWaiting] = useState<AbortController | null>(null);
+  // The 4-digit code the browser's "Finish signing in?" page shows too.
+  const [code, setCode] = useState("");
   const [handoffErr, setHandoffErr] = useState("");
   const reason = new URLSearchParams(location.search).get("signin");
   // In an installed app, sign-in happens in the browser (passkeys work there) and the session is
@@ -80,23 +116,34 @@ function SignIn() {
     setHandoffErr("");
     const p = preparedFresh(prepared.current) ? prepared.current : null;
     prepared.current = null;
-    const id = p?.id ?? newHandoffId();
     const ctrl = new AbortController();
     setWaiting(ctrl);
-    if (p) window.open(p.url, "_blank");
-    else window.open(withApp(`/auth/login?handoff=${id}`), "kith-signin", "popup,width=520,height=760"); // an older server
+    let h: Handoff;
+    if (p) { h = p; setCode(p.code); window.open(p.url, "_blank"); }
+    else {
+      // Nothing ready (it failed earlier, or went stale): open the window now, inside the tap so
+      // Safari allows it, then start a handoff and send the window to it.
+      const w = window.open("", "kith-signin", "popup,width=520,height=760");
+      const started = await startHandoff(appHint(), fetch, Date.now(), handoffDevice());
+      if (!started) { w?.close(); setWaiting(null); setHandoffErr("Can’t reach home right now. Try again in a moment."); return; }
+      h = started;
+      setCode(started.code);
+      const url = withApp(`/auth/login?handoff=${h.id}`);
+      if (w) w.location.href = url; else window.open(url, "kith-signin", "popup,width=520,height=760");
+    }
     void prepareSignIn().then((x) => { prepared.current = x; }); // ready for another try
-    const r = await waitForHandoff(id, ctrl.signal);
+    const r = await waitForHandoff(h, ctrl.signal);
     setWaiting(null);
+    setCode("");
     if (r.ok) { location.href = r.redirect; return; }
-    if (r.error !== "cancelled") setHandoffErr(wrongAppWords(r.error) ?? (r.error === "not-allowed" ? "That account isn’t set up for Kith. Ask the grown-up who runs it." : "Sign-in didn’t finish. Try again?"));
+    if (r.error !== "stopped") setHandoffErr(handoffWords(r.error, wrongAppWords));
   };
   useEffect(() => { api<{ oidc: boolean; label: string; dev: boolean }>("/api/public/signin").then(setInfo).catch(() => undefined); }, []);
   return (
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
         <LogoMark size={88} />
-        <h1 style={{ fontSize: 46 }}>kith</h1>
+        <h1 style={{ fontSize: "2.875rem" }}>kith</h1>
         <span className="hand">a companion that grows up with you, kept at home</span>
         {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}
         {reason === "failed" && <div className="notice">Sign-in didn’t work. Try again?</div>}
@@ -106,11 +153,15 @@ function SignIn() {
         {waiting && (
           <div className="stack" style={{ alignItems: "center" }}>
             <span className="typing" aria-hidden><i /><i /><i /></span>
-            <span>Finish signing in in your browser, then come back here.</span>
+            {code ? <>
+              <span>Finish signing in in your browser. Check it shows this code, then tap <b>Yes</b>:</span>
+              <span className="signin-code" aria-label={`Code ${code.split("").join(" ")}`}>{code}</span>
+              <span className="small">If the browser shows a different code, tap No.</span>
+            </> : <span>Finish signing in in your browser, then come back here.</span>}
             <button className="btn ghost small" onClick={() => waiting.abort()}>Cancel</button>
           </div>
         )}
-        {info && !info.oidc && !info.dev && <span className="small">Sign-in isn’t set up yet. See docs/setup.md.</span>}
+        {info && !info.oidc && !info.dev && <span className="small">Sign-in isn’t set up yet. See the <a href="/setup">setup guide</a>.</span>}
         {info?.dev && (
           <div className="stack" style={{ width: "100%" }}>
             <span className="small">Local testing (KITH_DEV_LOGIN is on)</span>
@@ -118,6 +169,7 @@ function SignIn() {
             <a className="btn ghost" href="/auth/dev?role=parent" style={{ textDecoration: "none" }}>Try as the parent</a>
           </div>
         )}
+        <span className="small signin-print">By signing in you agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>. The <a href="/privacy" target="_blank" rel="noopener">privacy policy</a> says what’s kept and who sees it.</span>
       </div>
     </div>
   );
@@ -221,7 +273,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       }
     : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
-  useEffect(() => { void load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
+  usePoll(load, 20_000);
   // In the Mac app: notifications, Calendar & Reminders, ⌃⌥Space to call, dropped documents.
   // Once: go only calls a stable setter.
   useEffect(() => startNative(go), []);
@@ -239,7 +291,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const openHelp = () => setHelp(true);
 
   let screen: React.ReactNode;
-  if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
+  if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
@@ -251,7 +303,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/languages") screen = <Languages me={me} go={go} openThread={pickThread} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
-  else if (path === "/lab") screen = <AvatarLab />;
+  else if (path === "/lab" && AvatarLab) screen = <AvatarLab />;
   else if (path === "/help") screen = <KidHelp me={me} go={go} />;
   else if (path === "/connectors") screen = <Connectors me={me} />;
   else if (path === "/notifications") screen = <Notifications me={me} onSaved={onSaved} />;
@@ -261,7 +313,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         <div className="threadbar">
           <Icon name="sidechats" size={18} /><b>{threadTitle || "Side chat"}</b>
           <select className="select" style={{ width: "auto", minHeight: 32, padding: "0 10px" }} aria-label="Language for this side chat" value={threadLang ?? ""}
-            onChange={async (e) => { const lang = e.target.value || null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
+            onChange={action(async (e) => { const lang = e.target.value || null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }, "change the language")}>
             {/* Short names on a phone, where the picture takes the middle of the bar. */}
             <option value="">{narrow ? "Eng" : "English"}</option>
             {chatLangs.map((l) => <option key={l.code} value={l.code}>{narrow && l.native.length > 6 ? l.native.slice(0, 3) : l.native}</option>)}
@@ -269,11 +321,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </div>
       )}
       <Chat key={thread} me={me} thread={thread} context={chatContext}
-        onClearContext={async () => {
+        onClearContext={action(async () => {
           // In a language side chat, the ✕ switches that side chat back to English.
           if (thread !== 1 && threadLang) { await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang: null } }); setThreadLang(null); }
           else go("/");
-        }} onSplit={pickThread}
+        }, "switch back to English")} onSplit={pickThread}
         onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
     </>
   );
@@ -306,7 +358,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
               aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
               <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
-              <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+              <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
             </button>
             <span className="tb-right">
               <button className="iconbtn call" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={21} /></button>
@@ -319,7 +371,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {!onProfile && (
               <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
                 <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
-                <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+                <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
               </button>
             )}
             <span className="tb-right">
@@ -328,7 +380,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             </span>
           </header>
         )}
-        {screen}
+        <Suspense fallback={<Loading />}>{screen}</Suspense>
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
             const on = t.to === path || (t.to === "/study" && path === "/languages") || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
@@ -344,25 +396,59 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   );
 }
 
-export function App() {
+/** Home couldn't be reached at start-up: try again on a tap, when the network comes back, or when Kith is opened again. */
+function CantReach({ text, retry }: { text: string; retry: () => void }) {
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) retry(); };
+    addEventListener("online", retry);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { removeEventListener("online", retry); document.removeEventListener("visibilitychange", onVisible); };
+  }, [retry]);
+  return (
+    <div className="main">
+      <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+        <LogoMark size={72} />
+        <div className="notice" role="alert">{text}</div>
+        <button className="btn primary" onClick={retry}>Try again</button>
+        <span className="small">Kith tries again by itself when the internet comes back.</span>
+      </div>
+    </div>
+  );
+}
+
+function Root() {
   const [me, setMe] = useState<Me | null | "signed-out">(null);
   const [err, setErr] = useState("");
   const [wrongApp, setWrongApp] = useState("");
-  useEffect(() => {
-    api<Me>("/api/me").then(setMe).catch((e) => {
-      if (e instanceof ApiError && e.status === 401) setMe("signed-out");
+  const busy = useRef(false);
+  const loadMe = useCallback(() => {
+    if (busy.current) return;
+    busy.current = true;
+    api<Me>("/api/me").then((m) => { setErr(""); setMe(m); }).catch((e) => {
+      if (e instanceof ApiError && e.status === 401) { setErr(""); setMe("signed-out"); }
       else if (e instanceof ApiError && e.code === "wrong-app") setWrongApp(e.message);
-      else setErr((e as Error).message);
-    });
-    void registerServiceWorker();
+      else setErr((e as Error).message || OFFLINE_WORDS);
+    }).finally(() => { busy.current = false; });
   }, []);
+  useEffect(() => {
+    loadMe();
+    void registerServiceWorker();
+  }, [loadMe]);
+  // The welcome page's Sign in goes to /signin; once signed in, that's just the app's home.
+  useEffect(() => {
+    if (me && me !== "signed-out" && location.pathname === "/signin") history.replaceState(null, "", `/${location.search}`);
+  }, [me]);
   // The sign-in window an installed app opened: say it's done (whatever the session state here).
   const sp = new URLSearchParams(location.search).get("signin") ?? "";
   if (sp === "done" || sp.startsWith("done-")) return <SignInDone error={sp === "done" ? null : sp.slice(5)} />;
   if (wrongApp) return <WrongApp text={wrongApp} />;
-  if (err) return <div className="main"><div className="screen narrow"><div className="notice">Kith can’t reach home right now. {err}</div></div></div>;
+  if (err) return <CantReach text={err === OFFLINE_WORDS ? err : `Kith can’t reach home right now. ${err}`} retry={loadMe} />;
   if (me === null) return <div className="main" aria-busy="true" />;
   if (me === "signed-out") return <SignIn />;
-  if (me.role === "parent") return <Parent me={me} />;
+  if (me.role === "parent") return <Suspense fallback={<div className="main"><Loading /></div>}><Parent me={me} /></Suspense>;
   return <ChildApp me={me} />;
+}
+
+export function App() {
+  return <><Root /><Toaster /></>;
 }

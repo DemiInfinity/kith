@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
-import { DeskComputer } from "./DeskComputer";
 import { Icon, IL, type IconName } from "../components/Icons";
+import { action } from "../lib/action";
+
+// The desk is big (a whole little computer), so it loads the first time it's opened.
+const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
 
 interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
@@ -54,7 +57,7 @@ function Section({ icon, title, hint, text, editable, onSave, placeholder }: { i
   };
   return (
     <div className="mdfile">
-      <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
+      <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: "0.8125rem", justifyContent: "space-between" }}>
         <IL i={icon}>{title}</IL>
         {editable && !editing && <button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => setEditing(true)}><IL i="pencil">Edit</IL></button>}
       </div>
@@ -101,17 +104,17 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
       <div className="profilehead">
         <Avatar look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
         <div style={{ flex: 1, minWidth: 200 }}>
-          <h2 style={{ fontSize: 32 }}>{name}</h2>
+          <h2 style={{ fontSize: "2rem" }}>{name}</h2>
           <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>
-          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
+          <span style={{ fontSize: "0.875rem", fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
+          <div style={{ fontSize: "0.8125rem", color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
         </div>
       </div>
       <div className="chips" role="tablist">
         {tabs.map(([t, ic, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); if (!panel) history.replaceState(null, "", on(t)); }}><IL i={ic}>{l}</IL></button>)}
       </div>
 
-      {tab === "desk" && <DeskComputer me={me} go={go} />}
+      {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={me} go={go} /></Suspense>}
 
       {tab === "scheduled" && (
         <div className="stack" style={{ maxWidth: 760, gap: 12 }}>
@@ -120,11 +123,11 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
             <b>You asked for</b>
             {mine.length === 0 && <span className="small">Nothing yet. Ask {name} in chat (“remind me at 7 to revise”, “every Sunday make me a quiz”) or add one here.</span>}
             {mine.map((m) => (
-              <div key={m.id} className="row" style={{ fontSize: 14, borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
+              <div key={m.id} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
                 <span className="hic"><Icon name={m.kind === "reminder" ? "alarm" : "sparkle"} size={18} /></span>
                 <span style={{ flex: 1 }}>{m.title}<br /><span className="small">{m.active ? new Date(m.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}{m.repeat !== "none" ? ` · ${m.repeat}` : ""}</span></span>
-                <button className="btn ghost small" onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }}>{m.active ? "Pause" : "Resume"}</button>
-                <button className="x" aria-label={`Delete ${m.title}`} onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }}><Icon name="close" size={16} /></button>
+                <button className="btn ghost small" onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }, "change that")}>{m.active ? "Pause" : "Resume"}</button>
+                <button className="x" aria-label={`Delete ${m.title}`} onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }, "delete that")}><Icon name="close" size={16} /></button>
               </div>
             ))}
             <form className="stack" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }} onSubmit={async (e) => {
@@ -132,7 +135,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
               try { await api("/api/schedules", { body: { title: form.title, kind: "reminder", when: form.when, repeat: form.repeat } }); setForm({ title: "", when: "", repeat: "none" }); setSchedErr(""); void loadMine(); }
               catch (err) { setSchedErr((err as Error).message); }
             }}>
-              <b style={{ fontSize: 14 }}>Add a reminder</b>
+              <b style={{ fontSize: "0.875rem" }}>Add a reminder</b>
               <input className="input" placeholder="What? e.g. Revise fractions" value={form.title} maxLength={120} onChange={(e) => setForm({ ...form, title: e.target.value })} />
               <div className="grid2">
                 <input className="input" type="datetime-local" aria-label="When" value={form.when} onChange={(e) => setForm({ ...form, when: e.target.value })} />
@@ -148,7 +151,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
             <b>On the desk</b>
             {sched?.jobs.length === 0 && <span className="small">Nothing queued. Ask {name} to make something!</span>}
             {sched?.jobs.map((j) => (
-              <div key={j.id} className="row" style={{ fontSize: 14, borderTop: "1px solid var(--line-soft)", paddingTop: 6 }}>
+              <div key={j.id} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6 }}>
                 <span className="hic"><Icon name={j.status === "done" ? "check" : j.status === "working" ? "hourglass" : j.status === "failed" ? "warn" : "clock"} size={18} /></span>
                 <span style={{ flex: 1 }}>{j.title}</span>
                 <span className="small">{j.status === "working" ? `${j.progress}%` : j.status} · {clock(j.ts)}</span>
@@ -159,11 +162,11 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
             <b>Check-ins</b>
             {c && (
               <>
-                <span style={{ fontSize: 14 }}>{[c.toggles.askHowThingsWent && "Asks how big things went", c.toggles.morningHello && "A morning hello on school days", c.toggles.waterWhileRevising && "Water reminders while revising"].filter(Boolean).join(" · ") || "All check-ins are off."}</span>
+                <span style={{ fontSize: "0.875rem" }}>{[c.toggles.askHowThingsWent && "Asks how big things went", c.toggles.morningHello && "A morning hello on school days", c.toggles.waterWhileRevising && "Water reminders while revising"].filter(Boolean).join(" · ") || "All check-ins are off."}</span>
                 <span className="small">At most {Math.min(2, c.maxPerDay)} a day · never {c.quietHours.start}–{c.quietHours.end} · never guilt-tripping · {name} never calls you</span>
-                {c.upcoming.length > 0 && <b style={{ fontSize: 14, marginTop: 4 }}>Coming up</b>}
-                {c.upcoming.map((u) => <span key={u.date + u.text} style={{ fontSize: 14 }}>{u.icon} {u.text} · {u.date} <span className="small">(I’ll ask how it went, after school)</span></span>)}
-                {c.recent.length > 0 && <b style={{ fontSize: 14, marginTop: 4 }}>Recent</b>}
+                {c.upcoming.length > 0 && <b style={{ fontSize: "0.875rem", marginTop: 4 }}>Coming up</b>}
+                {c.upcoming.map((u) => <span key={u.date + u.text} style={{ fontSize: "0.875rem" }}>{u.icon} {u.text} · {u.date} <span className="small">(I’ll ask how it went, after school)</span></span>)}
+                {c.recent.length > 0 && <b style={{ fontSize: "0.875rem", marginTop: 4 }}>Recent</b>}
                 {c.recent.map((r) => <span key={r.ts} className="small">{new Date(r.ts).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })} · {r.text}</span>)}
               </>
             )}
@@ -171,7 +174,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
           </div>
           <div className="card">
             <b>Every day and week</b>
-            {sched?.routines.map((r) => <div key={r.what} className="row" style={{ fontSize: 14 }}><span>{r.icon}</span><span style={{ flex: 1 }}>{r.what}</span><span className="small">{r.when}</span></div>)}
+            {sched?.routines.map((r) => <div key={r.what} className="row" style={{ fontSize: "0.875rem" }}><span>{r.icon}</span><span style={{ flex: 1 }}>{r.what}</span><span className="small">{r.when}</span></div>)}
           </div>
         </div>
       )}
@@ -183,7 +186,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
             hint={files.soulIsDefault ? `This is a starting point. Rewrite it however you like: who ${name} is, what it cares about, how it sees the world.` : `Written by you.`}
             placeholder={`Who is ${name}? What does it care about?`} />
           <div className="mdfile">
-            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13, justifyContent: "space-between" }}>
+            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: "0.8125rem", justifyContent: "space-between" }}>
               <IL i="mask">Personality</IL><button className="btn ghost small" style={{ minHeight: 30 }} onClick={() => go("/me")}>Change look, traits & voice</button>
             </div>
             <Markdown text={files.identity} />
@@ -192,20 +195,20 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
             hint="Catchphrases, favourite things, how it talks… anything that makes it feel like yours."
             placeholder={`e.g. ${name} says “brilliant!” a lot, loves rainy days and thinks owls are underrated.`} />
           <div className="mdfile">
-            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: 13 }}><IL i="brain">Memory</IL></div>
+            <div className="mdname" style={{ fontFamily: "var(--sans)", fontWeight: 900, fontSize: "0.8125rem" }}><IL i="brain">Memory</IL></div>
             <div className="stack" style={{ padding: 14 }}>
               {files.memories.length === 0 && <span className="small">Nothing yet.</span>}
               {files.memories.map((m) => (
                 <div key={m.id} className="memrow">
                   <span>{m.icon}</span><span className="t">{m.text}{m.date ? <span className="small"> · {m.date}</span> : null}</span>
-                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }}><Icon name="close" size={16} /></button>
+                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={action(async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }, "forget that")}><Icon name="close" size={16} /></button>
                 </div>
               ))}
               <form className="row" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; try { await api("/api/memories", { body: { text: newMem } }); setNewMem(""); void reloadFiles(); } catch (err) { alert((err as Error).message); } }}>
                 <input className="input" value={newMem} maxLength={140} placeholder={`Tell ${name} something to remember`} onChange={(e) => setNewMem(e.target.value)} />
                 <button className="btn primary small" type="submit" disabled={!newMem.trim()}>Add</button>
               </form>
-              {files.summary && <><b style={{ fontSize: 14, marginTop: 6 }}>Our recent chats, in short</b><span style={{ fontSize: 14, color: "var(--text-3)" }}>{files.summary}</span></>}
+              {files.summary && <><b style={{ fontSize: "0.875rem", marginTop: 6 }}>Our recent chats, in short</b><span style={{ fontSize: "0.875rem", color: "var(--text-3)" }}>{files.summary}</span></>}
               <span className="small">You’re in charge: {name} never keeps personal details like your address or school.</span>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { api, type Me } from "../api";
 import { Icon } from "../components/Icons";
 import { Toggle } from "../components/bits";
 import { rows, say, toRomaji, voiceFor } from "../lib/kana";
+import { action } from "../lib/action";
 
 type Lang = string;
 interface LangProfile {
@@ -83,7 +84,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <span className="langbadge" aria-hidden>{l.badge}</span>
             <span style={{ flex: 1 }}><b>{l.native}</b> <span className="small">{l.name}</span><br />
               <span className="small">Not this time. You could chat with your grown-up about it.</span></span>
-            <button className="x" aria-label={`Tidy away ${l.name}`} onClick={async () => { await api(`/api/languages/${l.lang}/dismiss`, { method: "POST" }); void load(); }}><Icon name="close" size={16} /></button>
+            <button className="x" aria-label={`Tidy away ${l.name}`} onClick={action(async () => { await api(`/api/languages/${l.lang}/dismiss`, { method: "POST" }); void load(); }, "tidy that away")}><Icon name="close" size={16} /></button>
           </div>
         );
         if (!l.profile.enabled) return (
@@ -96,7 +97,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <div className="row" style={{ alignItems: "center", gap: 12 }}>
               <span className="langbadge" aria-hidden>{l.badge}</span>
               <span style={{ flex: 1 }}>
-                <b style={{ fontSize: 18 }}>{l.native}</b> {l.native !== l.name && <span className="small">{l.name}</span>}<br />
+                <b style={{ fontSize: "1.125rem" }}>{l.native}</b> {l.native !== l.name && <span className="small">{l.name}</span>}<br />
                 <span className="small">{l.profile.goal === "school" ? (l.lang === "ja" ? "JLPT N5 path" : `School · ${l.profile.tier}`) : "For fun"}{l.lang === "ja" && nextRow ? ` · Hiragana: ${nextRow.name} row` : ""}</span>
               </span>
               <span className="levelchip">{l.profile.level}</span>
@@ -105,7 +106,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <span className="eyebrow">today’s ten minutes</span>
             <div className="stack" style={{ gap: 8 }}>
               {l.cards.total === 0 && l.starters ? (
-                <button className="todo" onClick={async () => { await api(`/api/languages/${l.lang}/starter`, { method: "POST" }); setScreen({ k: "cards", lang: l.lang }); }}>
+                <button className="todo" onClick={action(async () => { await api(`/api/languages/${l.lang}/starter`, { method: "POST" }); setScreen({ k: "cards", lang: l.lang }); }, "start that")}>
                   <Icon name="cards" size={20} /><span><b>Start with 25 useful words</b><br /><span className="small">{HELLO[l.lang]} and friends</span></span>
                 </button>
               ) : (
@@ -232,12 +233,12 @@ function Cards({ info, onBack }: { info: LangInfo; onBack: () => void }) {
   useEffect(() => { void load(); }, [load]);
   const c = due?.[0];
   const hear = (t: string) => { if (!say(t, voiceOf(info))) setMsg("This device doesn’t have a voice for that language yet."); };
-  const grade = async (g: string) => {
+  const grade = action(async (g: string) => {
     if (!c) return;
     await api(`/api/languages/cards/${c.id}/review`, { body: { grade: g } });
     setDue(due!.slice(1));
     setFlip(false);
-  };
+  }, "save that card");
   const generate = async () => {
     setMsg("Making cards on Low power…");
     try { const r = await api<{ added: number }>(`/api/languages/${lang}/cards/generate`, { body: { topic, count: 10 } }); setMsg(`Added ${r.added} cards.`); setTopic(""); void load(); }
@@ -272,7 +273,7 @@ function Cards({ info, onBack }: { info: LangInfo; onBack: () => void }) {
                 <span className={`fc-word ${lang === "ja" ? "jp" : ""}`} lang={lang}>{c.front}</span>
                 {readingLine(c) && <span className="small" lang={lang}>{readingLine(c)}</span>}
               </>
-            ) : <span className="fc-word" style={{ fontSize: 22 }}>{c.back}</span>}
+            ) : <span className="fc-word" style={{ fontSize: "1.375rem" }}>{c.back}</span>}
             {!flip && <span className="small">tap to flip</span>}
           </button>
           <div className="row" style={{ justifyContent: "center" }}>
@@ -379,7 +380,7 @@ function KanaTrainer({ script, progress, onBack, onScript }: { script: "hiragana
       {step === "learn" && (
         <div className="card" style={{ alignItems: "center", gap: 10 }}>
           <span className="kanabig" lang="ja">{kana}</span>
-          <b style={{ fontSize: 20 }}>{romaji}</b>
+          <b style={{ fontSize: "1.25rem" }}>{romaji}</b>
           <button className="btn ghost small" onClick={() => say(kana, "ja-JP")}><Icon name="speaker" size={18} /> Hear it</button>
           <span className="small">Trace over it with your finger, then try it without looking.</span>
           <DrawPad ghost={kana} clearKey={`${kana}-${clears}`} />
@@ -403,11 +404,11 @@ function KanaTrainer({ script, progress, onBack, onScript }: { script: "hiragana
       {step === "recall" && (
         <div className="card" style={{ alignItems: "center", gap: 10 }}>
           <span className="small">Write the {script} for</span>
-          <b style={{ fontSize: 34 }}>{romaji}</b>
+          <b style={{ fontSize: "2.125rem" }}>{romaji}</b>
           <DrawPad clearKey={`${romaji}-${clears}`} />
           {!shown ? <button className="btn primary small" onClick={() => setShown(true)}>Show me</button> : (
             <>
-              <span className="kanabig" lang="ja" style={{ fontSize: 72 }}>{kana}</span>
+              <span className="kanabig" lang="ja" style={{ fontSize: "4.5rem" }}>{kana}</span>
               <div className="row">
                 <button className="btn ghost small" onClick={() => { void mark(false); next(); }}>Not yet</button>
                 <button className="btn primary small" onClick={() => { void mark(true); next(); }}>I’ve got it</button>
