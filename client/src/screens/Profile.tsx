@@ -218,16 +218,19 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
       <b>Usage</b>
       {state && <UsageLimits energy={state.energy} deskPercent={deskToday?.budget.percent ?? state.desk.percent} name={name} />}
       <b style={{ marginTop: 6 }}>{name}’s desk</b>
-      <DeskRules name={name} />
+      <div className="setsec"><DeskRules name={name} /></div>
       <b style={{ marginTop: 6 }}>You and {name}</b>
-      {rows.map(([to, ic, t, d]) => (
-        <button key={to} className="card setrow" onClick={() => go(to)}>
-          <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={26} /></span>
-          <span className="setrow-t"><b>{t}</b><span className="small">{d}</span></span>
-          <Icon name="arrow" size={18} />
-        </button>
-      ))}
-      {isChildMacApp() && <MusicSetting name={name} />}
+      {/* Its own grid: two even columns on a computer, every button the same height. */}
+      <div className="setgrid">
+        {rows.map(([to, ic, t, d]) => (
+          <button key={to} className="card setrow" onClick={() => go(to)}>
+            <span className="hic" style={{ color: "var(--lilac)" }}><Icon name={ic} size={26} /></span>
+            <span className="setrow-t"><b>{t}</b><span className="small">{d}</span></span>
+            <Icon name="arrow" size={18} />
+          </button>
+        ))}
+      </div>
+      {isChildMacApp() && <div className="setsec"><MusicSetting name={name} /></div>}
       <button className="btn ghost small" onClick={logout}>Sign out</button>
       <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
     </div>
@@ -240,7 +243,7 @@ function MusicSetting({ name }: { name: string }) {
   const [songs, setSongs] = useState(songsAllowed);
   return (
     <>
-      <b style={{ marginTop: 6 }}>Music</b>
+      <b style={{ display: "block", margin: "6px 0 10px" }}>Music</b>
       <div className="card" style={{ gap: 4 }}>
         <span className="small">When Apple Music or Spotify is playing on this Mac, {name} pops on its headphones and listens along.</span>
         <Toggle label={`Let ${name} know what song is playing`} checked={songs} onChange={(v) => { setSongs(v); setSongsAllowed(v); }} />
