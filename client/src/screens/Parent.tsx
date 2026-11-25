@@ -6,7 +6,8 @@ import { DeskComputer } from "./DeskComputer";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
-interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[] }
+interface BrowserSettings { enabled: boolean; sites: string[]; assetHosts: string[]; search: "wikipedia" | "brave" }
+interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
   desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
@@ -111,6 +112,21 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
           </div>
         ))}
         {s.helplines.length < 6 && <button className="btn ghost small" onClick={() => setS({ ...s, helplines: [...s.helplines, { name: "", number: "", sub: "", kind: "helpline" }] })}>+ number</button>}
+      </div>
+
+      <div className="card">
+        <b>Pip’s browser (on the desk)</b>
+        <span className="small">Reads websites only for tasks your child asked for, only from this safe list, with JavaScript, sign-ins, forms and downloads off. Every page is logged and can be watched live.</span>
+        <Toggle label="Browsing switched on" checked={s.browser.enabled} onChange={(v) => setS({ ...s, browser: { ...s.browser, enabled: v } })} />
+        <label className="field">Safe list (one per line; a path limits it, e.g. www.bbc.co.uk/bitesize)
+          <textarea className="textarea" value={s.browser.sites.join("\n")} onChange={(e) => setS({ ...s, browser: { ...s.browser, sites: list(e.target.value) } })} /></label>
+        <label className="field">Image and style hosts those sites need (no scripts ever load)
+          <textarea className="textarea" value={s.browser.assetHosts.join("\n")} onChange={(e) => setS({ ...s, browser: { ...s.browser, assetHosts: list(e.target.value) } })} /></label>
+        <label className="field">Search
+          <select className="select" value={s.browser.search} onChange={(e) => setS({ ...s, browser: { ...s.browser, search: e.target.value as BrowserSettings["search"] } })}>
+            <option value="wikipedia">Wikipedia’s own search (no key needed)</option>
+            <option value="brave">Brave Search, SafeSearch strict (needs KITH_BRAVE_API_KEY)</option>
+          </select></label>
       </div>
 
       <div className="card">
