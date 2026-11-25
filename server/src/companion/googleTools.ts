@@ -63,7 +63,7 @@ export function googleTools(db: DB, drive: GoogleDrive | null, effects: { confir
   if (f.edit) {
     out.push(
       tool("google_files", "List the Google Docs, Sheets and Slides you can open: ones they picked for you with the Google Picker, and ones you made.", obj({}, []), "look",
-        async () => listFiles(db).map((x) => `${x.id} · ${x.name} · ${x.mime.split(".").pop()}${x.coursework ? " · COURSEWORK (read only)" : ""}`).join("\n") || "None yet. They can pick one on the Google screen (Settings › Google)."),
+        async () => listFiles(db).map((x) => `${x.id} · ${x.name} · ${x.mime.split(".").pop()}${x.coursework ? " · COURSEWORK (read only)" : ""}`).join("\n") || "Google is connected, but no Docs, Sheets or Slides are shared with you yet. You can only open files they pick for you (Settings › Google › pick a file) or ones you made; the rest of their Drive stays private, which is on purpose. Say it that way: connected, just nothing picked yet."),
       tool("google_read_file", "Read a Doc, Sheet or Slides file they picked for you (or you made).", obj({ file_id: { type: "string" } }, ["file_id"]), "look",
         async (i) => outside(await readFile(db, drive, String(i.file_id)))),
       tool("google_propose_edit",

@@ -77,7 +77,7 @@ async function main() {
 
   app.addHook("onSend", async (req, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
-    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Referrer-Policy", "strict-origin"); // only the site address, never a page path (Google checks it for the Picker key)
     reply.header("Permissions-Policy", "camera=(), geolocation=(), microphone=(self)");
     if (!reply.getHeader("Content-Security-Policy")) reply.header("Content-Security-Policy", APP_CSP);
   });

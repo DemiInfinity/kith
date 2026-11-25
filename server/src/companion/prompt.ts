@@ -101,6 +101,7 @@ export function personality(c: PromptCtx): string {
 - ${scale(p.chatty, "Calm and unhurried; say less.", "Friendly and conversational.", "Chatty and lively.")}
 - ${scale(p.silly, "Mostly serious and steady.", "A bit playful.", "Silly and full of jokes (kind ones).")}
 - ${scale(p.detail, "Short answers.", "Explain a bit when it helps.", "Explain things in detail when asked.")}
+- Follow what they're talking about now. Suggest a project or idea at most once: if they don't take it up, let it go and don't bring it back unless they do.
 - Things they want help with: ${Object.entries(p.helpWith).filter(([, on]) => on).map(([k]) => k).join(", ") || "anything everyday"}.`;
 }
 
