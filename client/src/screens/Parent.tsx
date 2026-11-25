@@ -1,13 +1,16 @@
 import { Icon, IL, type IconName } from "../components/Icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
-import { DeskComputer } from "./DeskComputer";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
+import { usePoll } from "../lib/poll";
 import { isMacApp } from "../lib/native";
 import { ParentHelp } from "./HelpCentre";
+
+// The desk is big (a whole little computer), so it loads the first time it's opened.
+const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string; features?: { edit: boolean; calendar: boolean; tasks: boolean } }
@@ -780,7 +783,7 @@ export function Parent({ me }: { me: Me }) {
     api<Overview>("/api/parent/overview").then(setO).catch(() => undefined);
     api<Transparency>("/api/transparency").then(setT).catch(() => undefined);
   }, []);
-  useEffect(() => { load(); const i = setInterval(load, 30_000); return () => clearInterval(i); }, [load]);
+  usePoll(load, 30_000);
   // "Kith Parent" in the tab, and when added to the Dock or Home Screen (the manifest says so too).
   useEffect(() => {
     const before = document.title;
@@ -932,7 +935,7 @@ export function Parent({ me }: { me: Me }) {
             </>
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
-          {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
+          {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={meChild} canEdit={false} /></Suspense>}
           {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} onDirty={onDirty} companion={comp.name} publicKey={me.push.ready ? me.push.publicKey : ""} />}
           {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}

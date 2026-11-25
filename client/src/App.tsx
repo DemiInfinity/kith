@@ -1,14 +1,13 @@
 import { withApp, wrongAppWords } from "./lib/appHint";
 import { isInstalledApp, newHandoffId, prepareSignIn, preparedFresh, waitForHandoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
 import { doingText, HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat, type ChatContext } from "./screens/Chat";
-import { Languages } from "./screens/Languages";
 import { SideChats, type ChatLang, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
@@ -18,14 +17,48 @@ import { KidHelp } from "./screens/HelpCentre";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
-import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
 import { Google } from "./screens/Google";
-import { AvatarLab } from "./screens/AvatarLab";
 import { Notifications } from "./screens/Notifications";
-import { Study } from "./screens/Study";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
+import { usePoll } from "./lib/poll";
+
+// The bigger screens load when they're first opened, so the chat starts quickly on a phone.
+const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
+const Languages = lazy(() => import("./screens/Languages").then((m) => ({ default: m.Languages })));
+const Study = lazy(() => import("./screens/Study").then((m) => ({ default: m.Study })));
+// The avatar lab is a tool for working on Kith, so it isn't in the app people install.
+const AvatarLab = import.meta.env.DEV ? lazy(() => import("./screens/AvatarLab").then((m) => ({ default: m.AvatarLab }))) : null;
+
+/** While a lazily loaded screen arrives. */
+export function Loading({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center" }} aria-busy="true">
+      <span className="typing" aria-hidden><i /><i /><i /></span>
+      <span className="sr-only" role="status">{label}</span>
+    </div>
+  );
+}
+
+/** Opening /talk straight away, before the app knows its energy: Grown-up? is still right there. */
+function TalkLoading({ name, openHelp, go }: { name: string; openHelp: () => void; go: (to: string) => void }) {
+  return (
+    <div className="talk">
+      <div className="head">
+        <span style={{ fontSize: "0.875rem", fontWeight: 800, color: "var(--muted)" }}>Calling {name}…</span>
+        <button className="grownup" onClick={openHelp}>Grown-up?</button>
+      </div>
+      <div className="stage" aria-busy="true">
+        <span className="typing" aria-hidden><i /><i /><i /></span>
+        <span role="status" style={{ fontWeight: 800, color: "var(--lilac-soft)" }}>Getting ready…</span>
+      </div>
+      <div className="controls">
+        <button className="end" aria-label="End call" onClick={() => go("/")}><Icon name="endcall" size={26} /></button>
+      </div>
+    </div>
+  );
+}
 
 /** Shown in the sign-in window opened by an installed app, once it's done. */
 function SignInDone({ error }: { error: string | null }) {
@@ -221,7 +254,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       }
     : null;
   const load = useCallback(() => api<AppState>("/api/state").then(setState).catch(() => undefined), []);
-  useEffect(() => { void load(); const t = setInterval(load, 20_000); return () => clearInterval(t); }, [load]);
+  usePoll(load, 20_000);
   // In the Mac app: notifications, Calendar & Reminders, ⌃⌥Space to call, dropped documents.
   // Once: go only calls a stable setter.
   useEffect(() => startNative(go), []);
@@ -239,7 +272,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const openHelp = () => setHelp(true);
 
   let screen: React.ReactNode;
-  if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
+  if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
@@ -251,7 +284,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/languages") screen = <Languages me={me} go={go} openThread={pickThread} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
-  else if (path === "/lab") screen = <AvatarLab />;
+  else if (path === "/lab" && AvatarLab) screen = <AvatarLab />;
   else if (path === "/help") screen = <KidHelp me={me} go={go} />;
   else if (path === "/connectors") screen = <Connectors me={me} />;
   else if (path === "/notifications") screen = <Notifications me={me} onSaved={onSaved} />;
@@ -328,7 +361,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             </span>
           </header>
         )}
-        {screen}
+        <Suspense fallback={<Loading />}>{screen}</Suspense>
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
             const on = t.to === path || (t.to === "/study" && path === "/languages") || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
@@ -344,25 +377,51 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   );
 }
 
+/** Home couldn't be reached at start-up: try again on a tap, when the network comes back, or when Kith is opened again. */
+function CantReach({ text, retry }: { text: string; retry: () => void }) {
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) retry(); };
+    addEventListener("online", retry);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { removeEventListener("online", retry); document.removeEventListener("visibilitychange", onVisible); };
+  }, [retry]);
+  return (
+    <div className="main">
+      <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+        <LogoMark size={72} />
+        <div className="notice" role="alert">{text}</div>
+        <button className="btn primary" onClick={retry}>Try again</button>
+        <span className="small">Kith tries again by itself when the internet comes back.</span>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [me, setMe] = useState<Me | null | "signed-out">(null);
   const [err, setErr] = useState("");
   const [wrongApp, setWrongApp] = useState("");
-  useEffect(() => {
-    api<Me>("/api/me").then(setMe).catch((e) => {
-      if (e instanceof ApiError && e.status === 401) setMe("signed-out");
+  const busy = useRef(false);
+  const loadMe = useCallback(() => {
+    if (busy.current) return;
+    busy.current = true;
+    api<Me>("/api/me").then((m) => { setErr(""); setMe(m); }).catch((e) => {
+      if (e instanceof ApiError && e.status === 401) { setErr(""); setMe("signed-out"); }
       else if (e instanceof ApiError && e.code === "wrong-app") setWrongApp(e.message);
-      else setErr((e as Error).message);
-    });
-    void registerServiceWorker();
+      else setErr((e as Error).message || OFFLINE_WORDS);
+    }).finally(() => { busy.current = false; });
   }, []);
+  useEffect(() => {
+    loadMe();
+    void registerServiceWorker();
+  }, [loadMe]);
   // The sign-in window an installed app opened: say it's done (whatever the session state here).
   const sp = new URLSearchParams(location.search).get("signin") ?? "";
   if (sp === "done" || sp.startsWith("done-")) return <SignInDone error={sp === "done" ? null : sp.slice(5)} />;
   if (wrongApp) return <WrongApp text={wrongApp} />;
-  if (err) return <div className="main"><div className="screen narrow"><div className="notice">Kith can’t reach home right now. {err}</div></div></div>;
+  if (err) return <CantReach text={err === OFFLINE_WORDS ? err : `Kith can’t reach home right now. ${err}`} retry={loadMe} />;
   if (me === null) return <div className="main" aria-busy="true" />;
   if (me === "signed-out") return <SignIn />;
-  if (me.role === "parent") return <Parent me={me} />;
+  if (me.role === "parent") return <Suspense fallback={<div className="main"><Loading /></div>}><Parent me={me} /></Suspense>;
   return <ChildApp me={me} />;
 }

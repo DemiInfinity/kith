@@ -1,6 +1,7 @@
 import { Icon, IL, type IconName } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type CloudLink, type DeskItem, type DeskView, type Energy, type Me } from "../api";
+import { usePoll } from "../lib/poll";
 import { EnergyCard, Markdown } from "../components/bits";
 
 const KIND_LABEL: Record<string, [IconName, string]> = {
@@ -12,11 +13,7 @@ const KIND_LABEL: Record<string, [IconName, string]> = {
 export function useDesk(poll = 8000) {
   const [desk, setDesk] = useState<DeskView | null>(null);
   const load = useCallback(() => api<DeskView>("/api/desk").then(setDesk).catch(() => undefined), []);
-  useEffect(() => {
-    void load();
-    const t = setInterval(load, poll);
-    return () => clearInterval(t);
-  }, [load, poll]);
+  usePoll(load, poll);
   return { desk, reload: load };
 }
 

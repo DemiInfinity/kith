@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
-import { DeskComputer } from "./DeskComputer";
 import { Icon, IL, type IconName } from "../components/Icons";
+
+// The desk is big (a whole little computer), so it loads the first time it's opened.
+const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
 
 interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
@@ -111,7 +113,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
         {tabs.map(([t, ic, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`chip ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); if (!panel) history.replaceState(null, "", on(t)); }}><IL i={ic}>{l}</IL></button>)}
       </div>
 
-      {tab === "desk" && <DeskComputer me={me} go={go} />}
+      {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={me} go={go} /></Suspense>}
 
       {tab === "scheduled" && (
         <div className="stack" style={{ maxWidth: 760, gap: 12 }}>

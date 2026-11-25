@@ -5,6 +5,7 @@ import { AvatarSvg } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icons";
 import { clock } from "../components/bits";
 import { ItemViewer, MakeSheet } from "./Desk";
+import { pollWhileVisible } from "../lib/poll";
 
 interface BrowserView {
   enabled: boolean; mode?: "blocklist" | "safelist"; sites: string[]; you?: string;
@@ -182,22 +183,20 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     load();
     api<{ stories: StoryRow[] }>("/api/stories").then((r) => setStories(r.stories)).catch(() => undefined);
     api<{ characters: Character[] }>("/api/oc").then((r) => setChars(r.characters)).catch(() => undefined);
-    const t = setInterval(() => { load(); setNow(Date.now()); }, 6000);
-    return () => clearInterval(t);
+    return pollWhileVisible(() => { load(); setNow(Date.now()); }, 6000, false);
   }, [load]);
   // Watching live (on by default): everyone looking at the desk sees the same screen and pointer,
   // refreshed every second, whether Pip, the child or the parent is driving.
   useEffect(() => {
     if ((!watch || !awake) && !driving) return;
-    const t = setInterval(() => api<BrowserView>("/api/desk/browser").then((b) => {
+    return pollWhileVisible(() => api<BrowserView>("/api/desk/browser").then((b) => {
       setBr((old) => {
         // Keep our own pointer while we drive; take everything else from the desk.
         if (driving && old?.live && b.live) b = { ...b, live: { ...b.live, cursor: old.live.cursor } };
         return b;
       });
       if (driving && b.live && b.live.takenOverBy !== me2.current) setDriving(false); // handed back, timed out, or someone else took over
-    }).catch(() => undefined), 1000);
-    return () => clearInterval(t);
+    }).catch(() => undefined), 1000, false);
   }, [watch, driving, awake]);
   useEffect(() => {
     if (!awake || driving) return;
