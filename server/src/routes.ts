@@ -218,6 +218,12 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
   });
+  // The connectors the parent switched on, for the child to see (names and what Pip can do: no
+  // addresses, tokens or settings).
+  app.get("/api/connectors", { preHandler: either }, async () => {
+    const conns = loadParentSettings(db).connections.filter((c) => c.enabled);
+    return { connectors: conns.map((c) => ({ id: c.id, kind: c.kind, name: c.name, level: c.level, tools: ["kin", "mcp"].includes(c.kind) ? c.allowedTools : [] })) };
+  });
   // The Anthropic API key, set by the parent. Never sent back (only its last four characters).
   app.get("/api/parent/apikey", { preHandler: parent }, async () => keyStatus(db));
   app.put("/api/parent/apikey", { preHandler: parent, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {

@@ -9,6 +9,7 @@ import { SideChats, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
 import { ProfilePanel, Settings } from "./screens/Profile";
+import { Connectors } from "./screens/Connectors";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
@@ -64,7 +65,7 @@ const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: "/create", icon: "create", label: "Create" },
   { to: "/settings", icon: "settings", label: "Settings" },
 ];
-const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google", "/notifications"];
+const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google", "/notifications", "/connectors"];
 
 function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
   return (
@@ -162,6 +163,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else if (path === "/lab") screen = <AvatarLab />;
+  else if (path === "/connectors") screen = <Connectors me={me} />;
   else if (path === "/notifications") screen = <Notifications me={me} onSaved={onSaved} />;
   else screen = (
     <>

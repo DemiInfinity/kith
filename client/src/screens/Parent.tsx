@@ -6,7 +6,7 @@ import { dayLabel, Toggle, when } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
-interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
+interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
 type Category = "adult" | "gambling" | "dating" | "social" | "harm" | "proxies";
 interface BrowserSettings { enabled: boolean; mode: "blocklist" | "safelist"; sites: string[]; assetHosts: string[]; blocked: string[]; categories: Category[]; blockLists: string[]; search: "bing" | "duckduckgo" | "wikipedia" | "brave" }
 const CATEGORIES: [Category, string][] = [
@@ -93,7 +93,11 @@ function ApiKeyCard({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => void }) {
+const KIND_ICON: Record<string, IconName> = { "home-assistant": "home", kin: "calendar", mcp: "sparkle", jellyfin: "music", calculator: "note", dictionary: "stories", web: "compass", "google-drive": "cloud" };
+const ADDABLE: [Connection["kind"], string][] = [["mcp", "MCP server"], ["home-assistant", "Home Assistant"], ["kin", "Kin"], ["jellyfin", "Jellyfin"], ["web", "Allowed websites"]];
+const BUILT_IN = new Set(["room", "kin", "jellyfin", "calculator", "dictionary", "google", "web"]);
+
+function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip" }: { initial: Settings; onSaved: () => void; section?: "settings" | "connectors"; companion?: string }) {
   const [s, setS] = useState<Settings>(initial);
   const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
   const [msg, setMsg] = useState("");
@@ -117,13 +121,14 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
   );
 
   return (
-    <div className="psettings">
-      <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-budgets", "fire", "Budgets"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"], ["set-connections", "home", "Connections"]] as const).map(([id, ic, l]) => (
+    <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
+      {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
+        {([["set-claude", "sparkle", "Claude"], ["set-budgets", "fire", "Budgets"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
-      </nav>
+      </nav>}
       <div className="psec-list">
+        {section === "settings" && <>
         <ApiKeyCard onChanged={onSaved} />
       <section className="card psec" id="set-budgets">
         <h3 className="psec-h"><span className="psec-ic"><Icon name="fire" size={18} /></span>Budgets</h3>
@@ -222,35 +227,54 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
           </select></label>
       </section>
 
-      <section className="card psec" id="set-connections">
-        <h3 className="psec-h"><span className="psec-ic"><Icon name="home" size={18} /></span>Connections</h3>
-        <span className="small">Only you can add or switch these on. Each is “look only” or “can act”. Nothing that spends money, messages people or posts online is ever offered, whatever a connection allows. Tokens live in the server’s environment (the variable named here), never in this page.</span>
+        </>}
+        {section === "connectors" && <>
+        <div className="pintro">
+          <span className="small">Connectors are the things {companion} can use beyond chatting: your Home Assistant, Kin, Jellyfin, MCP servers and more. Only you can add or switch them on, each is “look only” or “can act”, and every use is logged under Overview. Nothing that spends money, messages people or posts online is ever offered, whatever a connector allows. Tokens stay in the server’s environment (you name the variable here), never in this page. Your child can see which connectors are on, and what they do.</span>
+          <span className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            <span className="small" style={{ fontWeight: 800 }}>Add:</span>
+            {ADDABLE.map(([k, l]) => (
+              <button key={k} className="btn ghost small" disabled={s.connections.length >= 20} onClick={() => setS({ ...s, connections: [...s.connections, { id: `${k.replace(/[^a-z]/g, "")}-${Date.now().toString(36).slice(-5)}`, kind: k, name: l, enabled: false, level: "look", url: "", tokenEnv: "", allowedTools: [], entities: [], sites: [], account: "" }] })}>
+                <IL i={KIND_ICON[k]}>{l}</IL>
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="pconns">
         {s.connections.map((c, i) => (
-          <details key={c.id} className="card" style={{ background: "var(--card-2)" }}>
-            <summary className="spread" style={{ cursor: "pointer" }}><b className="il"><span className={`onoff ${c.enabled ? "on" : ""}`} aria-label={c.enabled ? "on" : "off"} />{c.name}</b><span className="small">{c.level === "act" ? "can act" : "look only"}</span></summary>
+          <div key={c.id} className={`card pconn ${c.enabled ? "on" : ""}`}>
+            <div className="pconn-head">
+              <span className="psec-ic"><Icon name={KIND_ICON[c.kind] ?? "home"} size={18} /></span>
+              <input className="pconn-name" value={c.name} maxLength={60} aria-label="Connector name" onChange={(e) => setC(i, { name: e.target.value })} />
+              <Toggle label="" checked={c.enabled} onChange={(v) => setC(i, { enabled: v })} />
+            </div>
             <span className="small">{KIND_HELP[c.kind]}</span>
-            <Toggle label="Switched on" checked={c.enabled} onChange={(v) => setC(i, { enabled: v })} />
-            <label className="field">Level
-              <select className="select" value={c.level} onChange={(e) => setC(i, { level: e.target.value as Connection["level"] })}><option value="look">Look only</option><option value="act">Can act</option></select>
-            </label>
+            <div className="chips" role="radiogroup" aria-label="What it may do">
+              <button role="radio" aria-checked={c.level === "look"} className={`chip ${c.level === "look" ? "on" : ""}`} onClick={() => setC(i, { level: "look" })}><IL i="eye">Look only</IL></button>
+              <button role="radio" aria-checked={c.level === "act"} className={`chip ${c.level === "act" ? "on" : ""}`} onClick={() => setC(i, { level: "act" })}><IL i="sparkle">Can act</IL></button>
+            </div>
+            <details className="pconn-more"><summary>Settings</summary>
             {!["calculator", "web", "google-drive"].includes(c.kind) && <label className="field">URL<input className="input" value={c.url} onChange={(e) => setC(i, { url: e.target.value })} placeholder="https://" /></label>}
-            {["home-assistant", "kin", "mcp", "jellyfin"].includes(c.kind) && <label className="field">Token environment variable<input className="input" value={c.tokenEnv} onChange={(e) => setC(i, { tokenEnv: e.target.value })} /></label>}
+            {["home-assistant", "kin", "mcp", "jellyfin"].includes(c.kind) && <label className="field">Token environment variable<input className="input" value={c.tokenEnv} onChange={(e) => setC(i, { tokenEnv: e.target.value })} placeholder="KITH_CONN_…_TOKEN" /></label>}
             {["kin", "mcp"].includes(c.kind) && <label className="field">Allowed tools (comma-separated)<input className="input" value={c.allowedTools.join(", ")} onChange={(e) => setC(i, { allowedTools: list(e.target.value) })} /></label>}
             {c.kind === "home-assistant" && <label className="field">Their room’s entities (comma-separated)<input className="input" value={c.entities.join(", ")} onChange={(e) => setC(i, { entities: list(e.target.value) })} placeholder="light.bedroom, switch.fairy_lights" /></label>}
             {c.kind === "web" && <label className="field">Allowed sites (comma-separated)<input className="input" value={c.sites.join(", ")} onChange={(e) => setC(i, { sites: list(e.target.value) })} placeholder="bbc.co.uk/bitesize, wikipedia.org" /></label>}
             {c.kind === "google-drive" && <label className="field">Your Google email (view-only access to the Kith folder, optional)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} placeholder="you@gmail.com" /></label>}
             {c.kind === "jellyfin" && <label className="field">Jellyfin user id (for playlists)<input className="input" value={c.account} onChange={(e) => setC(i, { account: e.target.value })} /></label>}
-          </details>
+            {!BUILT_IN.has(c.id) && <button className="btn ghost small" onClick={() => { if (confirm(`Remove ${c.name}?`)) setS({ ...s, connections: s.connections.filter((_, j) => j !== i) }); }}><IL i="trash">Remove this connector</IL></button>}
+            </details>
+          </div>
         ))}
-      </section>
+        </div>
+        </>}
       </div>
-      <div className="psave"><span className="small" aria-live="polite">{msg || "Changes are saved when you press Save."}</span><button className="btn primary" onClick={save}>Save settings</button></div>
+      <div className="psave"><span className="small" aria-live="polite">{msg || "Changes are saved when you press Save."}</span><button className="btn primary" onClick={save}>{section === "connectors" ? "Save connectors" : "Save settings"}</button></div>
     </div>
   );
 }
 
-type PTab = "overview" | "reports" | "desk" | "settings";
-const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["settings", "settings", "Settings"]];
+type PTab = "overview" | "reports" | "desk" | "connectors" | "settings";
+const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["connectors", "sparkle", "Connectors"], ["settings", "settings", "Settings"]];
 
 function Tile({ icon, label, value, cap, sub }: { icon: IconName; label: string; value: number; cap: number; sub: React.ReactNode }) {
   const pct = cap > 0 ? Math.min(100, (value / cap) * 100) : 0;
@@ -401,7 +425,8 @@ export function Parent({ me }: { me: Me }) {
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
-          {tab === "settings" && o && <SettingsForm initial={o.settings} onSaved={load} />}
+          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} />}
+          {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}
         </div>
       </div>
     </div>

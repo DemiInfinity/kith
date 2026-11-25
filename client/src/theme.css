@@ -679,3 +679,22 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .phead-dp { display: grid; flex: none; }
 @media (max-width: 1099px) { .ppower .pw { display: none; } .phead-dp { transform: scale(0.78); margin: -6px; } }
 @media (max-width: 1099px) { .phead .pwith { display: none; } .ptabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; } .ptabs .chip { flex: none; } }
+.psettings.single { grid-template-columns: minmax(0, 1fr); }
+.pintro { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px; }
+.pconns { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.pconn { gap: 10px; border: 1px solid var(--line-soft); }
+.pconn.on { border-color: rgba(127,216,164,0.45); box-shadow: inset 3px 0 0 var(--ok); }
+.pconn-head { display: flex; align-items: center; gap: 10px; }
+.pconn-name { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-family: var(--serif); font-size: 18px; font-weight: 600; padding: 4px 6px; border-radius: 8px; }
+.pconn-name:hover, .pconn-name:focus { background: var(--card-2); outline: none; }
+.pconn-head .toggle { flex: none; }
+.pconn .chips .chip { min-height: 32px; font-size: 13px; }
+.pconn-more { display: flex; flex-direction: column; gap: 10px; }
+.pconn-more summary { cursor: pointer; font-size: 13px; font-weight: 800; color: var(--lilac-soft); }
+.pconn-more[open] { display: flex; }
+.pconn-more > * + * { margin-top: 10px; }
+.ccon { gap: 10px; }
+.clevel { font-size: 12px; font-weight: 900; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.clevel.look { background: rgba(156,194,232,0.16); color: #B8D4F0; }
+.clevel.act { background: rgba(217,163,224,0.18); color: var(--lilac); }
+.clevel { display: inline-flex; align-items: center; flex: none; height: 26px; line-height: 1; align-self: center; }
