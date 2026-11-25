@@ -203,7 +203,7 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
           <span className="journal">“{desk.journal[0].text}”</span>
         </div>
       )}
-      {desk && <span className="small">Desk energy this month: {desk.energy.percent}%.</span>}
+      {desk && <span className="small">Desk energy today: {desk.energy.percent}% (its own slice, so it never uses up your chat energy).</span>}
       <span className="small">{name}’s desk is a little computer of its own at home. {name} can write, draw and make things there, but it can’t go on the internet by itself or touch the rest of the house. You and {me.parentLabel} can always see what’s on it.</span>
       {open && <ItemViewer id={open} canEdit={canEdit} links={desk?.links} onClose={() => setOpen(null)} onChanged={reload} />}
       {making && <MakeSheet me={me} onClose={() => setMaking(false)} onStarted={reload} />}

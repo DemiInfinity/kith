@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Me, type Message, type Mode, type Mood, type ReportInfo, type Turn } from "../api";
+import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type ReportInfo, type Turn } from "../api";
 import { dayLabel } from "../components/bits";
 
 interface Props {
@@ -10,6 +10,9 @@ interface Props {
   openHelp: () => void;
   go: (to: string) => void;
   header?: React.ReactNode;
+  ctx?: ModeCtx;
+  quick?: string[][];
+  placeholder?: string;
 }
 
 const SESSION_GAP = 6 * 3_600_000;
@@ -21,7 +24,7 @@ function sessionNoticeNeeded(messages: Message[]) {
   return !seen || !last || Date.now() - last.ts > SESSION_GAP;
 }
 
-export function Chat({ me, mode = "chat", onTurn, onMood, openHelp, go, header }: Props) {
+export function Chat({ me, mode = "chat", onTurn, onMood, openHelp, go, header, ctx, quick: quickIn, placeholder }: Props) {
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [made, setMade] = useState<Record<number, Turn["effects"]>>({});
   const [text, setText] = useState("");
@@ -52,7 +55,7 @@ export function Chat({ me, mode = "chat", onTurn, onMood, openHelp, go, header }
     const temp: Message = { id: -Date.now(), ts: Date.now(), role: "child", text: body, mode, meta: null };
     setMessages((m) => [...(m ?? []), temp]);
     try {
-      const turn = await api<Turn>("/api/chat", { body: { text: body, mode } });
+      const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: ctx ?? {} } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
       if (turn.effects.jobs.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
       onTurn(turn);
@@ -68,10 +71,10 @@ export function Chat({ me, mode = "chat", onTurn, onMood, openHelp, go, header }
     }
   };
 
-  const shown = (messages ?? []).filter((m) => (mode === "oc" ? m.mode === "oc" : m.mode !== "oc"));
-  const quick = mode === "oc"
+  const shown = (messages ?? []).filter((m) => (mode === "chat" || mode === "talk" ? m.mode === "chat" || m.mode === "talk" : m.mode === mode));
+  const quick = quickIn ?? (mode === "oc"
     ? [["✨", "Help me make a new OC"], ["🎨", "Make a palette for my OC"], ["🗺️", "Let's build their world"], ["🎭", "Let's play a scene"]]
-    : [["📚", "Can you help with my homework?"], ["💭", "Can I talk something through?"], ["✨", "Write me a story"], ["🗂️", "Make me some flashcards"]];
+    : [["📚", "Can you help with my homework?"], ["💭", "Can I talk something through?"], ["✨", "Write me a story"], ["🗂️", "Make me some flashcards"]]);
 
   return (
     <>
@@ -118,7 +121,7 @@ export function Chat({ me, mode = "chat", onTurn, onMood, openHelp, go, header }
       )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <textarea
-          aria-label={`Message ${name}`} placeholder={`Message ${name}…`} value={text} rows={1} maxLength={4000}
+          aria-label={`Message ${name}`} placeholder={placeholder ?? `Message ${name}…`} value={text} rows={1} maxLength={4000}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
         />

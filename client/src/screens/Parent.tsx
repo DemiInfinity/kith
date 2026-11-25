@@ -4,12 +4,15 @@ import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
 import { Desk } from "./Desk";
 
-interface Budgets { weeklyUsd: number; windowUsd: number; windowHours: number; deskMonthlyUsd: number; monthlyCapUsd: number; lowPowerAtPercent: number; lowPowerReserveUsd: number; weekResetDay: number }
+interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: string; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
 interface Settings { budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[] }
 interface Overview {
-  energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskMonth: number }; fullBackAt: number | null; weekResetsAt: number };
-  desk: { percent: number; usd: number; canWork: boolean };
+  energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
+  desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
+  split: { chatWeek: number; deskWeek: number; deskDaily: number };
+  projection: number;
+  lowPower: { week: { share: number; turns: number }; month: { share: number; turns: number } };
   budgets: Budgets;
   spend: { week: { kind: string; bucket: string; usd: number; calls: number }[]; month: { kind: string; bucket: string; usd: number; calls: number }[] };
   settings: Settings;
@@ -65,15 +68,17 @@ function SettingsForm({ initial, onSaved }: { initial: Settings; onSaved: () => 
     <div className="stack" style={{ gap: 14 }}>
       <div className="card">
         <b>Budgets</b>
-        <span className="small">The monthly cap that really protects you is set on the API organisation in the Anthropic Console (Settings › Limits). The cap here is a backstop.</span>
+        <span className="small">The monthly cap that really protects you is set on the API organisation in the Anthropic Console (Settings › Limits). Kith stops everything at the hard stop below, a little under that cap. Until then, when Full power runs out it switches to Low power instead of stopping.</span>
+        <label className="slider"><span className="ends"><span>Chat and calls {100 - b.deskSharePercent}%</span><span>Desk and Studio {b.deskSharePercent}%</span></span>
+          <input type="range" min={0} max={50} value={b.deskSharePercent} aria-label="Split between chat and the desk" style={{ ["--v" as string]: `${b.deskSharePercent * 2}%` }} onChange={(e) => setB("deskSharePercent", Number(e.target.value))} /></label>
+        <span className="small">That’s ${(b.weeklyUsd * (1 - b.deskSharePercent / 100)).toFixed(2)} a week for chat and calls, and ${((b.weeklyUsd * b.deskSharePercent) / 100 / 7).toFixed(2)} a day for the desk (unused days roll on within the week).</span>
         <div className="grid2">
-          {num("Weekly energy ($)", "weeklyUsd")}
-          {num("Rolling window ($)", "windowUsd")}
+          {num("Each week ($)", "weeklyUsd")}
+          {num("Full power per window ($)", "windowUsd")}
           {num("Window length (hours)", "windowHours", 1)}
-          {num("Desk, per month ($)", "deskMonthlyUsd")}
-          {num("Monthly backstop ($)", "monthlyCapUsd", 1)}
+          {num("Max rollover per window ($)", "rolloverCapUsd")}
+          {num("Hard stop for the month ($)", "hardStopUsd", 1)}
           {num("Low power below (%)", "lowPowerAtPercent", 1)}
-          {num("Low power reserve ($/week)", "lowPowerReserveUsd")}
           <label className="field">Energy tops up on
             <select className="select" value={b.weekResetDay} onChange={(e) => setB("weekResetDay", Number(e.target.value))}>
               {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => <option key={d} value={i}>{d}</option>)}
@@ -173,10 +178,11 @@ export function Parent({ me }: { me: Me }) {
           <>
             {!o.status.apiReady && <div className="notice" style={{ alignSelf: "stretch" }}>No Anthropic API key is set, so {comp.name} can’t think yet. See docs/setup.md.</div>}
             <div className="grid2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              <div className="card"><span className="eyebrow">This week</span>{money(o.energy.usd.week, o.budgets.weeklyUsd)}<span className="small">{cname} sees: {o.energy.mode === "full" ? "🔥 Full power" : o.energy.mode === "low" ? "🔋 Low power" : "😴 Resting"}, {o.energy.percent}%</span></div>
-              <div className="card"><span className="eyebrow">Last {o.budgets.windowHours} hours</span>{money(o.energy.usd.window, o.budgets.windowUsd)}</div>
-              <div className="card"><span className="eyebrow">Desk this month</span>{money(o.desk.usd, o.budgets.deskMonthlyUsd)}</div>
-              <div className="card"><span className="eyebrow">Whole month</span>{money(o.energy.usd.month, o.budgets.monthlyCapUsd)}<span className="small">Console cap is the real limit.</span></div>
+              <div className="card"><span className="eyebrow">Chat this week</span>{money(o.energy.usd.week, o.split.chatWeek)}<span className="small">{cname} sees: {o.energy.mode === "full" ? "🔥 Full power" : o.energy.mode === "low" ? "🔋 Low power" : "😴 Resting"}, {o.energy.percent}%</span></div>
+              <div className="card"><span className="eyebrow">Last {o.budgets.windowHours} hours</span>{money(o.energy.usd.window, o.energy.usd.windowAllowance)}<span className="small">incl. rollover from quieter windows</span></div>
+              <div className="card"><span className="eyebrow">Desk this week</span>{money(o.desk.usd.week, o.split.deskWeek)}<span className="small">${o.desk.usd.today.toFixed(2)} today · slice ${o.split.deskDaily.toFixed(2)}/day</span></div>
+              <div className="card"><span className="eyebrow">This month</span>{money(o.energy.usd.month, o.budgets.hardStopUsd)}<span className="small">On track for about ${o.projection.toFixed(2)} · hard stop ${o.budgets.hardStopUsd}</span></div>
+              <div className="card"><span className="eyebrow">Low power</span><b>{Math.round(o.lowPower.week.share * 100)}% of turns this week</b><span className="small">{Math.round(o.lowPower.month.share * 100)}% this month ({o.lowPower.month.turns} turns)</span></div>
             </div>
             <div className="card">
               <b>Where it went this month</b>

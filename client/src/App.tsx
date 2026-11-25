@@ -13,6 +13,9 @@ import { OC } from "./screens/OC";
 import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
 import { Google } from "./screens/Google";
+import { Study } from "./screens/Study";
+import { Art } from "./screens/Art";
+import { Stories } from "./screens/Stories";
 
 function SignIn() {
   const [info, setInfo] = useState<{ oidc: boolean; label: string; dev: boolean } | null>(null);
@@ -44,6 +47,9 @@ const NAV = (name: string, parent: string) => [
   { to: "/", icon: "💬", label: "Chat" },
   { to: "/talk", icon: "🎙️", label: "Talk" },
   { to: "/desk", icon: "🖥️", label: `${name}’s desk` },
+  { to: "/study", icon: "📚", label: "Study" },
+  { to: "/stories", icon: "✍️", label: "Stories with a friend" },
+  { to: "/art", icon: "🎨", label: "Art" },
   { to: "/oc", icon: "⭐", label: "OC workshop" },
   { to: "/memory", icon: "🧠", label: `What ${name} remembers` },
   { to: "/me", icon: "✨", label: "Personality" },
@@ -53,10 +59,24 @@ const NAV = (name: string, parent: string) => [
 const TABS = [
   { to: "/", icon: "💬", label: "Chat" },
   { to: "/talk", icon: "🎙️", label: "Talk" },
+  { to: "/study", icon: "📚", label: "Study" },
+  { to: "/create", icon: "✨", label: "Create" },
   { to: "/desk", icon: "🖥️", label: "Desk" },
-  { to: "/oc", icon: "⭐", label: "OCs" },
-  { to: "/you", icon: "✨", label: "You" },
 ];
+
+function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
+  return (
+    <div className="screen narrow">
+      <span className="hand">make something</span>
+      <h2 className="screen-title">Create</h2>
+      {[["/stories", "✍️", "Stories with a friend", "Write together; every part credited"], ["/art", "🎨", "Art", "Challenges, sketchbook, mood board, feedback"], ["/oc", "⭐", "OC workshop", "Your characters and their world"], ["/desk", "🖥️", `Ask ${me.profile.name} to make something`, "Quizzes, games, comics, slides and more"]].map(([to, ic, t, d]) => (
+        <button key={to} className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12, textAlign: "left" }} onClick={() => go(to)}>
+          <span style={{ fontSize: 24 }}>{ic}</span><span><b>{t}</b><br /><span className="small">{d}</span></span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function YouMenu({ me, go }: { me: Me; go: (to: string) => void }) {
   const name = me.profile.name;
@@ -106,6 +126,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/shared") screen = <Shared me={me} />;
   else if (path === "/you") screen = <YouMenu me={me} go={go} />;
   else if (path === "/google") screen = <Google me={me} />;
+  else if (path === "/study") screen = <Study me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
+  else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
+  else if (path === "/stories") screen = <Stories me={me} />;
+  else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else screen = <Chat me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
 
   return (
@@ -129,15 +153,15 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       <div className="main">
         {path !== "/talk" && (
           <header className="topbar mobile-only">
-            <Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" />
-            <span className="who"><b>{name}</b><span>AI, not a person · {moodText}</span></span>
+            <button onClick={() => go("/you")} aria-label="You and your companion" style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" /></button>
+            <span className="who" onClick={() => go("/you")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
             <button className="grownup" onClick={openHelp}>Need a grown-up?</button>
           </header>
         )}
         {screen}
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
-            const on = t.to === path || (t.to === "/you" && ["/me", "/memory", "/shared", "/google"].includes(path));
+            const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><span aria-hidden>{t.icon}</span><span>{t.label}</span></button>;
           })}
         </nav>
