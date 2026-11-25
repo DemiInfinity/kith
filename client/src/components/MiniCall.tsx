@@ -11,6 +11,7 @@ import { MiniCallCard, useCall, useCallLevels, useCallLook, useCallSession } fro
 import { pipPictureUrl } from "./CompanionPic";
 import { prefersStill } from "../pip3d/Stage";
 import type { PipStage } from "../pip3d/engine";
+import { useMusic } from "../lib/music";
 
 export function MiniCall({ me, go, still3d }: {
   me: Me;
@@ -22,6 +23,7 @@ export function MiniCall({ me, go, still3d }: {
   const call = useCall();
   const name = me.profile.name;
   const { view, look, still, picture } = useCallLook();
+  const music = useMusic().playing;
   const [corner, setCorner] = useState<Corner>(savedCorner);
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
@@ -97,7 +99,7 @@ export function MiniCall({ me, go, still3d }: {
       style={offset ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : undefined}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { drag.current = null; setOffset(null); }}>
       <MiniCallCard name={name} look={live3d ? look : null} still={still} active mood={callMood(call.phase, call.mood)}
-        status={status} muted={call.muted} ended={call.phase === "ended"} pic={pic}
+        status={status} muted={call.muted} ended={call.phase === "ended"} pic={pic} music={music}
         onStage={onStage} onOpen={open} onMute={() => session.toggleMute()} onEnd={() => session.end()}
         openLabel={`Back to the call with ${name}`} />
     </div>

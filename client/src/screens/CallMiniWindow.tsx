@@ -61,7 +61,7 @@ export function CallMiniWindow() {
     <div className="miniwin-body" onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={() => { press.current = null; }}>
       <div className={`minicall inwin ${st?.phase === "listening" ? "live" : ""}`} role="region" aria-label={`Call with ${name}`}>
         <MiniCallCard name={name} look={view === "3d" ? look ?? null : null} still={still} active mood={st?.mood ?? "happy"}
-          status={st?.status ?? "On a call"} muted={!!st?.muted} ended={!!st?.ended} pic={pic}
+          status={st?.status ?? "On a call"} muted={!!st?.muted} ended={!!st?.ended} pic={pic} music={!!st?.music}
           onStage={(s) => { stage.current = s; }} onOpen={() => cmd("mini_focus_main")}
           onMute={() => cmd("mini_mute")} onEnd={() => cmd("mini_end")} openLabel={`Back to Kith and the call with ${name}`} />
       </div>

@@ -5,6 +5,7 @@ import { ChangeCard } from "../components/ChangeCard";
 import { Avatar, LookIcon } from "../components/Avatar";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
+import { isChildMacApp, MAC_VOICES, macVoiceOffered, prepareMacVoice, saveMacVoice, savedMacVoice, speakOnMac, useMacVoice, voiceProgressText } from "../lib/macVoice";
 
 export const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"];
 
@@ -59,6 +60,19 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
 
   const set = (patch: Partial<Profile>) => setP((x) => ({ ...x, ...patch }));
   const toggleTrait = (t: string) => set({ traits: p.traits.includes(t) ? p.traits.filter((x) => x !== t) : [...p.traits, t].slice(-3) });
+
+  // The Mac app: Kokoro's British voices, made on the Mac (kept on this Mac; the phone keeps the home voices).
+  const macVoice = useMacVoice();
+  const onMac = isChildMacApp() && macVoiceOffered(macVoice);
+  const [macPick, setMacPick] = useState(savedMacVoice);
+  useEffect(() => { if (isChildMacApp()) prepareMacVoice(); }, []);
+  const previewMac = async (id: string) => {
+    setMacPick(id);
+    saveMacVoice(id);
+    if (macVoice.phase !== "ready") { prepareMacVoice(); return; }
+    setPlaying(id);
+    try { await speakOnMac(sampleLine(p), setMouth, undefined, undefined, id); } catch { /* picking still works */ } finally { setPlaying(""); }
+  };
 
   const preview = async (voice: string) => {
     set({ voice });
@@ -131,16 +145,32 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         </div>
       )}
 
-      <div className="stack">
-        <b>Voice</b>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, me.voices.length)}, 1fr)`, gap: 8 }}>
-          {me.voices.map((v) => (
-            <button key={v} className={`look ${p.voice === v ? "on" : ""}`} style={{ aspectRatio: "auto", minHeight: 56, fontSize: "0.875rem", fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => preview(v)}>
-              <span className="hic"><Icon name={playing === v ? "speaker" : "play"} size={18} /></span>{v}
-            </button>
-          ))}
+      {onMac && (
+        <div className="stack">
+          <b>Voice</b>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {MAC_VOICES.map((v) => (
+              <button key={v.id} className={`look ${macPick === v.id ? "on" : ""}`} aria-pressed={macPick === v.id} style={{ aspectRatio: "auto", minHeight: 56, fontSize: "0.875rem", fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => previewMac(v.id)}>
+                <span className="hic"><Icon name={playing === v.id ? "speaker" : "play"} size={18} /></span>{v.name}
+              </button>
+            ))}
+          </div>
+          <span className="small" role="status">{voiceProgressText(macVoice, p.name) || `British voices, made on this Mac for calls. On your phone, ${p.name} keeps its usual voice.`}</span>
         </div>
-      </div>
+      )}
+
+      {!onMac && (
+        <div className="stack">
+          <b>Voice</b>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, me.voices.length)}, 1fr)`, gap: 8 }}>
+            {me.voices.map((v) => (
+              <button key={v} className={`look ${p.voice === v ? "on" : ""}`} style={{ aspectRatio: "auto", minHeight: 56, fontSize: "0.875rem", fontWeight: 800, display: "flex", flexDirection: "column", gap: 2 }} onClick={() => preview(v)}>
+                <span className="hic"><Icon name={playing === v ? "speaker" : "play"} size={18} /></span>{v}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <span className="eyebrow">How {p.name} sounds now</span>

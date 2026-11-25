@@ -1,6 +1,7 @@
 import { appHint, withApp, wrongAppWords } from "./lib/appHint";
 import { doneWords, handoffDevice, handoffWords, isInstalledApp, signinWords, prepareSignIn, preparedFresh, startHandoff, waitForHandoff, type Handoff, type PreparedSignIn } from "./lib/signin";
 import { checkNativeActions, startNative } from "./lib/native";
+import { useMusic } from "./lib/music";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OFFLINE_WORDS, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { LogoMark } from "./components/Avatar";
@@ -293,6 +294,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   // In the Mac app: notifications, Calendar & Reminders, ⌃⌥Space to call, dropped documents.
   // Once: go only calls a stable setter.
   useEffect(() => startNative(go), []);
+  // The Mac app: Apple Music or Spotify playing (Pip listens along).
+  const music = useMusic();
 
   const onSaved = (p: Profile) => setMe((m) => ({ ...m, profile: p }));
   if (!me.profile.setupDone) return <Meet me={me} onDone={onSaved} />;
@@ -308,7 +311,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   };
   const name = me.profile.name;
   const working = state?.desk.working;
-  const doing = doingText(state, baseMood);
+  const doing = doingText(state, baseMood, music);
   const onProfile = false;
   // The 3D makers: the title sits right under the header (no room left for the hanging picture).
   const makerPage = path === "/my-pip" || path === "/oc";

@@ -14,8 +14,10 @@ export function prefersStill(): boolean {
   try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 }
 
-export function Pip3D({ look, still, active = true, mood, fallback, onStage, label, className, framing }: {
+export function Pip3D({ look, still, active = true, mood, fallback, onStage, label, className, framing, music = false }: {
   framing?: StageOptions["framing"];
+  /** Music playing on her Mac (the Mac app): headphones for now, never saved into the look. */
+  music?: boolean;
   look: Look;
   still: boolean;
   /** False: draw once and wait (off screen, or another preview is live). */
@@ -30,8 +32,8 @@ export function Pip3D({ look, still, active = true, mood, fallback, onStage, lab
   const stage = useRef<PipStage | null>(null);
   const [failed, setFailed] = useState(false);
   // The latest props, for the moment the engine arrives.
-  const latest = useRef({ look, still, active, mood });
-  latest.current = { look, still, active, mood };
+  const latest = useRef({ look, still, active, mood, music });
+  latest.current = { look, still, active, mood, music };
 
   useEffect(() => {
     let gone = false;
@@ -40,7 +42,7 @@ export function Pip3D({ look, still, active = true, mood, fallback, onStage, lab
       if (!m.webglAvailable()) { setFailed(true); return; }
       const l = latest.current;
       try {
-        stage.current = m.createPipStage(canvas.current, l.look, { still: l.still, active: l.active, mood: l.mood, framing });
+        stage.current = m.createPipStage(canvas.current, l.look, { still: l.still, active: l.active, mood: l.mood, framing, music: l.music });
         shown.current = JSON.stringify(l.look);
         onStage?.(stage.current);
       } catch (err) {
@@ -69,6 +71,7 @@ export function Pip3D({ look, still, active = true, mood, fallback, onStage, lab
   useEffect(() => { stage.current?.setStill(still); }, [still]);
   useEffect(() => { stage.current?.setActive(active); }, [active]);
   useEffect(() => { if (mood) stage.current?.setMood(mood); }, [mood]);
+  useEffect(() => { stage.current?.setMusic(music); }, [music]);
 
   if (failed) return <>{fallback}</>;
   return (

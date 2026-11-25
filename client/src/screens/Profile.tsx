@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { CompanionPic } from "../components/CompanionPic";
-import { Markdown, UsageLimits, clock, doingText } from "../components/bits";
+import { Markdown, Toggle, UsageLimits, clock, doingText } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
 import { DeskRules, TodayList, useDeskToday } from "../components/DeskBits";
 import { action } from "../lib/action";
+import { setSongsAllowed, songsAllowed, useMusic } from "../lib/music";
+import { isChildMacApp } from "../lib/macVoice";
 
 // The desk is big (a whole little computer), so it loads the first time it's opened.
 const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
@@ -77,6 +79,7 @@ function Section({ icon, title, hint, text, editable, onSave, placeholder }: { i
 /** The companion's profile: who it is, its desk, what's scheduled, and its files. */
 export function Profile({ me, state, mood, go, initialTab = "desk", panel = false, onClose, live = true }: { me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; initialTab?: Tab; panel?: boolean; onClose?: () => void; live?: boolean }) {
   const [tab, setTab] = useState<Tab>(initialTab);
+  const music = useMusic();
   const [files, setFiles] = useState<Files | null>(null);
   const [sched, setSched] = useState<Schedule | null>(null);
   const [mine, setMine] = useState<Mine[]>([]);
@@ -119,7 +122,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
         <CompanionPic look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} live={live ? "on" : "off"} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <h2 style={{ fontSize: "2rem" }}>{name}</h2>
-          <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>
+          <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood, music)}</div>
           <span style={{ fontSize: "0.875rem", fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
           <div style={{ fontSize: "0.8125rem", color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
         </div>
@@ -224,12 +227,28 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
           <Icon name="arrow" size={18} />
         </button>
       ))}
+      {isChildMacApp() && <MusicSetting name={name} />}
       <button className="btn ghost small" onClick={logout}>Sign out</button>
       <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
     </div>
   );
 }
 
+
+/** The Mac app only: Pip listens along when Apple Music or Spotify plays. Song names are off to start with. */
+function MusicSetting({ name }: { name: string }) {
+  const [songs, setSongs] = useState(songsAllowed);
+  return (
+    <>
+      <b style={{ marginTop: 6 }}>Music</b>
+      <div className="card" style={{ gap: 4 }}>
+        <span className="small">When Apple Music or Spotify is playing on this Mac, {name} pops on its headphones and listens along.</span>
+        <Toggle label={`Let ${name} know what song is playing`} checked={songs} onChange={(v) => { setSongs(v); setSongsAllowed(v); }} />
+        <span className="small">{songs ? `${name} can see the song and who it’s by, while it plays. It isn’t saved.` : `Off: ${name} only knows that music is on, not what it is.`}</span>
+      </div>
+    </>
+  );
+}
 
 /** On a computer: the companion's profile (the same one as on a phone), in a panel beside the chat. */
 export function ProfilePanel({ open, tab = "desk", me, state, mood, go, onClose }: { open: boolean; tab?: Tab; me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; onClose: () => void }) {

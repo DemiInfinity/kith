@@ -15,6 +15,7 @@ import type { CallSession } from "./callSession";
 import type { Mood3D } from "../pip3d/look";
 import { tauri } from "./native";
 import { pipPictureVersion } from "../components/CompanionPic";
+import { musicNow, subscribeMusic } from "./music";
 
 export const MINI = "mini";
 
@@ -28,11 +29,13 @@ export interface MiniState {
   ended: boolean;
   /** The saved 3D picture's version (null: the 2D avatar). */
   picture: number | null;
+  /** Music playing on her Mac: Pip wears headphones in the mini window too. */
+  music: boolean;
 }
 
-export function miniState(s: { phase: CallPhase; mood: Parameters<typeof callMood>[1]; muted: boolean; mode: CallMode; ear: Ear }, name: string, picture: number | null): MiniState {
+export function miniState(s: { phase: CallPhase; mood: Parameters<typeof callMood>[1]; muted: boolean; mode: CallMode; ear: Ear }, name: string, picture: number | null, music = false): MiniState {
   return {
-    name, phase: s.phase, mood: callMood(s.phase, s.mood), muted: s.muted, ended: s.phase === "ended", picture,
+    name, phase: s.phase, mood: callMood(s.phase, s.mood), muted: s.muted, ended: s.phase === "ended", picture, music,
     status: callStatus({ ...s, name }),
   };
 }
@@ -49,7 +52,7 @@ export function startCallBridge(session: CallSession): () => void {
   const push = () => {
     if (!shown) return;
     const s = session.get();
-    void t.event.emitTo(MINI, "kith:mini-state", miniState(s, session.deps.name, pipPictureVersion())).catch(() => undefined);
+    void t.event.emitTo(MINI, "kith:mini-state", miniState(s, session.deps.name, pipPictureVersion(), musicNow().playing)).catch(() => undefined);
   };
   const offState = session.subscribe(() => {
     const s = session.get();
@@ -60,6 +63,7 @@ export function startCallBridge(session: CallSession): () => void {
     }
     push();
   });
+  const offMusic = subscribeMusic(push);
   const offLevels = session.subscribeLevels(() => {
     if (!shown) return;
     const at = performance.now();
@@ -79,6 +83,7 @@ export function startCallBridge(session: CallSession): () => void {
   ];
   return () => {
     offState();
+    offMusic();
     offLevels();
     for (const u of unlisten) void u.then((f) => f()).catch(() => undefined);
     if (running) void t.core.invoke("call_status", { running: false }).catch(() => undefined);

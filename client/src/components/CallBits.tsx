@@ -70,8 +70,10 @@ export function Failed({ onFail }: { onFail: () => void }) {
  * The small portrait call: Pip's head and shoulders, its name, what's happening, mute and end.
  * Tapping Pip goes back to the full call. The same card in the app and in the Mac app's own window.
  */
-export function MiniCallCard({ name, look, still, active, mood, status, muted, ended, pic, onStage, onOpen, onMute, onEnd, openLabel }: {
+export function MiniCallCard({ name, look, still, active, mood, status, muted, ended, pic, onStage, onOpen, onMute, onEnd, openLabel, music = false }: {
   name: string;
+  /** Music playing on her Mac: headphones for now. */
+  music?: boolean;
   /** The 3D look, or null for the still picture / 2D avatar given in `pic`. */
   look: Look3D | null;
   still: boolean;
@@ -92,7 +94,7 @@ export function MiniCallCard({ name, look, still, active, mood, status, muted, e
     <div className="mc-card">
       <button className="mc-pip" onClick={onOpen} aria-label={openLabel}>
         {look ? (
-          <Pip3D look={{ ...look, activity: "none" }} still={still} active={active} mood={mood} framing="portrait"
+          <Pip3D look={{ ...look, activity: "none" }} still={still} active={active} mood={mood} framing="portrait" music={music}
             onStage={onStage} label={`${name}, on the call`} fallback={pic} />
         ) : pic}
       </button>
