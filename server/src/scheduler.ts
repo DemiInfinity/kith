@@ -14,7 +14,7 @@ import { localDate, localParts, startOfWeek } from "./budget/time.js";
 import { textOf, type LLM } from "./llm.js";
 import { isGuiltTrip, redactPersonal } from "./safety/rules.js";
 import type { SafetyChecker } from "./safety/check.js";
-import { deliverReport, failedReports, type Reporter } from "./reporting/reporter.js";
+import { deliverReport, reportsToRetry, type Reporter } from "./reporting/reporter.js";
 import { allRollingKeys } from "./companion/context.js";
 import { purgeHistory } from "./companion/history.js";
 import { logActivity } from "./desk/activity.js";
@@ -83,10 +83,10 @@ async function disk(deps: SchedulerDeps, now: number) {
   deps.studio.disk = await diskUsage(deps.db, deps.studio.desk, true);
 }
 
-async function retryReports(deps: SchedulerDeps) {
+export async function retryReports(deps: Pick<SchedulerDeps, "db" | "reporters" | "childName">, now = Date.now()) {
   const profile = loadProfile(deps.db);
-  for (const r of failedReports(deps.db)) {
-    await deliverReport(deps.db, deps.reporters, r, { companionName: profile.name, childName: deps.childName });
+  for (const r of reportsToRetry(deps.db, now)) {
+    await deliverReport(deps.db, deps.reporters, r, { companionName: profile.name, childName: deps.childName }, now);
   }
 }
 

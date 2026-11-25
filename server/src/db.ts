@@ -137,7 +137,8 @@ CREATE TABLE IF NOT EXISTS skills (
 export function openDb(file: string): DB {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  // secure_delete: deleted chats are overwritten on disk, not just unlinked from the file.
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   migrate(db);
   return db;
@@ -156,24 +157,62 @@ export function run(db: DB, sql: string, ...params: (string | number | null)[]) 
   return db.prepare(sql).run(...params);
 }
 
-/** Small additive migrations for existing databases. */
-function migrate(db: DB) {
-  // Push subscriptions belong to the child (all older ones) or the parent.
-  const ps = (db.prepare("PRAGMA table_info(push_subs)").all() as { name: string }[]).map((c) => c.name);
-  if (!ps.includes("audience")) db.exec("ALTER TABLE push_subs ADD COLUMN audience TEXT NOT NULL DEFAULT 'child'");
-  const st = (db.prepare("PRAGMA table_info(oidc_state)").all() as { name: string }[]).map((c) => c.name);
-  if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
-  if (!st.includes("app")) db.exec("ALTER TABLE oidc_state ADD COLUMN app TEXT");
-  // Language flashcards share the cards table: a language and a reading (kana for Japanese).
-  const cc = (db.prepare("PRAGMA table_info(cards)").all() as { name: string }[]).map((c) => c.name);
-  if (!cc.includes("lang")) db.exec("ALTER TABLE cards ADD COLUMN lang TEXT");
-  if (!cc.includes("reading")) db.exec("ALTER TABLE cards ADD COLUMN reading TEXT NOT NULL DEFAULT ''");
-  const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
-  if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
-  db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");
-  const th = (db.prepare("PRAGMA table_info(threads)").all() as { name: string }[]).map((c) => c.name);
-  if (!th.includes("lang")) db.exec("ALTER TABLE threads ADD COLUMN lang TEXT");
-  if (!th.includes("topic")) db.exec("ALTER TABLE threads ADD COLUMN topic TEXT");
+/**
+ * Numbered migrations. Each runs once, inside a transaction, and bumps PRAGMA user_version, so a
+ * crash half-way leaves the database as it was. Migration 1 is the older additive steps (which
+ * check before they change anything, so databases from before versioning take it safely).
+ */
+export const MIGRATIONS: ((db: DB) => void)[] = [
+  // 1: columns added before migrations were numbered.
+  (db) => {
+    const cols = (t: string) => (db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
+    // Push subscriptions belong to the child (all older ones) or the parent.
+    if (!cols("push_subs").includes("audience")) db.exec("ALTER TABLE push_subs ADD COLUMN audience TEXT NOT NULL DEFAULT 'child'");
+    const st = cols("oidc_state");
+    if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
+    if (!st.includes("app")) db.exec("ALTER TABLE oidc_state ADD COLUMN app TEXT");
+    // Language flashcards share the cards table: a language and a reading (kana for Japanese).
+    const cc = cols("cards");
+    if (!cc.includes("lang")) db.exec("ALTER TABLE cards ADD COLUMN lang TEXT");
+    if (!cc.includes("reading")) db.exec("ALTER TABLE cards ADD COLUMN reading TEXT NOT NULL DEFAULT ''");
+    if (!cols("messages").includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
+    db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");
+    const th = cols("threads");
+    if (!th.includes("lang")) db.exec("ALTER TABLE threads ADD COLUMN lang TEXT");
+    if (!th.includes("topic")) db.exec("ALTER TABLE threads ADD COLUMN topic TEXT");
+  },
+  // 2: delivery per reporter (so retries only go to the ones that failed), desk job attempts,
+  // capped retries for the journal and weekly summary, and indexes for the retention deletes.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS report_deliveries (
+        report_id INTEGER NOT NULL, reporter TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+        next_at INTEGER, last_error TEXT, delivered_ts INTEGER, PRIMARY KEY (report_id, reporter)
+      );
+      CREATE TABLE IF NOT EXISTS job_attempts (job TEXT NOT NULL, period TEXT NOT NULL, attempts INTEGER NOT NULL, last_ts INTEGER NOT NULL, PRIMARY KEY (job, period));
+      CREATE INDEX IF NOT EXISTS checkins_ts ON checkins(ts);
+      CREATE INDEX IF NOT EXISTS tool_log_ts ON tool_log(ts);
+      CREATE INDEX IF NOT EXISTS reports_status ON reports(status);
+      CREATE INDEX IF NOT EXISTS reports_ts ON reports(ts);
+    `);
+    const dj = (db.prepare("PRAGMA table_info(desk_jobs)").all() as { name: string }[]).map((c) => c.name);
+    if (!dj.includes("attempts")) db.exec("ALTER TABLE desk_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0");
+  },
+];
+
+export function migrate(db: DB) {
+  const version = () => (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  for (let v = version(); v < MIGRATIONS.length; v = version()) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      MIGRATIONS[v](db);
+      db.exec(`PRAGMA user_version = ${v + 1}`);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  }
   // Thread 1 is always the main chat.
   db.prepare("INSERT OR IGNORE INTO threads(id, ts, title, updated) VALUES (1, ?, 'Chat', ?)").run(Date.now(), Date.now());
 }
