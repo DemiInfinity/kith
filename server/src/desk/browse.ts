@@ -168,7 +168,8 @@ export class Browser {
     }
     try {
       const page = await this.desk.browse(url, why, jobId, this.deskRules(s));
-      const sample = page.text.slice(0, 6000);
+      // The same 8,000 characters are checked and passed on.
+      const sample = page.text.slice(0, 8000);
       const rules = checkOutputRules(sample).filter((c) => ["sexual", "grown_up_content"].includes(c));
       const verdict = rules.length ? { ok: false } : await this.safety.checkOutput(sample, why, "desk");
       if (!verdict.ok) {
@@ -177,7 +178,7 @@ export class Browser {
       }
       this.log(page.url, page.title, why, jobId, "read");
       logActivity(this.db, "🧭", `Read “${page.title}” (${new URL(page.url).hostname}) for ${why}`);
-      return { url: page.url, title: page.title, text: page.text.slice(0, 8000) };
+      return { url: page.url, title: page.title, text: sample };
     } catch (err) {
       const msg = (err as Error).message;
       this.log(url, "", why, jobId, /robot check/i.test(msg) ? "stopped: robot check" : `failed: ${msg}`);

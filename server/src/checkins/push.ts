@@ -45,7 +45,7 @@ export async function sendTo(db: DB, audience: Audience, payload: Record<string,
   let sent = 0;
   for (const row of all<{ endpoint: string; json: string }>(db, "SELECT endpoint, json FROM push_subs WHERE audience = ?", audience)) {
     try {
-      await sender.send(JSON.parse(row.json), JSON.stringify(payload), { TTL: ttl });
+      await sender.send(JSON.parse(row.json), JSON.stringify(payload), { TTL: ttl, timeout: 15_000 });
       sent++;
     } catch (err) {
       const code = (err as { statusCode?: number }).statusCode;

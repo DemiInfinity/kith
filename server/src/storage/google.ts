@@ -88,7 +88,7 @@ export const googleConfigured = () => ownClient() || viaConnect();
 
 /** What Kith Connect shares publicly (client id and the Picker key; never a secret). Cached for an hour. */
 let connectCfg: { at: number; v: { clientId: string; pickerApiKey: string; appId: string } } | null = null;
-export async function connectConfig(f: Fetch = fetch) {
+export async function connectConfig(f: Fetch = timedFetch) {
   if (connectCfg && Date.now() - connectCfg.at < 3_600_000) return connectCfg.v;
   const r = await f(`${config.google.connectUrl}/api/config`);
   if (!r.ok) throw new Error("Kith Connect didn't answer.");
@@ -128,8 +128,10 @@ export function authUrl(state: string, challenge: string, scopes: string[] = SCO
 }
 
 type Fetch = typeof fetch;
+/** Google calls give up after 20 seconds rather than stalling a chat turn or a scheduler tick. */
+const timedFetch: Fetch = (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(20_000) });
 
-export async function exchangeCode(code: string, verifier: string, f: Fetch = fetch, requested: string[] = SCOPES) {
+export async function exchangeCode(code: string, verifier: string, f: Fetch = timedFetch, requested: string[] = SCOPES) {
   const res = viaConnect()
     // Kith Connect adds the secret; only this Kith has the PKCE verifier, so the code is no use to anyone else.
     ? await f(`${config.google.connectUrl}/api/token`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, verifier }) })
@@ -155,7 +157,7 @@ export async function exchangeCode(code: string, verifier: string, f: Fetch = fe
   return { email: claims.email, refresh: j.refresh_token, access: j.access_token!, expiresIn: j.expires_in ?? 3600, scopes: granted };
 }
 
-export async function revoke(refresh: string, f: Fetch = fetch) {
+export async function revoke(refresh: string, f: Fetch = timedFetch) {
   await f(`${REVOKE_URL}?token=${encodeURIComponent(refresh)}`, { method: "POST" }).catch(() => undefined);
 }
 
@@ -166,7 +168,7 @@ export interface WriteLog { (tool: string, args: string, result: string, ok: boo
 export class GoogleDrive {
   private access: { token: string; expires: number } | null = null;
 
-  constructor(private db: DB, private log: WriteLog, private f: Fetch = fetch) {}
+  constructor(private db: DB, private log: WriteLog, private f: Fetch = timedFetch) {}
 
   state() { return loadGoogle(this.db); }
 

@@ -15,7 +15,8 @@ import { Safety } from "./safety/check.js";
 import { makeReporters } from "./reporting/reporter.js";
 import { Studio } from "./desk/studio.js";
 import { currentKey } from "./apikey.js";
-import { sessionFor, registerAuth } from "./auth.js";
+import { sessionFor, registerAuth, rateLimitKey } from "./auth.js";
+import { reqSerializer } from "./logging.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
 import { schedulerHealthy, startScheduler } from "./scheduler.js";
@@ -45,16 +46,6 @@ const APP_CSP = [
   "frame-ancestors 'self'",
 ].join("; ");
 
-// TODO(security session): replace with `import { reqSerializer } from "./logging.js"` once that lands.
-/** Request logs keep the path only: query strings can carry sign-in codes, states and search words. */
-function reqSerializer(req: { method?: string; url?: string; ip?: string }) {
-  const url = req.url ?? "";
-  const cut = url.search(/[?#]/);
-  return { method: req.method, url: cut === -1 ? url : url.slice(0, cut), remoteAddress: req.ip };
-}
-// TODO(security session): replace with `config.trustProxy` (KITH_TRUST_PROXY hops) once that lands.
-const TRUST_PROXY_HOPS = 1;
-
 /** How long a stop (docker compose down, an upgrade) waits for requests in flight. */
 const SHUTDOWN_GRACE_MS = 8_000;
 
@@ -76,11 +67,11 @@ async function main() {
     logger: { level: process.env.LOG_LEVEL ?? "info", serializers: { req: reqSerializer as never } },
     // Trust X-Forwarded-For from this many proxies in front (what a number does at runtime; the
     // types only take a function).
-    trustProxy: (_addr: string, hop: number) => hop < TRUST_PROXY_HOPS,
+    trustProxy: (_addr: string, hop: number) => hop < config.trustProxy,
     bodyLimit: 2_000_000,
   });
   await app.register(cookie);
-  await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+  await app.register(rateLimit, { max: 300, timeWindow: "1 minute", keyGenerator: rateLimitKey(db) });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: 16000 * 2 * 120 }, (_req, body, done) => done(null, body));
 
   app.addHook("onSend", async (req, reply) => {
@@ -146,6 +137,19 @@ async function main() {
       setHeaders: (res, p) => res.header("Cache-Control", p.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache"),
     });
     const indexHtml = fs.readFileSync(path.join(clientDir, "index.html"));
+    // Public pages: real HTML that search engines can read. "/" is the welcome page for anyone
+    // who isn't signed in, and the app for anyone who is.
+    const page = (name: string) => { const f = path.join(clientDir, `${name}.html`); return fs.existsSync(f) ? fs.readFileSync(f) : null; };
+    const publicPages: Record<string, Buffer | null> = { "/parents": page("parents"), "/terms": page("terms"), "/privacy": page("privacy"), "/setup": page("setup") };
+    const welcomeHtml = page("welcome");
+    const sendPage = (reply: import("fastify").FastifyReply, html: Buffer) => reply.type("text/html").header("Cache-Control", "no-cache").header("Vary", "Cookie").send(html);
+    app.get("/", (req, reply) => {
+      const signedIn = Boolean(sessionFor(db, req.cookies?.kith_sid));
+      return sendPage(reply, !signedIn && welcomeHtml ? welcomeHtml : indexHtml);
+    });
+    for (const [route, html] of Object.entries(publicPages)) {
+      if (html) app.get(route, (_req, reply) => sendPage(reply, html));
+    }
     app.get("/*", (req, reply) => {
       const p = path.join(clientDir, path.normalize(req.url.split("?")[0]).replace(/^(\.\.[/\\])+/, ""));
       if (p.startsWith(clientDir) && fs.existsSync(p) && fs.statSync(p).isFile()) return reply.sendFile(path.relative(clientDir, p));
