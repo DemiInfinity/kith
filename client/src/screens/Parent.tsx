@@ -200,7 +200,7 @@ function HeartbeatLog() {
 interface KeyStatus { set: boolean; source: "parent view" | "environment" | "none"; hint: string; canStore: boolean }
 
 /** The Anthropic API key: typed in here, checked with Anthropic, stored encrypted on the server, never shown again. */
-function ApiKeyCard({ onChanged }: { onChanged: () => void }) {
+function ApiKeyCard({ onChanged, companion }: { onChanged: () => void; companion: string }) {
   const [st, setSt] = useState<KeyStatus | null>(null);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -208,7 +208,7 @@ function ApiKeyCard({ onChanged }: { onChanged: () => void }) {
   useEffect(() => { api<KeyStatus>("/api/parent/apikey").then(setSt).catch(() => undefined); }, []);
   const save = async () => {
     setBusy(true); setMsg("Checking the key with Anthropic…");
-    try { setSt(await api<KeyStatus>("/api/parent/apikey", { method: "PUT", body: { key: key.trim() } })); setKey(""); setMsg("Saved. Pip can think now."); onChanged(); }
+    try { setSt(await api<KeyStatus>("/api/parent/apikey", { method: "PUT", body: { key: key.trim() } })); setKey(""); setMsg(`Saved. ${companion} can think now.`); onChanged(); }
     catch (e) { setMsg((e as Error).message); }
     setBusy(false);
   };
@@ -222,7 +222,7 @@ function ApiKeyCard({ onChanged }: { onChanged: () => void }) {
       <span className="small">Make the key on an API organisation in the Anthropic Console (Settings › API keys), and set a monthly limit there too. The key is checked with Anthropic, stored encrypted on your home server, and never shown again, only its last four characters.</span>
       <div className="pkey-status">
         <span className={`pcheck-dot ${st?.set ? "ok" : ""}`}><Icon name={st?.set ? "check" : "warn"} size={14} /></span>
-        <span>{!st ? "…" : st.set ? <>Key {st.hint} is set <span className="small">({st.source === "parent view" ? "saved here" : "from the server’s environment"})</span></> : "No key yet, so Pip can’t think."}</span>
+        <span>{!st ? "…" : st.set ? <>Key {st.hint} is set <span className="small">({st.source === "parent view" ? "saved here" : "from the server’s environment"})</span></> : `No key yet, so ${companion} can’t think.`}</span>
         {st?.source === "parent view" && <button className="btn ghost small" style={{ marginLeft: "auto" }} onClick={remove}>Remove</button>}
       </div>
       {st && !st.canStore ? (
@@ -279,7 +279,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
       </nav>}
       <div className="psec-list">
         {section === "settings" && <>
-        <ApiKeyCard onChanged={onSaved} />
+        <ApiKeyCard onChanged={onSaved} companion={companion} />
         <section className="card psec" id="set-notify">
           <h3 className="psec-h"><span className="psec-ic"><Icon name="bell" size={18} /></span>Notifications to you</h3>
           <span className="small">Notifications to your own phone or computer, separate from your child’s. Turn them on on each device you want them on. “Right now” reports come through even in quiet hours; everything else waits until quiet hours end. Your child’s chat text is never sent.</span>
