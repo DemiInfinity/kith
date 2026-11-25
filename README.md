@@ -163,4 +163,6 @@ Kith needs Node 22.13 or newer (it uses the built-in `node:sqlite`). `npm run de
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). You can run, study, change and share Kith. If you run a modified version as a service for other people, you must share your changes under the same licence.
 
+Other people's work Kith uses, and their licences (including Pip's Mac voice, Kokoro-82M, which is Apache-2.0): [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 Copyright (C) 2026 DemiInfinity and contributors. Kith isn't made by or affiliated with Anthropic.
