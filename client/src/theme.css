@@ -545,3 +545,5 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .topbar .tb-logo { grid-column: 1; }
 .topbar .tb-right { grid-column: 3; }
 .topbar .tb-dp { padding: 2px; background: var(--hearth); border: 2.5px solid var(--lilac); box-shadow: 0 0 0 3px var(--hearth), 0 8px 18px rgba(0,0,0,0.4); }
+.topbar .tb-label { border: 1.5px solid var(--lilac); }
+.topbar .tb-label b, .topbar .tb-label span { color: #fff; }
