@@ -113,8 +113,10 @@ On first start they download their models. After that, speech never leaves the h
   whisper with `KITH_STT_HOST` and `KITH_STT_PORT`.
 - **The three voices** on the Personality screen come from `KITH_VOICES` (`Label=piper-voice`). wyoming-piper downloads
   a named voice the first time it's asked for. Browse voices at https://rhasspy.github.io/piper-samples/.
-- **Accuracy vs speed:** `KITH_WHISPER_MODEL` trades the two (`tiny-int8` is quick; `base-int8` or `small-int8` are
-  more accurate).
+- **Accuracy vs speed:** `KITH_WHISPER_MODEL` trades the two. `base-int8` (the default) is accurate and keeps up on an
+  old Mac mini (about 4.5 s for 10 s of speech); `tiny-int8` is quicker but mishears a lot; `small-int8` is the most
+  accurate but too slow for calls on older machines. `KITH_WHISPER_PROMPT` (default "Hey Pip,") helps it spell your
+  companion's name: change it if you rename them.
 
 ## 5. Reports to the grown-up
 
@@ -378,7 +380,7 @@ is the default. Moving to a bigger machine later is only a change of settings in
 | `KITH_MEM_DESK` / `KITH_DESK_SHM` | `768m` / `256m` | `1536m` / `512m` |
 | `KITH_MEM_WHISPER` | `1536m` | `3g` |
 | `KITH_MEM_PIPER` | `512m` | `1g` |
-| `KITH_WHISPER_MODEL` | `tiny-int8` | `base-int8` or `small-int8` |
+| `KITH_WHISPER_MODEL` | `base-int8` | `tiny-int8` on very slow machines; `small-int8` on fast ones |
 | `KITH_DESK_BROWSER_IDLE_MINUTES` | `2` | `5` |
 
 Measured in the light profile with the tiny model: about 0.35 GB for all five containers when idle, about 0.6 GB
