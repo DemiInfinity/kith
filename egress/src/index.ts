@@ -7,7 +7,7 @@
 import http from "node:http";
 import net from "node:net";
 import dns from "node:dns/promises";
-import { isPrivateAddress, proxyAllows, type ProxyRules } from "./allow.js";
+import { eitherSet, isPrivateAddress, proxyAllows, type ProxyRules } from "./allow.js";
 
 const PORT = Number(process.env.EGRESS_PORT ?? 3128);
 const KITH = (process.env.KITH_INTERNAL_URL ?? "http://kith:8787").replace(/\/$/, "");
@@ -34,9 +34,9 @@ async function refresh() {
       listVersion = j.listVersion ?? 0;
       console.log(`[egress] block list loaded: ${bigList.size} domains`);
     }
-    const blocked = new Set(bigList);
-    for (const d of j.blocked ?? []) blocked.add(d);
-    rules = { mode, hosts: j.hosts, blocked, words: j.words ?? [] };
+    // The big list (often hundreds of thousands of domains) is kept as it is; only the family's own
+    // short list is rebuilt each refresh.
+    rules = { mode, hosts: j.hosts, blocked: eitherSet(bigList, new Set(j.blocked ?? [])), words: j.words ?? [] };
     enabled = j.enabled;
     loaded = true;
   } catch (err) {
@@ -64,6 +64,8 @@ function deny(what: string, why: string) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // The container's health check (a plain path, not a proxied URL).
+  if (req.url === "/health") { res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, loaded })); return; }
   // Plain HTTP through the proxy: GET/HEAD only, safe-listed hosts only.
   try {
     const url = new URL(req.url ?? "");
@@ -106,3 +108,9 @@ server.on("connect", async (req, client: net.Socket, head) => {
 });
 
 server.listen(PORT, () => console.log(`egress proxy on ${PORT} (${"block list or safe list, from Kith"})`));
+
+// docker compose down / upgrades: stop taking new connections and go.
+process.once("SIGTERM", () => {
+  server.close();
+  setTimeout(() => process.exit(0), 2_000).unref();
+});

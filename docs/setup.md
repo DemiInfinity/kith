@@ -233,10 +233,57 @@ docker compose logs -f kith
   - Turn on WebSocket support in the proxy (in Nginx Proxy Manager: "Websockets support"). Calls and live updates
     use it.
 - **Data** lives in two volumes:
-  - `kith-data`: the SQLite database.
+  - `kith-data`: the SQLite database and the chat archive.
   - `desk-data`: everything on the desk.
-  - Back up both.
-- **Upgrades:** `git pull && docker compose up -d --build`.
+  - Back up both (see Backups below).
+- **Upgrades:**
+  1. Back up first (see Backups).
+  2. Get the new version into your Kith folder: `git pull` if it's a git clone, or copy the new files over the old
+     ones (keep your `.env`; it isn't part of the download).
+  3. Rebuild and restart: `docker compose --profile voice up -d --build` (leave out `--profile voice` if you don't
+     run local voice).
+
+  The database updates itself on start: each change is numbered and runs once, inside a transaction, so a failed
+  start leaves it as it was. Stopping gives Kith a few seconds to finish requests in flight, and desk jobs that were
+  interrupted carry on after the restart (one interrupted twice is marked failed). `docker compose ps` shows each
+  service as healthy once it's up.
+
+## Backups
+
+Three things hold everything: the database (in `kith-data`, with the chat archive beside it), the desk's files (in
+`desk-data`), and your `.env`. Kith can keep running while you back up.
+
+1. A safe copy of the database. Copying `kith.sqlite` while Kith runs can catch it half-written; SQLite's
+   `VACUUM INTO` writes a consistent copy instead:
+
+   ```bash
+   docker compose exec kith node --disable-warning=ExperimentalWarning -e "new (require('node:sqlite').DatabaseSync)('/data/kith.sqlite').exec(\"VACUUM INTO '/data/backup.sqlite'\")"
+   docker compose cp kith:/data/backup.sqlite ./kith-$(date +%F).sqlite
+   docker compose exec kith rm /data/backup.sqlite
+   ```
+
+2. The chat archive and the desk's files:
+
+   ```bash
+   docker run --rm -v kith_kith-data:/v:ro -v "$PWD":/backup alpine tar czf /backup/kith-history-$(date +%F).tgz -C /v history
+   docker run --rm -v kith_desk-data:/v:ro -v "$PWD":/backup alpine tar czf /backup/desk-data-$(date +%F).tgz -C /v .
+   ```
+
+3. A copy of `.env`.
+
+Keep backups private, and somewhere other than the server itself: they hold chats, memories, reports and (in `.env`)
+your secrets. The saved API key and Google tokens in the database are encrypted with `KITH_SECRET_KEY`, so a database
+copy is only useful together with the same `.env`. Backups keep data past the retention period, so delete old ones on
+the same schedule (30 days, or what you set).
+
+To restore the database, stop Kith, put the copy in the volume as `kith.sqlite` (and remove any `kith.sqlite-wal` and
+`kith.sqlite-shm` beside it), then start Kith again:
+
+```bash
+docker compose stop kith
+docker run --rm -v kith_kith-data:/v -v "$PWD":/backup alpine sh -c "cp /backup/kith-2026-11-25.sqlite /v/kith.sqlite && rm -f /v/kith.sqlite-wal /v/kith.sqlite-shm && chown 1000:1000 /v/kith.sqlite"
+docker compose start kith
+```
 
 ## Skills and /commands
 

@@ -287,6 +287,11 @@ export async function release() {
   live = { ...live, why: "", busy: false };
 }
 
+/** The desk is stopping: close Chromium whatever it's doing (cookies and site data stay on disk). */
+export async function closeBrowser() {
+  await shutdown();
+}
+
 /** The screen went to sleep: close the browser now if nobody's using it (it starts again on demand). */
 export async function sleep(): Promise<boolean> {
   if (driver || live.busy || busyActing || !ctx) return false;

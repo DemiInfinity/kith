@@ -9,7 +9,7 @@ import { ZodError } from "zod";
 import crypto from "node:crypto";
 import { loadParentSettings } from "./settings.js";
 import { config } from "./config.js";
-import { openDb } from "./db.js";
+import { openDb, get } from "./db.js";
 import { AnthropicLLM } from "./llm.js";
 import { Safety } from "./safety/check.js";
 import { makeReporters } from "./reporting/reporter.js";
@@ -18,7 +18,7 @@ import { currentKey } from "./apikey.js";
 import { sessionFor, registerAuth } from "./auth.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
-import { startScheduler } from "./scheduler.js";
+import { schedulerHealthy, startScheduler } from "./scheduler.js";
 import { DeskClient } from "./desk/deskClient.js";
 import { GoogleBackend, Storage } from "./storage/storage.js";
 import { registerGoogle } from "./routes-google.js";
@@ -45,6 +45,19 @@ const APP_CSP = [
   "frame-ancestors 'self'",
 ].join("; ");
 
+// TODO(security session): replace with `import { reqSerializer } from "./logging.js"` once that lands.
+/** Request logs keep the path only: query strings can carry sign-in codes, states and search words. */
+function reqSerializer(req: { method?: string; url?: string; ip?: string }) {
+  const url = req.url ?? "";
+  const cut = url.search(/[?#]/);
+  return { method: req.method, url: cut === -1 ? url : url.slice(0, cut), remoteAddress: req.ip };
+}
+// TODO(security session): replace with `config.trustProxy` (KITH_TRUST_PROXY hops) once that lands.
+const TRUST_PROXY_HOPS = 1;
+
+/** How long a stop (docker compose down, an upgrade) waits for requests in flight. */
+const SHUTDOWN_GRACE_MS = 8_000;
+
 async function main() {
   if (!config.desk.token) throw new Error("KITH_DESK_TOKEN must be set (the shared secret between Kith and the desk).");
   if (config.devLogin) console.warn("⚠️  KITH_DEV_LOGIN is on: anyone who can reach this server can sign in. Local testing only.");
@@ -59,7 +72,13 @@ async function main() {
   const studio = new Studio(db, llm, safety, new DeskClient(), storage);
   studio.resume();
 
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" }, trustProxy: true, bodyLimit: 2_000_000 });
+  const app = Fastify({
+    logger: { level: process.env.LOG_LEVEL ?? "info", serializers: { req: reqSerializer as never } },
+    // Trust X-Forwarded-For from this many proxies in front (what a number does at runtime; the
+    // types only take a function).
+    trustProxy: (_addr: string, hop: number) => hop < TRUST_PROXY_HOPS,
+    bodyLimit: 2_000_000,
+  });
   await app.register(cookie);
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: 16000 * 2 * 120 }, (_req, body, done) => done(null, body));
@@ -78,7 +97,13 @@ async function main() {
     return reply.code(status).send({ error: status >= 500 ? "Something went wrong." : err.message });
   });
 
-  app.get("/api/public/health", async () => ({ ok: true }));
+  // The container's health check: the database answers and the scheduler has ticked recently.
+  app.get("/api/public/health", async (_req, reply) => {
+    let dbOk = false;
+    try { dbOk = get<{ ok: number }>(db, "SELECT 1 AS ok")?.ok === 1; } catch { /* not ok */ }
+    const ok = dbOk && schedulerHealthy();
+    return reply.code(ok ? 200 : 503).send({ ok });
+  });
   // The egress proxy asks for the desk browser's rules here (shared token; not a user API).
   app.get("/internal/egress", async (req, reply) => {
     const got = Buffer.from(req.headers.authorization ?? "");
@@ -131,8 +156,27 @@ async function main() {
     app.log.warn(`No built client at ${clientDir}; API only.`);
   }
 
-  startScheduler({ db, llm, safety, reporters, childName: childName(db), studio });
+  const scheduler = startScheduler({ db, llm, safety, reporters, childName: childName(db), studio });
   await app.listen({ port: config.port, host: config.host });
+
+  // Stopping (SIGTERM from Docker): no new ticks, let requests in flight finish (up to 8 seconds),
+  // then close the database cleanly. Desk jobs that were mid-way resume on the next start.
+  let stopping = false;
+  const stop = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    app.log.info(`${signal}: stopping`);
+    const force = setTimeout(() => { app.log.warn("Stopping took too long; exiting."); process.exit(1); }, SHUTDOWN_GRACE_MS + 2_000);
+    force.unref();
+    await Promise.race([
+      Promise.allSettled([scheduler.stop(), app.close()]),
+      new Promise((r) => setTimeout(r, SHUTDOWN_GRACE_MS).unref()),
+    ]);
+    try { db.close(); } catch { /* already closed */ }
+    process.exit(0);
+  };
+  process.once("SIGTERM", () => void stop("SIGTERM"));
+  process.once("SIGINT", () => void stop("SIGINT"));
 }
 
 main().catch((err) => {

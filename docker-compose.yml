@@ -24,7 +24,19 @@ services:
     volumes:
       - kith-data:/data
     networks: [default, deskland]
-    depends_on: [desk, egress]
+    depends_on:
+      desk: { condition: service_healthy }
+      egress: { condition: service_healthy }
+    # A small init (tini) passes Docker's stop signal on, so Kith can finish what it's doing.
+    init: true
+    stop_grace_period: 15s
+    # Healthy when the database answers and the scheduler has ticked in the last 20 minutes.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/api/public/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # The companion's desk: no internet (internal network), no API key, read-only filesystem.
@@ -48,6 +60,13 @@ services:
     security_opt: ["no-new-privileges:true"]
     mem_limit: ${KITH_MEM_DESK:-768m}
     pids_limit: 256
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   # The desk browser's only way to the internet: HTTPS to public hosts that aren't blocked; never private addresses.
@@ -62,6 +81,13 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     mem_limit: ${KITH_MEM_EGRESS:-128m}
+    init: true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3128/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # Local speech-to-text (Wyoming protocol). Audio is processed in memory and never stored.

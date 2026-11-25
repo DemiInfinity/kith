@@ -37,3 +37,24 @@ describe("block-list mode", () => {
     expect(proxyAllows("kith", r)).toBe(false);
   });
 });
+
+describe("addresses that hide a private one", () => {
+  it("blocks NAT64, 6to4, IPv4-compatible, site-local, multicast and benchmarking ranges", () => {
+    for (const ip of [
+      "64:ff9b::a00:1", "64:ff9b::10.0.0.1", "2002:c0a8:101::1", "::10.0.0.1", "::a00:1", "::", "0:0:0:0:0:0:0:1",
+      "fec0::1", "ff02::1", "ff00::", "198.18.0.1", "198.19.255.255", "2001::1", "2001:db8::1", "fe80::1%eth0", "::ffff:7f00:1", "not-an-ip",
+    ]) expect(isPrivateAddress(ip), ip).toBe(true);
+    for (const ip of ["198.20.0.1", "2a00:1450:4009:81f::200e", "2606:4700::6810:84e5", "::ffff:8.8.8.8"]) expect(isPrivateAddress(ip), ip).toBe(false);
+  });
+});
+
+describe("block list sets", () => {
+  it("checks the big list and the family's list without copying", async () => {
+    const { eitherSet, proxyAllows } = await import("../src/allow.js");
+    const big = new Set(["bet365.com"]);
+    const r = { mode: "blocklist" as const, hosts: [], blocked: eitherSet(big, new Set(["example.net"])), words: [] };
+    expect(proxyAllows("www.bet365.com", r)).toBe(false);
+    expect(proxyAllows("a.example.net", r)).toBe(false);
+    expect(proxyAllows("www.example.org", r)).toBe(true);
+  });
+});
