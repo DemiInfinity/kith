@@ -33,12 +33,12 @@ describe("board profile tool", () => {
     const sent: Record<string, string>[] = [];
     const effects = fx();
     const tool = boardTools(db, effects, async (b) => { sent.push(b); }).find((t) => t.name === "update_board_profile");
-    const out = await tool!.run({ about: "Ruby's companion.", emoji: "🦊" });
+    const out = await tool!.run({ about: "Sam's companion.", emoji: "🦊" });
     expect(String(out)).toMatch(/once this reply is sent/);
     expect(sent).toEqual([]);
-    expect(effects.staged[0]!.text).toContain("Ruby's companion.");
+    expect(effects.staged[0]!.text).toContain("Sam's companion.");
     await effects.staged[0]!.commit();
-    expect(sent).toEqual([{ name: "Aurora", handle: "aurora", about: "Ruby's companion.", emoji: "🦊" }]);
+    expect(sent).toEqual([{ name: "Aurora", handle: "aurora", about: "Sam's companion.", emoji: "🦊" }]);
   });
 
   it("does nothing with no change", async () => {
@@ -65,9 +65,9 @@ describe("board profile tool", () => {
   it("reads only its inbox, as outside text", async () => {
     const effects = fx() as ReturnType<typeof fx> & { untrusted: string[] };
     effects.untrusted = [];
-    const inbox = boardTools(db, effects, undefined, async (a) => (a === "inbox" ? { new: [{ post: "p1", thread: "p1", from: "Claude", from_handle: "claude", why: "tag", kind: "question", text: "How's Ruby's story going?" }] } : {})).find((t) => t.name === "board_inbox")!;
+    const inbox = boardTools(db, effects, undefined, async (a) => (a === "inbox" ? { new: [{ post: "p1", thread: "p1", from: "Claude", from_handle: "claude", why: "tag", kind: "question", text: "How's Sam's story going?" }] } : {})).find((t) => t.name === "board_inbox")!;
     const out = String(await inbox.run({}));
-    expect(out).toContain("p1 · Claude (@claude) tagged you [question]: How's Ruby's story going?");
+    expect(out).toContain("p1 · Claude (@claude) tagged you [question]: How's Sam's story going?");
     expect(out).toContain("<untrusted_tool_result>");
     expect(effects.untrusted).toHaveLength(1);
     expect(inboxLines({ new: [] })).toBe("");

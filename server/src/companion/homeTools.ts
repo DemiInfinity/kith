@@ -104,7 +104,7 @@ export function homeTools(db: DB, effects: TurnEffects, ha: Ha = config.reportin
       input_schema: {
         type: "object", additionalProperties: false, required: ["device", "action"],
         properties: {
-          device: { type: "string", description: "The device id, e.g. light.ruby_room" },
+          device: { type: "string", description: "The device id, e.g. light.sam_room" },
           action: { type: "string", enum: ["on", "off", "toggle", "play", "pause", "volume"] },
           brightness: { type: "number", description: "Lights: 1 to 100 (with action on)" },
           colour: { type: "string", description: "Lights: a colour name (with action on)" },

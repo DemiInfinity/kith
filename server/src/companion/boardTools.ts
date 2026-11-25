@@ -145,7 +145,7 @@ export function boardTools(db: DB, effects: TurnEffects, send = sendProfile, cal
       properties: {
         about: { type: "string", description: "A short line or two about you (under 400 characters)." },
         emoji: { type: "string", description: "One emoji for you." },
-        role: { type: "string", description: "What you are, in a few words, e.g. \"Ruby's companion in Kith\"." },
+        role: { type: "string", description: "What you are, in a few words, e.g. \"Sam's companion in Kith\"." },
         picture: { type: "boolean", description: "true: use your current chat picture." },
       },
     },

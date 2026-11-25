@@ -4,7 +4,7 @@ import { openDb } from "../src/db.js";
 import { allowed, describeStates, homeTools, serviceFor } from "../src/companion/homeTools.js";
 import type { Staged, TurnEffects } from "../src/companion/tools.js";
 
-const ha = { url: "http://ha.test", token: "t", devices: ["light.ruby_room", "switch.ruby_light_socket_1", "media_player.living_room", "scene.living_room_lights_on", "lock.front_door"] };
+const ha = { url: "http://ha.test", token: "t", devices: ["light.sam_room", "switch.sam_light_socket_1", "media_player.living_room", "scene.living_room_lights_on", "lock.front_door"] };
 const fx = (): TurnEffects & { staged: Staged[] } => ({ memories: [], jobs: [], characters: [], staged: [] });
 
 function fakeHa() {
@@ -12,7 +12,7 @@ function fakeHa() {
   const f = (async (url: string, init?: RequestInit) => {
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const states = [
-      { entity_id: "light.ruby_room", state: "on", attributes: { friendly_name: "Ruby room", brightness: 128 } },
+      { entity_id: "light.sam_room", state: "on", attributes: { friendly_name: "Sam room", brightness: 128 } },
       { entity_id: "light.demi_room", state: "on", attributes: { friendly_name: "Grown-up room" } },
       { entity_id: "media_player.living_room", state: "paused", attributes: { friendly_name: "Living Room", volume_level: 0.3 } },
     ];
@@ -31,7 +31,7 @@ describe("home tools", () => {
     const { f } = fakeHa();
     const [look] = homeTools(openDb(":memory:"), fx(), ha, f);
     const out = String(await look!.run({}));
-    expect(out).toContain("Ruby room (light.ruby_room): on, 50%");
+    expect(out).toContain("Sam room (light.sam_room): on, 50%");
     expect(out).toContain("volume 30%");
     expect(out).not.toContain("Grown-up room");
   });
@@ -48,11 +48,11 @@ describe("home tools", () => {
     const { f, calls } = fakeHa();
     const effects = fx();
     const [, act] = homeTools(openDb(":memory:"), effects, ha, f);
-    await act!.run({ device: "light.ruby_room", action: "on", brightness: 40, colour: "pink" });
+    await act!.run({ device: "light.sam_room", action: "on", brightness: 40, colour: "pink" });
     expect(calls).toEqual([]);
     await effects.staged[0]!.commit();
     expect(calls[0]!.url).toBe("http://ha.test/api/services/light/turn_on");
-    expect(calls[0]!.body).toEqual({ entity_id: "light.ruby_room", brightness_pct: 40, rgb_color: [255, 105, 180] });
+    expect(calls[0]!.body).toEqual({ entity_id: "light.sam_room", brightness_pct: 40, rgb_color: [255, 105, 180] });
   });
 
   it("maps speakers and scenes", () => {
