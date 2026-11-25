@@ -117,7 +117,10 @@ Kith is **young software, made with love and in daily use by its author's family
 
 **Coming next:**
 - **More than one child.** Today, one install looks after one child. Next up: a companion, chats and allowance for each child, with siblings' things kept private from each other.
-- A one-click setup for people who don't run servers.
+- **Age bands:** Kith adjusts to the child's age (8–17), with safeguards for each age that the grown-up can review.
+- **A 3D Pip** that looks around, lip-syncs in calls and can be designed from a description.
+
+Kith is self-hosted only: each family runs its own copy and is responsible for it (see the [terms](https://ai.hearthstream.xyz/terms)). Nobody hosts it for you.
 
 Ideas and help are very welcome.
 
