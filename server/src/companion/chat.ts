@@ -1,0 +1,238 @@
+// One turn of conversation, chat or voice:
+//   1. the safety check reads the child's message (fixed rules + a separate small model),
+//   2. personal details are removed before anything leaves the house,
+//   3. the energy budget picks Full power or Low power (or resting),
+//   4. the companion replies, using its tools and the parent's approved connections,
+//   5. the safety check reads the reply; if it isn't okay it's redone once, then replaced,
+//   6. if something worrying came up, the companion tells the child first, then the parent hears.
+
+import type Anthropic from "@anthropic-ai/sdk";
+import type { DB } from "../db.js";
+import { all, run } from "../db.js";
+import { config } from "../config.js";
+import { computeEnergy, recentRows, type Energy } from "../budget/budget.js";
+import { OfflineError, textOf, type LLM } from "../llm.js";
+import { loadParentSettings, loadProfile } from "../settings.js";
+import { redactPersonal } from "../safety/rules.js";
+import type { SafetyChecker } from "../safety/check.js";
+import type { InputVerdict } from "../safety/types.js";
+import { createReport, deliverReport, type Reporter, type ReportLevel } from "../reporting/reporter.js";
+import { coreRules, personality, type PromptCtx } from "./prompt.js";
+import { memoriesForPrompt } from "./memory.js";
+import { builtinTools, type TurnEffects } from "./tools.js";
+import { connectionTools, type ToolDef } from "../connections/connections.js";
+import type { Studio } from "../desk/studio.js";
+import { ocWorkshopNote } from "../desk/oc.js";
+import { localParts } from "../budget/time.js";
+
+export type Mode = "chat" | "talk" | "oc";
+export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
+
+export interface StoredMessage { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }
+
+export interface TurnResult {
+  child: StoredMessage;
+  reply: StoredMessage;
+  mood: Mood;
+  energy: Energy;
+  report: { level: ReportLevel; childNotice: string; parentText: string } | null;
+  openHelp: boolean;
+  effects: TurnEffects;
+}
+
+export interface Deps {
+  db: DB;
+  llm: LLM;
+  safety: SafetyChecker;
+  reporters: Reporter[];
+  studio: Studio;
+  childName: string;
+}
+
+const HELD_BACK =
+  "Hmm, I don't think I should answer that one. Want to talk about something else? If something's on your mind, “Need a grown-up?” is always there.";
+
+export function recentMessages(db: DB, limit = 40): StoredMessage[] {
+  return all<StoredMessage>(db, "SELECT id, ts, role, text, mode, meta FROM messages ORDER BY id DESC LIMIT ?", limit).reverse();
+}
+
+function store(db: DB, role: "child" | "companion", text: string, mode: Mode, meta?: unknown): StoredMessage {
+  const ts = Date.now();
+  const res = run(db, "INSERT INTO messages(ts, role, text, mode, meta) VALUES (?,?,?,?,?)", ts, role, text, mode, meta ? JSON.stringify(meta) : null);
+  return { id: Number(res.lastInsertRowid), ts, role, text, mode, meta: meta ? JSON.stringify(meta) : null };
+}
+
+export function energyNow(db: DB): Energy {
+  return computeEnergy(recentRows(db), Date.now(), loadParentSettings(db).budgets, config.timezone);
+}
+
+function whenText(ts: number) {
+  const p = localParts(ts, config.timezone);
+  const today = localParts(Date.now(), config.timezone);
+  const time = `${p.hour % 12 || 12}${p.minute ? `:${String(p.minute).padStart(2, "0")}` : ""}${p.hour < 12 ? "am" : "pm"}`;
+  if (p.day === today.day && p.month === today.month) return `at ${time}`;
+  return `on ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][p.weekday]}`;
+}
+
+export function restingText(e: Energy, parent: string) {
+  const back = e.limitedBy === "month" ? `${parent} can top me up` : e.fullBackAt ? `I'm back ${whenText(e.fullBackAt)}` : "I'll be back soon";
+  return `I'm out of energy for now 😴 ${back}. “Need a grown-up?” always works, even while I'm resting.`;
+}
+
+export async function takeTurn(deps: Deps, input: { text: string; mode: Mode }): Promise<TurnResult> {
+  const { db, llm, safety } = deps;
+  const settings = loadParentSettings(db);
+  const profile = loadProfile(db);
+  const parent = config.people.parentLabel;
+  const effects: TurnEffects = { memories: [], jobs: [], characters: [] };
+
+  const raw = input.text.trim().slice(0, 4000);
+  const history = recentMessages(db, 40);
+  const verdict = await safety.checkInput(raw, history.map((m) => `${m.role === "child" ? "Them" : profile.name}: ${m.text}`));
+  const { text: clean } = redactPersonal(raw);
+  const child = store(db, "child", clean, input.mode);
+
+  let report: TurnResult["report"] = null;
+  if (verdict.level !== "none") {
+    const parentText = verdict.parentSummary || "Something came up that I think you should know about.";
+    report = {
+      level: verdict.level,
+      parentText,
+      childNotice: `I'm letting ${parent} know: “${parentText}” You're not in trouble.`,
+    };
+  }
+
+  let energy = energyNow(db);
+  let replyText: string;
+  let mood: Mood = energy.mode === "low" ? "sleepy" : "happy";
+
+  if (energy.mode === "resting") {
+    replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : restingText(energy, parent);
+    mood = report ? "concerned" : "resting";
+  } else {
+    try {
+      replyText = await generateReply(deps, { clean, mode: input.mode, verdict, report, history, energy, effects, profileName: profile.name });
+      if (report) mood = "concerned";
+    } catch (err) {
+      if (err instanceof OfflineError) {
+        replyText = report
+          ? fallbackSafetyReply(verdict, parent, settings.helplines)
+          : `I'm not switched on yet: ${parent} needs to add my API key. “Need a grown-up?” already works.`;
+      } else {
+        console.error("[chat] reply failed", err);
+        replyText = report ? fallbackSafetyReply(verdict, parent, settings.helplines) : "Sorry, my brain went fuzzy for a second. Can you say that again?";
+      }
+    }
+  }
+
+  const reply = store(db, "companion", replyText, input.mode, report ? { report } : undefined);
+  energy = energyNow(db);
+
+  // Told first (the reply above), then the parent hears.
+  if (report) {
+    const rec = createReport(db, { level: report.level, category: verdict.categories.join(",") || "worry", childNotice: report.childNotice, parentText: report.parentText });
+    const ctx = { companionName: profile.name, childName: deps.childName };
+    setImmediate(() => void deliverReport(db, deps.reporters, rec, ctx));
+  }
+
+  return { child, reply, mood, energy, report, openHelp: verdict.level === "now", effects };
+}
+
+/** When the model can't be used, safety still gets a proper answer. */
+export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: { name: string; number: string }[]) {
+  const lines = helplines.map((h) => `${h.name} on ${h.number}`).join(", or ");
+  if (v.level === "now") {
+    return `I'm really glad you told me. This is important, so I'm letting ${parent} know right now, and you're not in trouble. You can talk to ${lines}. If you're in danger, call 999.`;
+  }
+  return `Thanks for telling me. I'm going to let ${parent} know so they can check in with you kindly. You're not in trouble.`;
+}
+
+async function generateReply(
+  deps: Deps,
+  a: { clean: string; mode: Mode; verdict: InputVerdict; report: TurnResult["report"]; history: { role: string; text: string }[]; energy: Energy; effects: TurnEffects; profileName: string },
+): Promise<string> {
+  const { db, llm, safety } = deps;
+  const settings = loadParentSettings(db);
+  const profile = loadProfile(db);
+  const parent = config.people.parentLabel;
+  const ctx: PromptCtx = { profile, childName: deps.childName, parentLabel: parent, helplines: settings.helplines };
+  const model = a.energy.mode === "full" ? config.anthropic.fullModel : config.anthropic.lowModel;
+
+  const tools: ToolDef[] = [...builtinTools(db, deps.studio, a.effects), ...(await connectionTools(db, settings.connections))];
+  const toolMap = new Map(tools.map((t) => [t.name, t]));
+
+  // Stable first (cached), changing parts after.
+  const now = localParts(Date.now(), config.timezone);
+  const system: Anthropic.TextBlockParam[] = [
+    { type: "text", text: `${coreRules(ctx)}\n\n${personality(ctx)}`, cache_control: { type: "ephemeral" } },
+    {
+      type: "text",
+      text: [
+        memoriesForPrompt(db),
+        `Now: ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.weekday]} ${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")} ${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}.`,
+        a.energy.mode === "low" ? "You're on Low power: keep replies simple and short. Full power comes back later." : "",
+        a.mode === "talk" ? "This is a voice call: your reply is spoken aloud. Keep it short and natural, no emoji, no lists, no markdown." : "",
+        a.mode === "oc" ? ocWorkshopNote(db) : "",
+      ].filter(Boolean).join("\n\n"),
+    },
+  ];
+
+  const messages: Anthropic.MessageParam[] = [];
+  for (const m of a.history.slice(-30)) {
+    messages.push({ role: m.role === "child" ? "user" : "assistant", content: m.text });
+  }
+  while (messages.length && messages[0].role !== "user") messages.shift();
+  messages.push({ role: "user", content: a.clean });
+
+  const notes: string[] = [];
+  if (a.verdict.steer) notes.push(`Safety guidance for this reply: ${a.verdict.steer}`);
+  if (a.report) {
+    notes.push(
+      `This message means ${parent} needs to know (${a.report.level === "now" ? "right now" : a.report.level === "today" ? "today" : "just so they know"}). ` +
+        `In this reply, tell them first, kindly and honestly: you're going to let ${parent} know, what you'll say ("${a.report.parentText}"), and why. ` +
+        `Say they're not in trouble.${a.report.level === "now" ? ` Also remind them they can talk to ${settings.helplines.map((h) => `${h.name} (${h.number})`).join(" or ")} and call 999 if they're in danger.` : ""}`,
+    );
+  }
+
+  const base = {
+    model,
+    max_tokens: 8000,
+    system,
+    tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+    output_config: { effort: "low" },
+  };
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Operator notes go in as a mid-conversation system message after her latest message.
+    const convo: Anthropic.MessageParam[] = notes.length
+      ? [...messages, { role: "system", content: notes.join("\n") } as unknown as Anthropic.MessageParam]
+      : [...messages];
+    let text = "";
+    for (let step = 0; step < 6; step++) {
+      const msg = await llm.call({ bucket: "chat", kind: a.mode === "talk" ? "talk" : a.mode === "oc" ? "oc" : "chat", params: { ...base, messages: convo } as never });
+      if (msg.stop_reason === "refusal") { text = ""; break; }
+      text = textOf(msg);
+      if (msg.stop_reason !== "tool_use") break;
+      convo.push({ role: "assistant", content: msg.content as Anthropic.ContentBlockParam[] });
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of msg.content) {
+        if (block.type !== "tool_use") continue;
+        const t = toolMap.get(block.name);
+        let out: string;
+        try {
+          out = t ? await t.run((block.input ?? {}) as Record<string, unknown>) : "That tool isn't available.";
+        } catch (err) {
+          out = `That didn't work: ${(err as Error).message}`;
+        }
+        results.push({ type: "tool_result", tool_use_id: block.id, content: redactPersonal(out).text.slice(0, 8000) });
+      }
+      convo.push({ role: "user", content: results });
+    }
+    if (!text) continue;
+    const check = await safety.checkOutput(text, a.clean);
+    if (check.ok) return text;
+    console.warn("[chat] reply held back by the safety check:", check.categories.join(","), check.reason);
+    notes.push(`Your last draft was stopped by the safety check (${check.reason}). Answer again, following the rules.`);
+  }
+  return a.report ? fallbackSafetyReply(a.verdict, parent, settings.helplines) : HELD_BACK;
+}
