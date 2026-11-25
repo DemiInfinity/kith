@@ -522,3 +522,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .pstatus { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-2); margin: 2px 0 4px; }
 .pstatus b { color: var(--text); }
 .topbar .tb-logo img { width: 38px; height: 38px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); display: block; }
+/* The picture hangs over the bottom edge of the header bar, with the name and status beneath it. */
+.topbar { position: relative; align-items: start; background: none; border-bottom: 0; padding-bottom: 6px; }
+.topbar::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--safe-top) + 58px); background: var(--card-2); border-bottom: 1px solid var(--line); z-index: 0; }
+.topbar > * { position: relative; z-index: 1; }
+.topbar .tb-logo, .topbar .tb-right { margin-top: 2px; }
+.topbar .tb-who { margin-top: 18px; }
+.topbar .tb-dp { display: grid; border-radius: 50%; padding: 3px; background: var(--hearth); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
+.topbar.slim { padding-bottom: 0; min-height: calc(var(--safe-top) + 58px); }

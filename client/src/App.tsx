@@ -191,7 +191,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             <button className="tb-logo" onClick={() => go("/")} aria-label="Kith home"><img src="/icon-192.png" alt="" width={38} height={38} /></button>
             {!onProfile && (
               <button className="tb-who" onClick={() => go("/pip")} aria-label={`${name}’s profile. ${name} is ${doing}.`}>
-                <Avatar look={me.profile.look} mood={baseMood} size={54} variant="side" laptop={!!working} />
+                <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
                 <b>{name}</b>
                 <span aria-live="polite">{doing}</span>
               </button>
