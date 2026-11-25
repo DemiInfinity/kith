@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-music-watch"
+description = "Enables the music_watch command without any pre-configured scope."
+commands.allow = ["music_watch"]
+
+[[permission]]
+identifier = "deny-music-watch"
+description = "Denies the music_watch command without any pre-configured scope."
+commands.deny = ["music_watch"]

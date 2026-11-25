@@ -27,6 +27,10 @@ fn main() {
         "mini_mute",
         "mini_end",
         "mini_focus_main",
+        "voice_status",
+        "voice_prepare",
+        "voice_speak",
+        "music_watch",
     ])))
     .expect("failed to run tauri-build");
 }
