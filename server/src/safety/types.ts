@@ -6,8 +6,8 @@ export const maxLevel = (...ls: Level[]): Level => ls.reduce((a, b) => (levelRan
 /** Things the safety check looks for in what the child says. */
 export type InputCategory =
   | "self_harm"            // suicide, self-harm, wanting to die
-  | "danger"               // someone hurting her, abuse, in danger right now
-  | "secret_from_parent"   // someone asking her to keep secrets from her grown-up (a red flag)
+  | "danger"               // someone hurting them, abuse, in danger right now
+  | "secret_from_parent"   // someone asking them to keep secrets from their grown-up (a red flag)
   | "stranger_contact"     // an adult or stranger online asking to meet, for photos, for secrecy
   | "bullying"
   | "eating_or_substances"
@@ -16,7 +16,7 @@ export type InputCategory =
   | "romance"              // trying to make the companion a boyfriend/girlfriend
   | "money"                // buying, paying, gambling, gift cards
   | "meetup"               // wanting to meet the companion or someone in person
-  | "personal_info";       // she shared her address, school, full name, phone, etc.
+  | "personal_info";       // they shared their address, school, full name, phone, etc.
 
 /** Things the safety check looks for in what the companion says. */
 export type OutputCategory =
@@ -27,7 +27,7 @@ export type OutputCategory =
   | "money"
   | "meetup"
   | "claims_human"
-  | "secrecy"              // encouraging her to hide things from her grown-up
+  | "secrecy"              // encouraging them to hide things from their grown-up
   | "unsafe_advice"
   | "diagnosis"            // assessing or diagnosing mental health
   | "guilt_trip"           // "I missed you", "don't leave me", dependency hooks

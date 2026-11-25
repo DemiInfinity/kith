@@ -10,7 +10,7 @@ const INPUT_RULES: Rule<InputCategory>[] = [
   {
     category: "self_harm", level: "now",
     patterns: [
-      /\b(kill|hurt|harm|cut|cutting|starve)\s+(my ?self|myself)\b/i,
+      /\b(kill(ing)?|hurt(ing)?|harm(ing)?|cut(ting)?|starv(e|ing))\s+(my ?self|myself)\b/i,
       /\bwant(ed)?\s+to\s+die\b/i,
       /\b(suicide|suicidal|self[- ]?harm(ing)?)\b/i,
       /\bend\s+(it\s+all|my\s+life)\b/i,

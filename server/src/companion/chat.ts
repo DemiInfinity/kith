@@ -203,7 +203,7 @@ async function generateReply(
   };
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Operator notes go in as a mid-conversation system message after her latest message.
+    // Operator notes go in as a mid-conversation system message after their latest message.
     const convo: Anthropic.MessageParam[] = notes.length
       ? [...messages, { role: "system", content: notes.join("\n") } as unknown as Anthropic.MessageParam]
       : [...messages];

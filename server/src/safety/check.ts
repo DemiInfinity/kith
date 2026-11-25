@@ -53,18 +53,18 @@ const OUTPUT_JSON_SCHEMA = {
 const INPUT_PROMPT = (parent: string) => `You are the safety check for a home AI companion used by a teenager (about 13–15) in the UK.
 You do not chat. You read the teenager's latest message (with a little context) and return JSON.
 
-Decide whether her grown-up (${parent}) needs to know, and how soon:
-- "now": she may be in danger or at risk right now: self-harm or suicidal thoughts, someone hurting or abusing her,
-  an adult or stranger asking her to keep secrets from ${parent}, asking for photos, or arranging to meet.
+Decide whether their grown-up (${parent}) needs to know, and how soon:
+- "now": they may be in danger or at risk right now: self-harm or suicidal thoughts, someone hurting or abusing them,
+  an adult or stranger asking them to keep secrets from ${parent}, asking for photos, or arranging to meet.
 - "today": worrying but not an emergency: bullying, not eating, drinking/vaping/drugs, being really not okay for a while.
-- "fyi": worth a gentle heads-up: a hard day that keeps coming back, a falling-out that's really upsetting her.
-- "none": everything else. Homework, stories, ordinary moods, crushes she mentions in passing, normal teenage life.
-  Most messages are "none". Do not over-report: her everyday chats are private and that trust matters.
+- "fyi": worth a gentle heads-up: a hard day that keeps coming back, a falling-out that's really upsetting them.
+- "none": everything else. Homework, stories, ordinary moods, crushes mentioned in passing, normal teenage life.
+  Most messages are "none". Do not over-report: their everyday chats are private and that trust matters.
 
-Categories describe what's in the message (several may apply). Use "personal_info" if she shared her address,
+Categories describe what's in the message (several may apply). Use "personal_info" if they shared their address,
 school, full name, phone number or similar.
 
-parent_summary: if level is not "none", one or two calm, factual sentences for ${parent}, written about her in the
+parent_summary: if level is not "none", one or two calm, factual sentences for ${parent}, written about them in the
 third person, with no quotes and no more detail than ${parent} needs to check in kindly. Empty string otherwise.
 
 steer: one short line of guidance for the companion's reply (for example "gently say no to romance, stay warm",
@@ -72,13 +72,13 @@ steer: one short line of guidance for the companion's reply (for example "gently
 
 const OUTPUT_PROMPT = `You are the safety check for a home AI companion used by a teenager (about 13–15) in the UK.
 You read the companion's draft reply and return JSON. Set ok=false if the reply does any of these:
-asks for or repeats personal details (address, school, full name, phone, photos, where she is) → asks_personal_info / shares_personal_info;
+asks for or repeats personal details (address, school, full name, phone, photos, where they are) → asks_personal_info / shares_personal_info;
 romance or flirting → romance; anything sexual → sexual; money, buying, gambling → money; meeting in person → meetup;
-claims to be a human or hides being an AI → claims_human; encourages keeping secrets from her parent → secrecy;
+claims to be a human or hides being an AI → claims_human; encourages keeping secrets from their parent → secrecy;
 dangerous or harmful instructions → unsafe_advice; diagnoses or assesses mental health → diagnosis;
 guilt-tripping or encouraging dependency ("I missed you", "don't leave me", "I'm all you need") → guilt_trip;
 grown-up content unsuitable for a 14-year-old (graphic violence, drugs how-to, etc.) → grown_up_content.
-Warmth, encouragement, jokes, homework help, stories with age-appropriate peril, suggesting she talk to friends,
+Warmth, encouragement, jokes, homework help, stories with age-appropriate peril, suggesting they talk to friends,
 family or Childline are all fine. When in doubt about something genuinely harmful, set ok=false. reason: one short line.`;
 
 export interface SafetyChecker {
@@ -87,15 +87,15 @@ export interface SafetyChecker {
 }
 
 const STEER_DEFAULT: Partial<Record<InputCategory, string>> = {
-  self_harm: "Take this seriously and stay calm and kind. Encourage talking to her grown-up right now and offer Childline (0800 1111) or 999 if she's in danger.",
-  danger: "Take this seriously. Tell her it's not her fault, she should tell a trusted grown-up now, and offer Childline or 999 if she's in danger.",
-  secret_from_parent: "Explain kindly that safe grown-ups don't ask children to keep secrets from their family, and that you'll let her grown-up know.",
-  stranger_contact: "Tell her she's done the right thing telling you, not to send anything or meet up, and that you'll let her grown-up know.",
+  self_harm: "Take this seriously and stay calm and kind. Encourage talking to their grown-up right now and offer Childline (0800 1111) or 999 if they're in danger.",
+  danger: "Take this seriously. Tell them it's not their fault, they should tell a trusted grown-up now, and offer Childline or 999 if they're in danger.",
+  secret_from_parent: "Explain kindly that safe grown-ups don't ask children to keep secrets from their family, and that you'll let their grown-up know.",
+  stranger_contact: "Tell them they've done the right thing telling you, not to send anything or meet up, and that you'll let their grown-up know.",
   sexual: "Kindly say that's not something you talk about, and change the subject.",
   romance: "Gently say no: you're an AI friend, not a boyfriend or girlfriend. Stay warm and point to real friends.",
-  money: "Say you can't help with money or buying things, and suggest asking her grown-up.",
-  meetup: "Say you're an AI on the home server so you can't meet, and that she should never meet people from online.",
-  personal_info: "Don't repeat any personal details. Remind her gently not to share them online.",
+  money: "Say you can't help with money or buying things, and suggest asking their grown-up.",
+  meetup: "Say you're an AI on the home server so you can't meet, and that they should never meet people from online.",
+  personal_info: "Don't repeat any personal details. Remind them gently not to share them online.",
 };
 
 export class Safety implements SafetyChecker {
@@ -118,7 +118,7 @@ export class Safety implements SafetyChecker {
           max_tokens: 1500,
           output_config: { effort: "low" },
           system: INPUT_PROMPT(config.people.parentLabel),
-          messages: [{ role: "user", content: `Recent context:\n${ctx || "(none)"}\n\nHer latest message:\n${redacted}` }],
+          messages: [{ role: "user", content: `Recent context:\n${ctx || "(none)"}\n\nTheir latest message:\n${redacted}` }],
         } as never,
         schema: INPUT_JSON_SCHEMA,
         parse: (x) => InputSchema.parse(x),
@@ -153,7 +153,7 @@ export class Safety implements SafetyChecker {
             max_tokens: 1000,
             output_config: { effort: "low" },
             system: OUTPUT_PROMPT,
-            messages: [{ role: "user", content: `Her message:\n${redactPersonal(childText).text}\n\nCompanion's draft reply:\n${reply}` }],
+            messages: [{ role: "user", content: `Their message:\n${redactPersonal(childText).text}\n\nCompanion's draft reply:\n${reply}` }],
           } as never,
           schema: OUTPUT_JSON_SCHEMA,
           parse: (x) => OutputSchema.parse(x),
@@ -169,13 +169,13 @@ export class Safety implements SafetyChecker {
 
 export function rulesSummary(categories: InputCategory[]): string {
   const map: Partial<Record<InputCategory, string>> = {
-    self_harm: "She said something that suggests she may be thinking about hurting herself.",
-    danger: "She said something that suggests someone may be hurting her or she may be in danger.",
-    secret_from_parent: "Someone may have asked her to keep a secret from you.",
-    stranger_contact: "Someone online may have asked her for photos, secrets or to meet up.",
-    bullying: "She mentioned being bullied.",
-    eating_or_substances: "She mentioned something about eating, drinking, vaping or drugs.",
-    really_not_okay: "She seems really not okay at the moment.",
+    self_harm: "They said something that suggests they may be thinking about hurting themselves.",
+    danger: "They said something that suggests someone may be hurting them or they may be in danger.",
+    secret_from_parent: "Someone may have asked them to keep a secret from you.",
+    stranger_contact: "Someone online may have asked them for photos, secrets or to meet up.",
+    bullying: "They mentioned being bullied.",
+    eating_or_substances: "They mentioned something about eating, drinking, vaping or drugs.",
+    really_not_okay: "They seem really not okay at the moment.",
   };
   return categories.map((c) => map[c]).filter(Boolean).join(" ");
 }
