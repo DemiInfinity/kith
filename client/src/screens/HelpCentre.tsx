@@ -89,8 +89,8 @@ export function KidHelp({ me, go }: { me: Me; go: (to: string) => void }) {
   ];
   return (
     <div className="screen narrow">
-      <span className="hand">stuck? no worries</span>
       <h2 className="screen-title">Help</h2>
+      <span className="hand sub">stuck? no worries</span>
       <HelpCentre topics={topics} kid />
       <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <span className="psec-ic"><Icon name="chat2" size={18} /></span>

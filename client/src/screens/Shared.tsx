@@ -26,8 +26,8 @@ export function Shared({ me }: { me: Me }) {
 
   return (
     <div className="screen narrow">
-      <span className="hand">nothing secret here</span>
       <h2 className="screen-title">What {parent} can see</h2>
+      <span className="hand sub">nothing secret here</span>
       <div className="card" style={{ gap: 12 }}>
         {sees.map(([yes, title, d]) => (
           <div key={title} className="row" style={{ alignItems: "flex-start" }}>

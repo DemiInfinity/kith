@@ -38,8 +38,8 @@ export function Notifications({ me, onSaved }: { me: Me; onSaved: (p: Profile) =
 
   return (
     <div className="screen narrow">
-      <span className="hand">on your phone</span>
       <h2 className="screen-title">Notifications</h2>
+      <span className="hand sub">on your phone</span>
       {mac && (
         <div className="card" style={{ gap: 10 }}>
           <b>On this Mac, notifications come from the Kith app</b>

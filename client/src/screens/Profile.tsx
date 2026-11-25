@@ -210,8 +210,8 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
   ];
   return (
     <div className="screen narrow dgrid">
-      <span className="hand">yours</span>
       <h2 className="screen-title">Settings</h2>
+      <span className="hand sub">yours</span>
       <b>Usage</b>
       {state && <UsageLimits energy={state.energy} deskPercent={deskToday?.budget.percent ?? state.desk.percent} name={name} />}
       <b style={{ marginTop: 6 }}>{name}’s desk</b>

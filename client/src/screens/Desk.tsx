@@ -170,8 +170,8 @@ export function Desk({ me, energy, canEdit = true }: { me: Me; energy?: Energy; 
 
   return (
     <div className="screen narrow">
-      <span className="hand">what {name}’s been up to</span>
       <h2 className="screen-title">{name}’s desk</h2>
+      <span className="hand sub">what {name}’s been up to</span>
       {energy && <EnergyCard energy={energy} />}
       {active.map((j) => (
         <div key={j.id} className="card glow" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>

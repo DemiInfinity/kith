@@ -25,8 +25,8 @@ export function Connectors({ me }: { me: Me }) {
   useEffect(() => { api<{ connectors: Connector[] }>("/api/connectors").then((r) => setList(r.connectors)).catch(() => setList([])); }, []);
   return (
     <div className="screen narrow dgrid">
-      <span className="hand">what {name} can use</span>
       <h2 className="screen-title">Connectors and skills</h2>
+      <span className="hand sub">what {name} can use</span>
       <span className="small">{me.parentLabel} chooses these. Each one is either <b>look only</b> or <b>can act</b>, and {me.parentLabel} can see every time {name} uses one. {name} never spends money, messages anyone or posts online, whatever is connected.</span>
       {list === null && <span className="small">…</span>}
       {list?.length === 0 && <div className="card full"><b>Nothing connected yet</b><span className="small">{name} just chats, helps and makes things on its desk for now. Ask {me.parentLabel} if there’s something you’d like {name} to be able to use.</span></div>}

@@ -79,8 +79,8 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
 
   return (
     <div className="screen narrow">
-      <span className="hand">make {p.name || "me"}, {p.name || "me"}</span>
       <div className="spread"><h2 className="screen-title">Personality</h2><span className="small" aria-live="polite">{saving === "saving" ? "saving…" : saving === "saved" ? "saved ✓" : saving === "error" ? "couldn’t save" : ""}</span></div>
+      <span className="hand sub">make {p.name || "me"}, {p.name || "me"}</span>
 
       <div className="card" style={{ alignItems: "center", gap: 10 }}>
         <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />

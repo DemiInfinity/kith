@@ -67,7 +67,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
 
   return (
     <div className="screen narrow dgrid">
-      <div><span className="hand">a little every day</span><h2 className="screen-title" style={{ marginTop: 0 }}>Languages</h2></div>
+      <div className="pagehead"><h2 className="screen-title">Languages</h2><span className="hand sub">a little every day</span></div>
       {active.length > 0 && enabled.length === 0 && <div className="notice">Your languages are switched off. Turn one on in its settings below.</div>}
       {v.languages.map((l) => {
         const minutes = Math.max(1, Math.round(l.cards.due * 0.3));

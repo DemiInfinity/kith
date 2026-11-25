@@ -240,7 +240,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
   );
   const head = (
     <div className="spread" style={{ alignItems: "flex-end" }}>
-      <div><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>
+      <div className="pagehead"><h2 className="screen-title">Study</h2><span className="hand sub">revision, your way</span></div>
       {/* On a phone the tab bar has no room for Languages, so it lives here too. */}
       <button className="chip" onClick={() => go("/languages")}><IL i="globe">Languages</IL></button>
     </div>

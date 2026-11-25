@@ -42,7 +42,7 @@ export function Art({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: 
       ))}
     </div>
   );
-  const head = <div><span className="hand">make something today</span><h2 className="screen-title" style={{ marginTop: 0 }}>Art</h2></div>;
+  const head = <div className="pagehead"><h2 className="screen-title">Art</h2><span className="hand sub">make something today</span></div>;
 
   const askInChat = () => go(`/?mode=art${coursework ? "&coursework=1" : ""}&label=${encodeURIComponent(`Art${coursework ? " · coursework" : ""}`)}`);
 

@@ -61,6 +61,12 @@ a { color: var(--lilac-soft); }
 h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; color: var(--text); letter-spacing: -0.01em; }
 h2.screen-title { font-size: 1.875rem; line-height: 1.05; margin-top: -6px; }
 .hand { font-family: var(--hand); font-size: 1.5rem; color: var(--lilac-soft); line-height: 1.1; }
+/* Page headings: the title, then its subtitle right underneath, then a little room before what follows (tabs, cards). */
+.pagehead { display: flex; flex-direction: column; gap: 2px; }
+.pagehead .screen-title { margin-top: 0; }
+.screen > .screen-title + .hand.sub, .screen > .spread + .hand.sub { margin-top: -11px; }
+.hand.sub { font-size: 1.25rem; margin-bottom: 4px; }
+.pagehead + *, .mk-head + * { margin-top: 4px; }
 .eyebrow { font-size: 0.75rem; font-weight: 900; letter-spacing: 0.05em; color: var(--lilac-soft); text-transform: uppercase; }
 .small { font-size: 0.7812rem; line-height: 1.5; color: var(--faint); }
 .muted { color: var(--muted); }

@@ -98,8 +98,8 @@ export function Stories({ me }: { me: Me }) {
   if (open) return <StoryView me={me} id={open} onBack={() => setOpen(null)} />;
   return (
     <div className="screen narrow dgrid">
-      <span className="hand">two writers, one story</span>
       <h2 className="screen-title">Stories with a friend</h2>
+      <span className="hand sub">two writers, one story</span>
       <div className="card">
         <b>Start a story</b>
         <input className="input" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} />

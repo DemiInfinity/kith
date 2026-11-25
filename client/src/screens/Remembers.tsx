@@ -32,8 +32,8 @@ export function Remembers({ me, onSaved }: { me: Me; onSaved: (p: Profile) => vo
 
   return (
     <div className="screen narrow">
-      <span className="hand">you’re in charge</span>
       <h2 className="screen-title">What {name} remembers</h2>
+      <span className="hand sub">you’re in charge</span>
       {mems === null && !err && <span className="small">…</span>}
       {mems?.length === 0 && <span className="small">Nothing yet. {name} remembers things that matter to you, like a big test coming up, and you can delete any of them here.</span>}
       <div className="stack">
