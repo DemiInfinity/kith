@@ -35,7 +35,8 @@ export const pipPictureUrl = (v: number, mood?: PictureMood) => `/api/pip/pictur
 
 // The saved 3D look, fetched once (for the live picture).
 let look3d: Promise<Look3D | null> | null = null;
-const savedLook = () => (look3d ??= api<{ look: unknown }>("/api/pip/look").then((r) => (r.look ? normaliseLook(r.look) : null)).catch(() => null));
+/** The saved 3D look (null when there isn't one), fetched once and cached until My Pip saves again. */
+export const savedLook = () => (look3d ??= api<{ look: unknown }>("/api/pip/look").then((r) => (r.look ? normaliseLook(r.look) : null)).catch(() => null));
 
 const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 

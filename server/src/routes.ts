@@ -165,6 +165,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     thread: z.number().int().optional(),
     // A document shared from the Mac app (its text only).
     file: z.object({ name: z.string().max(200), text: z.string().min(1).max(12_000) }).optional(),
+    // A voice call: whether "Grown-up?" was opened during it (then the companion won't hang up).
+    call: z.object({ helpOpened: z.boolean().optional() }).optional(),
   });
   app.post("/api/chat", { preHandler: child, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     const body = ChatBody.parse(req.body);

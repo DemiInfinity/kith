@@ -20,7 +20,7 @@ import type { InputVerdict } from "../safety/types.js";
 import { createReport, deliverReport, markTold, type Reporter, type ReportLevel } from "../reporting/reporter.js";
 import { identity, safeguards, selfEditNote, soulText, type PromptCtx } from "./prompt.js";
 import { memoriesForPrompt } from "./memory.js";
-import { builtinTools, stage, type Staged, type TurnEffects } from "./tools.js";
+import { builtinTools, endCallTool, stage, type Staged, type TurnEffects } from "./tools.js";
 import { googleTools, proposalText } from "./googleTools.js";
 import { checkOutputAll } from "../safety/chunks.js";
 import type { Pending } from "../storage/googleWork.js";
@@ -49,6 +49,8 @@ export interface TurnResult {
   energy: Energy;
   report: { level: ReportLevel; childNotice: string; parentText: string } | null;
   openHelp: boolean;
+  /** Talk mode: the companion said goodbye and hangs up once the reply has been spoken. */
+  endCall: boolean;
   effects: TurnEffects;
 }
 
@@ -96,7 +98,10 @@ export { whenText };
 /** A document she shared from the Mac app: its text only (no images; see docs/minors-policy.md). */
 export interface SharedDoc { name: string; text: string }
 
-export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ctx?: ModeCtx; thread?: number; file?: SharedDoc }): Promise<TurnResult> {
+/** About the call this turn is part of (talk mode). */
+export interface CallInfo { helpOpened?: boolean }
+
+export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ctx?: ModeCtx; thread?: number; file?: SharedDoc; call?: CallInfo }): Promise<TurnResult> {
   const thread = given.thread && getThread(deps.db, given.thread) ? given.thread : MAIN_THREAD;
   // The practice language comes from the thread record and the approved list only, never the client.
   const input = { ...given, ...inThreadLanguage(deps.db, { thread, mode: given.mode, ctx: given.ctx ?? {} }) } as typeof given & { mode: Mode; ctx: ModeCtx };
@@ -153,7 +158,7 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
       const switchedToLow = energy.mode === "low" && (!last || JSON.parse(last.json) === "full");
       run(db, "INSERT INTO settings(key, json) VALUES('last_power', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(energy.mode));
       if (switchedToLow) logActivity(db, "🔋", `Switched to Low power${energy.fullBackAt ? ` (Full power back ${whenText(energy.fullBackAt)})` : ""}`);
-      replyText = await generateReply(deps, { clean, doc, thread, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow });
+      replyText = await generateReply(deps, { clean, doc, thread, mode: input.mode, ctx: input.ctx ?? {}, verdict, report, energy, effects, profileName: profile.name, switchedToLow, call: input.call });
       if (report) mood = "concerned";
     } catch (err) {
       if (err instanceof OfflineError) {
@@ -171,8 +176,11 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
   const madeChars = [...new Set(effects.characters)];
   // So do proposals (soul, memories) and tweaks (how it talks, check-ins), with their outcome after a reload.
   const changes = [...new Set(effects.changes ?? [])];
-  const meta = report || madeChars.length || changes.length
-    ? { ...(report ? { report } : {}), ...(madeChars.length ? { characters: madeChars } : {}), ...(changes.length ? { changes } : {}) }
+  // A call only ends from a voice call, and never on a turn that raised a worry (belt and braces:
+  // the tool already refuses then).
+  const endCall = input.mode === "talk" && !!effects.endCall && !report;
+  const meta = report || madeChars.length || changes.length || endCall
+    ? { ...(report ? { report } : {}), ...(madeChars.length ? { characters: madeChars } : {}), ...(changes.length ? { changes } : {}), ...(endCall ? { endCall: true } : {}) }
     : undefined;
   const reply = store(db, "companion", replyText, input.mode, meta, thread);
   energy = energyNow(db);
@@ -185,7 +193,7 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
 
   // Only what the app shows: the staging and outside text stay on the server.
   const { memories, jobs, characters, confirms } = effects;
-  return { child, reply, mood, energy, report, openHelp: verdict.level === "now", effects: { memories, jobs, characters, confirms, changes } };
+  return { child, reply, mood, energy, report, openHelp: verdict.level === "now", endCall, effects: { memories, jobs, characters, confirms, changes } };
 }
 
 /** The helplines as words, never empty: Childline if the list somehow has nothing usable. */
@@ -205,7 +213,7 @@ export function fallbackSafetyReply(v: InputVerdict, parent: string, helplines: 
 
 async function generateReply(
   deps: Deps,
-  a: { clean: string; doc?: SharedDoc; thread: number; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean },
+  a: { clean: string; doc?: SharedDoc; thread: number; mode: Mode; ctx: ModeCtx; verdict: InputVerdict; report: TurnResult["report"]; energy: Energy; effects: TurnEffects; profileName: string; switchedToLow: boolean; call?: CallInfo },
 ): Promise<string> {
   const { db, llm, safety } = deps;
   const settings = loadParentSettings(db);
@@ -232,6 +240,8 @@ async function generateReply(
     ...outsideTools,
     ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, fx as { confirms: Pending[]; staged: Staged[]; untrusted: string[] }, { coursework, safety }),
   ];
+  // Voice calls: the companion can hang up kindly (never while a worry is being talked about).
+  if (a.mode === "talk") tools.push(endCallTool(db, fx, { report: !!a.report, helpOpened: !!a.call?.helpOpened }));
   // Skills the parent wrote: the list is in the prompt; the full text loads only when it's used.
   const skills = enabledSkills(db);
   if (skills.length) {

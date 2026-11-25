@@ -108,6 +108,8 @@ export interface Message { id: number; ts: number; role: "child" | "companion"; 
 export interface ReportInfo { level: "now" | "today" | "fyi"; childNotice: string; parentText: string }
 export interface Turn {
   child: Message; reply: Message; mood: Mood; energy: Energy; report: ReportInfo | null; openHelp: boolean;
+  /** A voice call: the companion said goodbye and hangs up once the reply has been spoken. */
+  endCall?: boolean;
   effects: { memories: string[]; jobs: { id: number; title: string; kind: string }[]; characters: number[]; confirms?: GooglePending[]; changes?: number[] };
 }
 /**
