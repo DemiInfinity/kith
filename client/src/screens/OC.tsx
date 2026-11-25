@@ -2,6 +2,7 @@ import { Icon, IL } from "../components/Icons";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Character, type Me, type Mood, type Sheet, type Turn, type WorldEntry } from "../api";
 import { ItemViewer, MakeSheet, useDesk } from "./Desk";
+import { action } from "../lib/action";
 
 const EMPTY: Sheet = { name: "", icon: "⭐", look: "", personality: "", powers: "", backstory: "", likes: "", dislikes: "", palette: [], themeSong: "", relationships: [] };
 const REL = ["friend", "best friend", "rival", "family", "mentor", "teammate", "nemesis", "pet", "sidekick"];
@@ -126,7 +127,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
               <div className="row" style={{ flexWrap: "wrap" }}>
                 <button className="btn ghost small" onClick={() => setEditing(c)}>Edit</button>
                 <button className="btn ghost small" onClick={() => setMaking([c.id])}>Make something with {c.sheet.name}</button>
-                <button className="btn ghost small" onClick={async () => { if (confirm(`Delete ${c.sheet.name}?`)) { await api(`/api/oc/characters/${c.id}`, { method: "DELETE" }); void load(); } }}>Delete</button>
+                <button className="btn ghost small" onClick={action(async () => { if (confirm(`Delete ${c.sheet.name}?`)) { await api(`/api/oc/characters/${c.id}`, { method: "DELETE" }); void load(); } }, "delete that character")}>Delete</button>
               </div>
             </div>
           ))}
@@ -152,7 +153,7 @@ export function OC({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t: T
             <div key={w.id} className="memrow">
               <span className="hic"><Icon name={w.kind === "place" ? "pin" : w.kind === "event" ? "scroll" : "shield"} size={18} /></span>
               <span className="t"><b>{w.name}</b>{w.when ? ` · ${w.when}` : ""}{w.note ? ` · ${w.note}` : ""}</span>
-              <button className="x" aria-label={`Remove ${w.name}`} onClick={async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }}><Icon name="close" size={16} /></button>
+              <button className="x" aria-label={`Remove ${w.name}`} onClick={action(async () => { await api(`/api/oc/world/${w.id}`, { method: "DELETE" }); void load(); }, "remove that")}><Icon name="close" size={16} /></button>
             </div>
           ))}
           {world.length > 0 && (

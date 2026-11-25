@@ -9,6 +9,7 @@ import { api, type Me } from "../api";
 import { Icon } from "../components/Icons";
 import { Toggle } from "../components/bits";
 import { rows, say, toRomaji, voiceFor } from "../lib/kana";
+import { action } from "../lib/action";
 
 type Lang = string;
 interface LangProfile {
@@ -83,7 +84,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <span className="langbadge" aria-hidden>{l.badge}</span>
             <span style={{ flex: 1 }}><b>{l.native}</b> <span className="small">{l.name}</span><br />
               <span className="small">Not this time. You could chat with your grown-up about it.</span></span>
-            <button className="x" aria-label={`Tidy away ${l.name}`} onClick={async () => { await api(`/api/languages/${l.lang}/dismiss`, { method: "POST" }); void load(); }}><Icon name="close" size={16} /></button>
+            <button className="x" aria-label={`Tidy away ${l.name}`} onClick={action(async () => { await api(`/api/languages/${l.lang}/dismiss`, { method: "POST" }); void load(); }, "tidy that away")}><Icon name="close" size={16} /></button>
           </div>
         );
         if (!l.profile.enabled) return (
@@ -105,7 +106,7 @@ export function Languages({ me, openThread }: { me: Me; go: (to: string) => void
             <span className="eyebrow">today’s ten minutes</span>
             <div className="stack" style={{ gap: 8 }}>
               {l.cards.total === 0 && l.starters ? (
-                <button className="todo" onClick={async () => { await api(`/api/languages/${l.lang}/starter`, { method: "POST" }); setScreen({ k: "cards", lang: l.lang }); }}>
+                <button className="todo" onClick={action(async () => { await api(`/api/languages/${l.lang}/starter`, { method: "POST" }); setScreen({ k: "cards", lang: l.lang }); }, "start that")}>
                   <Icon name="cards" size={20} /><span><b>Start with 25 useful words</b><br /><span className="small">{HELLO[l.lang]} and friends</span></span>
                 </button>
               ) : (
@@ -232,12 +233,12 @@ function Cards({ info, onBack }: { info: LangInfo; onBack: () => void }) {
   useEffect(() => { void load(); }, [load]);
   const c = due?.[0];
   const hear = (t: string) => { if (!say(t, voiceOf(info))) setMsg("This device doesn’t have a voice for that language yet."); };
-  const grade = async (g: string) => {
+  const grade = action(async (g: string) => {
     if (!c) return;
     await api(`/api/languages/cards/${c.id}/review`, { body: { grade: g } });
     setDue(due!.slice(1));
     setFlip(false);
-  };
+  }, "save that card");
   const generate = async () => {
     setMsg("Making cards on Low power…");
     try { const r = await api<{ added: number }>(`/api/languages/${lang}/cards/generate`, { body: { topic, count: 10 } }); setMsg(`Added ${r.added} cards.`); setTopic(""); void load(); }

@@ -2,6 +2,7 @@ import { Icon, IL } from "../components/Icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Me, type Mood, type Turn } from "../api";
 import { Toggle } from "../components/bits";
+import { action } from "../lib/action";
 
 interface Subject { name: string; board: string; coursework: boolean; courseworkNote: string; confidence: number; dates: { kind: "mock" | "exam" | "deadline"; label: string; date: string }[] }
 interface SubjectRow { id: number; subject: Subject }
@@ -54,25 +55,39 @@ function SubjectEditor({ row, boards, onDone }: { row: SubjectRow | null; boards
 
 function Focus({ subjects, tooLate, full = false }: { subjects: SubjectRow[]; tooLate: boolean; full?: boolean }) {
   const [len, setLen] = useState(25);
-  const [left, setLeft] = useState<number | null>(null);
+  // The session's end time, not a count of ticks: a phone that sleeps or a tab in the background
+  // still finishes on time, and the "done" call happens once, outside any state update.
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [subjectId, setSubjectId] = useState<number | null>(subjects[0]?.id ?? null);
   const [msg, setMsg] = useState("");
-  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  useEffect(() => () => clearInterval(timer.current), []);
+  const session = useRef<{ minutes: number; subjectId: number | null } | null>(null);
+  useEffect(() => {
+    if (endsAt === null) return;
+    const tick = () => setNow(Date.now());
+    const t = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
+  }, [endsAt]);
+  useEffect(() => {
+    if (endsAt === null || now < endsAt) return;
+    const done = session.current;
+    session.current = null;
+    setEndsAt(null);
+    if (!done) return;
+    api<{ minutesToday: number; tooLate: boolean }>("/api/study/focus", { body: { minutes: done.minutes, subjectId: done.subjectId } })
+      .then((r) => setMsg(`Nice focus! ${r.minutesToday} minutes today. Have a proper break: stretch, water, look out of a window.${r.tooLate ? " It’s getting late, so maybe call it a day." : ""}`))
+      .catch(() => setMsg("Nice focus! Have a proper break: stretch, water, look out of a window. (I couldn’t save the minutes just now.)"));
+  }, [now, endsAt]);
+  const left = endsAt === null ? null : Math.max(0, Math.ceil((endsAt - now) / 1000));
   const start = () => {
     setMsg("");
-    setLeft(len * 60);
-    clearInterval(timer.current);
-    timer.current = setInterval(() => setLeft((l) => {
-      if (l === null) return null;
-      if (l <= 1) {
-        clearInterval(timer.current);
-        void api<{ minutesToday: number; tooLate: boolean }>("/api/study/focus", { body: { minutes: len, subjectId } }).then((r) => setMsg(`Nice focus! ${r.minutesToday} minutes today. Have a proper break: stretch, water, look out of a window.${r.tooLate ? " It’s getting late, so maybe call it a day." : ""}`));
-        return null;
-      }
-      return l - 1;
-    }), 1000);
+    session.current = { minutes: len, subjectId };
+    const t = Date.now();
+    setNow(t);
+    setEndsAt(t + len * 60_000);
   };
+  const stop = () => { session.current = null; setEndsAt(null); };
   return (
     <div className={`card ${full ? "full" : ""}`}>
       <b>Focus session</b>
@@ -86,7 +101,7 @@ function Focus({ subjects, tooLate, full = false }: { subjects: SubjectRow[]; to
       ) : (
         <div className="row" style={{ justifyContent: "space-between" }}>
           <b style={{ fontFamily: "var(--serif)", fontSize: "2.5rem" }} aria-live="off">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
-          <button className="btn ghost small" onClick={() => { clearInterval(timer.current); setLeft(null); }}>Stop</button>
+          <button className="btn ghost small" onClick={stop}>Stop</button>
         </div>
       )}
       {msg && <span className="small" style={{ color: "var(--text-3)" }}>{msg}</span>}
@@ -104,22 +119,22 @@ function Cards({ v, reload }: { v: StudyView; reload: () => void }) {
   const [msg, setMsg] = useState("");
   const load = useCallback(() => api<{ cards: Card[] }>(`/api/study/cards/due${subjectId ? `?subjectId=${subjectId}` : ""}`).then((r) => { setDue(r.cards); setFlip(false); }), [subjectId]);
   useEffect(() => { void load(); }, [load]);
-  const grade = async (g: string) => {
+  const grade = action(async (g: string) => {
     if (!due?.[0]) return;
     await api(`/api/study/cards/${due[0].id}/review`, { body: { grade: g } });
     setDue(due.slice(1));
     setFlip(false);
     reload();
-  };
+  }, "save that card");
   const generate = async () => {
     setMsg("Making cards on Low power…");
     try { const r = await api<{ added: number }>("/api/study/cards/generate", { body: { subjectId, topic, count: 12 } }); setMsg(`Added ${r.added} cards.`); setTopic(""); void load(); reload(); }
     catch (e) { setMsg((e as Error).message); }
   };
-  const add = async () => {
+  const add = action(async () => {
     await api("/api/study/cards", { body: { subjectId, topic: "", cards: [{ front, back }] } });
     setFront(""); setBack(""); void load(); reload();
-  };
+  }, "add that card");
   const c = due?.[0];
   return (
     <>
@@ -267,8 +282,8 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
           <div className="card">
             <b>About you</b>
             <div className="grid2">
-              <label className="field">Course<input className="input" value={v.profile.curriculum} onChange={(e) => setV({ ...v, profile: { ...v.profile, curriculum: e.target.value } })} onBlur={() => api("/api/study/profile", { method: "PUT", body: v.profile })} /></label>
-              <label className="field">Year<input className="input" value={v.profile.year} placeholder="e.g. Year 10" onChange={(e) => setV({ ...v, profile: { ...v.profile, year: e.target.value } })} onBlur={() => api("/api/study/profile", { method: "PUT", body: v.profile })} /></label>
+              <label className="field">Course<input className="input" value={v.profile.curriculum} onChange={(e) => setV({ ...v, profile: { ...v.profile, curriculum: e.target.value } })} onBlur={action(() => api("/api/study/profile", { method: "PUT", body: v.profile }), "save that")} /></label>
+              <label className="field">Year<input className="input" value={v.profile.year} placeholder="e.g. Year 10" onChange={(e) => setV({ ...v, profile: { ...v.profile, year: e.target.value } })} onBlur={action(() => api("/api/study/profile", { method: "PUT", body: v.profile }), "save that")} /></label>
             </div>
           </div>
           {editing ? <SubjectEditor row={editing === "new" ? null : editing} boards={v.boards} onDone={() => { setEditing(null); void load(); }} /> : <button className="btn primary small" onClick={() => setEditing("new")}>+ Add a subject</button>}
@@ -277,7 +292,7 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
               <span className="hic"><Icon name={s.subject.coursework ? "art" : "study"} size={18} /></span>
               <span className="t"><b>{s.subject.name}</b> · {s.subject.board}{s.subject.coursework ? " · coursework" : ""}</span>
               <button className="btn ghost small" onClick={() => setEditing(s)}>Edit</button>
-              <button className="x" aria-label={`Remove ${s.subject.name}`} onClick={async () => { if (confirm(`Remove ${s.subject.name}?`)) { await api(`/api/study/subjects/${s.id}`, { method: "DELETE" }); void load(); } }}>✕</button>
+              <button className="x" aria-label={`Remove ${s.subject.name}`} onClick={action(async () => { if (confirm(`Remove ${s.subject.name}?`)) { await api(`/api/study/subjects/${s.id}`, { method: "DELETE" }); void load(); } }, "remove that subject")}>✕</button>
             </div>
           ))}
         </>

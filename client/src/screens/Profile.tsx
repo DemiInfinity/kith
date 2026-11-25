@@ -3,6 +3,7 @@ import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
 import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
 import { Icon, IL, type IconName } from "../components/Icons";
+import { action } from "../lib/action";
 
 // The desk is big (a whole little computer), so it loads the first time it's opened.
 const DeskComputer = lazy(() => import("./DeskComputer").then((m) => ({ default: m.DeskComputer })));
@@ -125,8 +126,8 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
               <div key={m.id} className="row" style={{ fontSize: "0.875rem", borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
                 <span className="hic"><Icon name={m.kind === "reminder" ? "alarm" : "sparkle"} size={18} /></span>
                 <span style={{ flex: 1 }}>{m.title}<br /><span className="small">{m.active ? new Date(m.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}{m.repeat !== "none" ? ` · ${m.repeat}` : ""}</span></span>
-                <button className="btn ghost small" onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }}>{m.active ? "Pause" : "Resume"}</button>
-                <button className="x" aria-label={`Delete ${m.title}`} onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }}><Icon name="close" size={16} /></button>
+                <button className="btn ghost small" onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }, "change that")}>{m.active ? "Pause" : "Resume"}</button>
+                <button className="x" aria-label={`Delete ${m.title}`} onClick={action(async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }, "delete that")}><Icon name="close" size={16} /></button>
               </div>
             ))}
             <form className="stack" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }} onSubmit={async (e) => {
@@ -200,7 +201,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
               {files.memories.map((m) => (
                 <div key={m.id} className="memrow">
                   <span>{m.icon}</span><span className="t">{m.text}{m.date ? <span className="small"> · {m.date}</span> : null}</span>
-                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }}><Icon name="close" size={16} /></button>
+                  <button className="x" aria-label={`Forget “${m.text}”`} onClick={action(async () => { await api(`/api/memories/${m.id}`, { method: "DELETE" }); void reloadFiles(); }, "forget that")}><Icon name="close" size={16} /></button>
                 </div>
               ))}
               <form className="row" onSubmit={async (e) => { e.preventDefault(); if (!newMem.trim()) return; try { await api("/api/memories", { body: { text: newMem } }); setNewMem(""); void reloadFiles(); } catch (err) { alert((err as Error).message); } }}>

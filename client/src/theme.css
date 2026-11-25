@@ -849,3 +849,7 @@ dialog.sheet { margin: 0; border: 0; inset: auto auto 0 50%; max-width: none; }
 dialog.sheet:not([open]) { display: none; }
 dialog.sheet::backdrop { background: rgba(10,6,9,0.6); animation: fade 0.2s; }
 dialog.sheet h3:focus { outline: none; }
+/* A short note when something didn't work (from useAction). Sits above the tab bar. */
+.toastwrap { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-bottom)); z-index: 60; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
+.toast { pointer-events: auto; display: flex; align-items: center; gap: 8px; max-width: 520px; padding: 10px 8px 10px 16px; border-radius: 16px; background: var(--card-hi); border: 1.5px solid var(--ember); color: var(--text); font-size: 0.875rem; box-shadow: 0 10px 30px rgba(0,0,0,0.45); animation: fade 0.2s; }
+.toast .x { width: 32px; height: 32px; color: var(--text-3); }

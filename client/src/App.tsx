@@ -23,6 +23,7 @@ import { Notifications } from "./screens/Notifications";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
 import { usePoll } from "./lib/poll";
+import { action, Toaster } from "./lib/action";
 
 // The bigger screens load when they're first opened, so the chat starts quickly on a phone.
 const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
@@ -294,7 +295,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         <div className="threadbar">
           <Icon name="sidechats" size={18} /><b>{threadTitle || "Side chat"}</b>
           <select className="select" style={{ width: "auto", minHeight: 32, padding: "0 10px" }} aria-label="Language for this side chat" value={threadLang ?? ""}
-            onChange={async (e) => { const lang = e.target.value || null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }}>
+            onChange={action(async (e) => { const lang = e.target.value || null; await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang } }); setThreadLang(lang); }, "change the language")}>
             {/* Short names on a phone, where the picture takes the middle of the bar. */}
             <option value="">{narrow ? "Eng" : "English"}</option>
             {chatLangs.map((l) => <option key={l.code} value={l.code}>{narrow && l.native.length > 6 ? l.native.slice(0, 3) : l.native}</option>)}
@@ -302,11 +303,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </div>
       )}
       <Chat key={thread} me={me} thread={thread} context={chatContext}
-        onClearContext={async () => {
+        onClearContext={action(async () => {
           // In a language side chat, the ✕ switches that side chat back to English.
           if (thread !== 1 && threadLang) { await api(`/api/threads/${thread}`, { method: "PATCH", body: { lang: null } }); setThreadLang(null); }
           else go("/");
-        }} onSplit={pickThread}
+        }, "switch back to English")} onSplit={pickThread}
         onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />
     </>
   );
@@ -397,7 +398,7 @@ function CantReach({ text, retry }: { text: string; retry: () => void }) {
   );
 }
 
-export function App() {
+function Root() {
   const [me, setMe] = useState<Me | null | "signed-out">(null);
   const [err, setErr] = useState("");
   const [wrongApp, setWrongApp] = useState("");
@@ -424,4 +425,8 @@ export function App() {
   if (me === "signed-out") return <SignIn />;
   if (me.role === "parent") return <Suspense fallback={<div className="main"><Loading /></div>}><Parent me={me} /></Suspense>;
   return <ChildApp me={me} />;
+}
+
+export function App() {
+  return <><Root /><Toaster /></>;
 }
