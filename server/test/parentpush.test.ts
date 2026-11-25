@@ -116,3 +116,44 @@ describe("budget alerts", () => {
     expect(sent.filter((x) => x.body.tag === "kith-parent-budget").length + held).toBe(1);
   });
 });
+
+describe("the parent's inbox for the Mac app", () => {
+  it("records what the rules let through, with the same private wording, even without VAPID keys", async () => {
+    const db = setup();
+    const { parentInboxAfter } = await import("../src/checkins/parentInbox.js");
+    const key = config.push.privateKey;
+    config.push.privateKey = ""; // no web push set up
+    await notifyParent(db, { kind: "report-today", summary: "x" }, NOON); // off by default: nothing
+    await notifyParent(db, { kind: "report-now", summary: "Sam seemed very upset about school." }, NIGHT); // urgent: through quiet hours
+    await notifyParent(db, { kind: "weekly" }, NIGHT); // waits for the morning
+    let inbox = parentInboxAfter(db, 0);
+    expect(inbox.items.map((i) => i.kind)).toEqual(["report-now"]);
+    expect(inbox.items[0].urgent).toBe(true);
+    expect(inbox.items[0].body).not.toContain("upset");
+    await flushHeld(db, NOON + 86_400_000);
+    inbox = parentInboxAfter(db, inbox.last);
+    expect(inbox.items.map((i) => [i.kind, i.urgent])).toEqual([["weekly", false]]);
+    expect(sent).toHaveLength(0); // nothing went by web push without keys
+    config.push.privateKey = key;
+  });
+  it("is served to the parent only; the first poll only learns where it's up to", async () => {
+    const db = setup();
+    const was = config.devLogin;
+    config.devLogin = true;
+    const app = Fastify();
+    await app.register(cookie);
+    const { registerParentInbox } = await import("../src/checkins/parentInbox.js");
+    const { registerAuth } = await import("../src/auth.js");
+    registerAuth(app, db);
+    registerParentInbox(app, db);
+    await notifyParent(db, { kind: "test" }, NOON);
+    const mum = createSession(db, { sub: "dev:parent", role: "parent", name: "Grown-up" });
+    const kid = createSession(db, { sub: "dev:child", role: "child", name: "Sam" });
+    expect((await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: kid } })).statusCode).toBe(403);
+    const first = (await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: mum } })).json();
+    expect(first).toEqual({ items: [], last: 1 });
+    const all1 = (await app.inject({ url: "/api/native/parent-inbox?after=0", cookies: { kith_sid: mum } })).json();
+    expect(all1.items[0]).toMatchObject({ id: 1, kind: "test", urgent: false, title: "Kith", url: "/parent" });
+    config.devLogin = was;
+  });
+});

@@ -12,6 +12,14 @@ import { config } from "../config.js";
 import { loadParentSettings } from "../settings.js";
 import { inQuietHours } from "../budget/time.js";
 import { pushReady, sendTo } from "./push.js";
+import { recordParentNative } from "./parentInbox.js";
+
+/** Delivers one notification: to the Mac app's inbox (always), and by web push when it's set up. */
+async function deliver(db: DB, n: ParentNote, showSummary: boolean, ttl: number, now: number): Promise<number> {
+  const p = parentPayload(n, showSummary);
+  recordParentNative(db, p, n.kind, n.kind === "report-now", now);
+  return pushReady() ? sendTo(db, "parent", p, ttl) : 0;
+}
 
 export type ParentKind = "report-now" | "report-today" | "report-fyi" | "weekly" | "budget" | "test";
 
@@ -44,13 +52,13 @@ function wanted(db: DB, kind: ParentKind): boolean {
 
 /** Sends now, or holds it until quiet hours end. Returns how many devices got it now. */
 export async function notifyParent(db: DB, n: ParentNote, now = Date.now()): Promise<number> {
-  if (!pushReady() || !wanted(db, n.kind)) return 0;
+  if (!wanted(db, n.kind)) return 0;
   const s = loadParentSettings(db);
   if (n.kind !== "report-now" && n.kind !== "test" && inQuietHours(now, config.timezone, s.quietHours)) {
     run(db, "INSERT INTO push_held(ts, kind, json) VALUES (?,?,?)", now, n.kind, JSON.stringify(n));
     return 0;
   }
-  return sendTo(db, "parent", parentPayload(n, s.notify.showSummary), n.kind === "report-now" ? 24 * 3600 : 12 * 3600);
+  return deliver(db, n, s.notify.showSummary, n.kind === "report-now" ? 24 * 3600 : 12 * 3600, now);
 }
 
 /** Sends what waited through quiet hours (newest of each kind only, so it isn't a flood). */
@@ -65,7 +73,7 @@ export async function flushHeld(db: DB, now = Date.now()): Promise<number> {
   for (const r of rows) {
     if (seen.has(r.kind) || !wanted(db, r.kind)) continue;
     seen.add(r.kind);
-    sent += await sendTo(db, "parent", parentPayload(JSON.parse(r.json) as ParentNote, s.notify.showSummary), 12 * 3600);
+    sent += await deliver(db, JSON.parse(r.json) as ParentNote, s.notify.showSummary, 12 * 3600, now);
   }
   return sent;
 }

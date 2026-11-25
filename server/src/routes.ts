@@ -30,6 +30,7 @@ import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
 import { deviceCount, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
 import { notifyParent } from "./checkins/parentPush.js";
+import { registerParentInbox } from "./checkins/parentInbox.js";
 import { addSchedule, deleteSchedule, listSchedules, setActive } from "./companion/schedules.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
 import type { Energy } from "./budget/budget.js";
@@ -513,6 +514,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     saveSubscription(db, Sub.parse(req.body), req.user!.role === "parent" ? "parent" : "child");
     return { ok: true };
   });
+  registerParentInbox(app, db);
   app.post("/api/parent/push/test", { preHandler: parent, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
     const sent = await notifyParent(db, { kind: "test" });
     return { sent, devices: deviceCount(db, "parent") };
