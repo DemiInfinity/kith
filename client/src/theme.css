@@ -378,6 +378,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .avatar .paw-l { animation: type 0.42s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .avatar .paw-r { animation: type 0.42s ease-in-out 0.21s infinite; transform-box: fill-box; transform-origin: center; }
 .avatar .lid-glow { animation: lidglow 3s ease-in-out infinite; }
+.avatar .code-1 { animation: codeline 2.6s steps(6) infinite; transform-box: fill-box; transform-origin: left center; }
+.avatar .code-2 { animation: codeline 2.6s steps(8) 0.8s infinite; transform-box: fill-box; transform-origin: left center; }
+.avatar .code-3 { animation: codeline 2.6s steps(5) 1.6s infinite; transform-box: fill-box; transform-origin: left center; }
+.avatar .cursor { animation: lidglow 0.8s steps(2) infinite; }
+@keyframes codeline { 0% { transform: scaleX(0.1); } 70%, 100% { transform: scaleX(1); } }
 @keyframes glance {
   0%, 30%, 100% { transform: translate(0, 0); }
   36%, 46% { transform: translate(-7px, 0) rotate(-2deg); }
@@ -386,10 +391,10 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   84% { transform: translate(0, 0); }
 }
 @keyframes peek {
-  0%, 70%, 100% { transform: translate(6px, 4px) rotate(3deg); }
-  76%, 86% { transform: translate(-2px, 0) rotate(0deg); }
-  92% { transform: translate(6px, 4px) rotate(3deg); }
+  0%, 70%, 100% { transform: translate(0, 2px); }
+  76%, 86% { transform: translate(-3px, -3px); }
+  92% { transform: translate(0, 2px); }
 }
-@keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(2.5px); } }
+@keyframes type { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(0.7px); } }
 @keyframes screenlight { 0%, 100% { opacity: 0.1; } 40% { opacity: 0.2; } 60% { opacity: 0.13; } }
 @keyframes lidglow { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
