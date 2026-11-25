@@ -1,3 +1,4 @@
+import { manifestFor } from "./manifest.js";
 import path from "node:path";
 import fs from "node:fs";
 import Fastify from "fastify";
@@ -14,7 +15,7 @@ import { Safety } from "./safety/check.js";
 import { makeReporters } from "./reporting/reporter.js";
 import { Studio } from "./desk/studio.js";
 import { currentKey } from "./apikey.js";
-import { registerAuth } from "./auth.js";
+import { sessionFor, registerAuth } from "./auth.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
 import { startScheduler } from "./scheduler.js";
@@ -52,7 +53,7 @@ async function main() {
   if (!key.key) console.warn("No Anthropic API key yet (set it in the parent view, or ANTHROPIC_API_KEY): the companion will say it isn't switched on yet. Everything else works.");
   const llm = new AnthropicLLM(db, key.key);
   const safety = new Safety(llm);
-  const reporters = makeReporters();
+  const reporters = makeReporters(config.reporting.reporters, db);
   const storage = new Storage(db, [new GoogleBackend(db)]);
   const studio = new Studio(db, llm, safety, new DeskClient(), storage);
   studio.resume();
@@ -100,6 +101,12 @@ async function main() {
   app.get("/api/public/signin", async () => ({ oidc: Boolean(config.oidc.issuer), label: config.oidc.label, dev: config.devLogin }));
 
   registerAuth(app, db);
+  // The manifest depends on who's signed in ("Kith Parent" for the parent), so it's served here.
+  app.get("/manifest.webmanifest", async (req, reply) => {
+    const user = sessionFor(db, req.cookies.kith_sid);
+    reply.header("Content-Type", "application/manifest+json; charset=utf-8").header("Cache-Control", "no-store").header("Vary", "Cookie");
+    return manifestFor(user?.role ?? null);
+  });
   registerRoutes(app, { db, llm, safety, reporters, studio });
   registerGoogle(app, db, storage, studio);
   registerStudy(app, { db, llm, safety, storage });

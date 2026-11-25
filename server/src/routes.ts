@@ -28,7 +28,8 @@ import { activitySince, logActivity } from "./desk/activity.js";
 import { companionFiles, safeguardsDoc } from "./companion/files.js";
 import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
-import { pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
+import { deviceCount, pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
+import { notifyParent } from "./checkins/parentPush.js";
 import { addSchedule, deleteSchedule, listSchedules, setActive } from "./companion/schedules.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
 import type { Energy } from "./budget/budget.js";
@@ -506,17 +507,21 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     return { ok };
   });
 
-  // ── Push (the child's devices only) ───────────────────────────────────────────────────
+  // ── Push (each device belongs to the child or the parent who turned it on) ─────────────
   const Sub = z.object({ endpoint: z.string().url(), keys: z.object({ p256dh: z.string(), auth: z.string() }) });
-  app.post("/api/push/subscribe", { preHandler: child }, async (req) => {
-    saveSubscription(db, Sub.parse(req.body));
+  app.post("/api/push/subscribe", { preHandler: either }, async (req) => {
+    saveSubscription(db, Sub.parse(req.body), req.user!.role === "parent" ? "parent" : "child");
     return { ok: true };
+  });
+  app.post("/api/parent/push/test", { preHandler: parent, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
+    const sent = await notifyParent(db, { kind: "test" });
+    return { sent, devices: deviceCount(db, "parent") };
   });
   app.post("/api/push/test", { preHandler: child, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
     const sent = await pushToChild(db, { title: loadProfile(db).name, body: "This is what my notifications look like 👋", url: "/" }, "test");
     return { sent };
   });
-  app.post("/api/push/unsubscribe", { preHandler: child }, async (req) => {
+  app.post("/api/push/unsubscribe", { preHandler: either }, async (req) => {
     removeSubscription(db, z.object({ endpoint: z.string() }).parse(req.body).endpoint);
     return { ok: true };
   });
@@ -553,7 +558,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
         apiReady: d.llm.available,
         reporters: config.reporting.reporters,
         push: pushReady(),
-        childPushDevices: get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM push_subs")?.n ?? 0,
+        childPushDevices: deviceCount(db, "child"),
+        parentPushDevices: deviceCount(db, "parent"),
         models: { full: config.anthropic.fullModel, low: config.anthropic.lowModel, safety: config.anthropic.safetyModel },
       },
       childName: childName(db),

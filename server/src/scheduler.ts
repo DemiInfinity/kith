@@ -21,6 +21,7 @@ import { logActivity } from "./desk/activity.js";
 import { dueSchedules, listSchedules, markRan } from "./companion/schedules.js";
 import type { Studio } from "./desk/studio.js";
 import { heartbeat } from "./companion/heartbeat.js";
+import { flushHeld, notifyParent } from "./checkins/parentPush.js";
 import { diskUsage } from "./disk.js";
 
 const MIN = 60_000;
@@ -40,6 +41,8 @@ export async function runOnce(deps: SchedulerDeps, now = Date.now()) {
   await schedules(deps, now);
   await checkins(deps, now);
   await disk(deps, now);
+  await budgetAlerts(deps.db, now).catch((err) => console.warn("[budget alert]", (err as Error).message));
+  await flushHeld(deps.db, now).catch(() => undefined);
   await journal(deps, now);
   await heartbeat({
     db: deps.db, llm: deps.llm, safety: deps.safety,
@@ -231,4 +234,30 @@ async function weeklySummary(deps: SchedulerDeps, now: number) {
     }
   }
   run(db, "INSERT OR IGNORE INTO summaries(week_start, text, created) VALUES (?,?,?)", key, text, now);
+  await notifyParent(db, { kind: "weekly" }, now);
+}
+
+/**
+ * Budget alerts for the parent: once when Low power starts (again only after Full power came back),
+ * and once a month when the hard stop is reached.
+ */
+export async function budgetAlerts(db: DB, now = Date.now()) {
+  const e = energyNow(db);
+  const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'budget_alert'");
+  const st = row ? (JSON.parse(row.json) as { low: boolean; hardStopMonth: string }) : { low: false, hardStopMonth: "" };
+  const month = localDate(now, config.timezone).slice(0, 7);
+  const next = { ...st };
+  const profile = loadProfile(db);
+  if (e.mode === "full") next.low = false;
+  if (e.mode === "low" && !st.low) {
+    next.low = true;
+    await notifyParent(db, { kind: "budget", summary: `${profile.name} switched to Low power (${e.limitedBy === "week" ? "this week's budget" : "the current window"} ran low).` }, now);
+  }
+  if (e.mode === "resting" && e.limitedBy === "month" && st.hardStopMonth !== month) {
+    next.hardStopMonth = month;
+    await notifyParent(db, { kind: "budget", summary: `The monthly hard stop was reached: ${profile.name} is resting until it tops up.` }, now);
+  }
+  if (JSON.stringify(next) !== JSON.stringify(st)) {
+    run(db, "INSERT INTO settings(key, json) VALUES('budget_alert', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(next));
+  }
 }

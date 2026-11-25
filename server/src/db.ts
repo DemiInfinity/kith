@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS checkins (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, delivered INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, json TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS push_held (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS tool_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, connection TEXT NOT NULL, tool TEXT NOT NULL,
   level TEXT NOT NULL, args TEXT NOT NULL, result TEXT NOT NULL, ok INTEGER NOT NULL
@@ -142,6 +145,9 @@ export function run(db: DB, sql: string, ...params: (string | number | null)[]) 
 
 /** Small additive migrations for existing databases. */
 function migrate(db: DB) {
+  // Push subscriptions belong to the child (all older ones) or the parent.
+  const ps = (db.prepare("PRAGMA table_info(push_subs)").all() as { name: string }[]).map((c) => c.name);
+  if (!ps.includes("audience")) db.exec("ALTER TABLE push_subs ADD COLUMN audience TEXT NOT NULL DEFAULT 'child'");
   const st = (db.prepare("PRAGMA table_info(oidc_state)").all() as { name: string }[]).map((c) => c.name);
   if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
   const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);

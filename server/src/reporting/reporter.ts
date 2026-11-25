@@ -6,6 +6,7 @@ import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 import { config } from "../config.js";
 import type { Level } from "../safety/types.js";
+import { notifyParent, type ParentKind } from "../checkins/parentPush.js";
 
 export type ReportLevel = Exclude<Level, "none">;
 
@@ -70,12 +71,27 @@ export class HomeAssistantBoardReporter implements Reporter {
   }
 }
 
-export function makeReporters(names = config.reporting.reporters): Reporter[] {
-  return names.map((n) => {
+/**
+ * Push to the parent's own devices, at the levels they chose in the parent view. Always on when a
+ * database is given (it does nothing until the parent lets notifications reach a device). Only the
+ * report's one-line summary can go out, and only if the parent turned that on; never chat text.
+ */
+export class PushReporter implements Reporter {
+  readonly name = "push";
+  constructor(private db: DB) {}
+  async send(r: Report) {
+    await notifyParent(this.db, { kind: `report-${r.level}` as ParentKind, summary: r.parentText });
+  }
+}
+
+export function makeReporters(names = config.reporting.reporters, db?: DB): Reporter[] {
+  const list = names.filter((n) => n !== "push").map((n): Reporter => {
     if (n === "console") return new ConsoleReporter();
     if (n === "ha-board") return new HomeAssistantBoardReporter();
     throw new Error(`Unknown reporter "${n}" in KITH_REPORTERS`);
   });
+  if (db) list.push(new PushReporter(db));
+  return list;
 }
 
 export function createReport(db: DB, r: { level: ReportLevel; category: string; childNotice: string; parentText: string }): Report {

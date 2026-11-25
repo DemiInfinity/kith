@@ -4,6 +4,7 @@ import { api, type Helpline, type Me, type Profile, type Transparency } from "..
 import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
+import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
 import { ParentHelp } from "./HelpCentre";
 
@@ -54,7 +55,40 @@ function VoiceCheck({ v }: { v: VoiceS }) {
   );
 }
 
-interface Settings { voice: VoiceS; disk: DiskS; safeguardsDoc: string; heartbeat: { checklist: string }; budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
+interface NotifyS { now: boolean; today: boolean; fyi: boolean; weekly: boolean; budget: boolean; showSummary: boolean }
+
+/** Lets notifications reach this device (the parent's own), with a test. */
+function ParentPushControls({ publicKey }: { publicKey: string }) {
+  const [st, setSt] = useState<"…" | "on" | "off" | "blocked" | "unsupported">("…");
+  const [msg, setMsg] = useState("");
+  useEffect(() => { pushStatus().then(setSt).catch(() => setSt("unsupported")); }, []);
+  const toggle = async () => {
+    setMsg("");
+    try {
+      if (st === "on") { await disablePush(); setSt("off"); }
+      else { await enablePush(publicKey); setSt("on"); }
+    } catch (e) { setMsg((e as Error).message); setSt(await pushStatus().catch(() => "unsupported" as const)); }
+  };
+  const test = async () => {
+    setMsg("Sending…");
+    try { const r = await api<{ sent: number; devices: number }>("/api/parent/push/test", { body: {} }); setMsg(r.sent ? `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}.` : r.devices ? "It didn’t get through. Check this device’s notification settings." : "No device is set up yet."); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {!publicKey ? <span className="small">Notifications need VAPID keys on the server first (scripts/setup-secrets.sh makes them).</span>
+        : st === "unsupported" ? <span className="small">This browser can’t receive notifications. On an iPhone, add Kith to the Home Screen first (Share › Add to Home Screen), then open it from there.</span>
+        : st === "blocked" ? <span className="small">Notifications are blocked for this site in the browser’s settings.</span>
+        : <div className="row" style={{ flexWrap: "wrap" }}>
+            <button type="button" className={`btn small ${st === "on" ? "ghost" : "primary"}`} onClick={toggle} disabled={st === "…"}><IL i="bell">{st === "on" ? "Stop notifications on this device" : "Let notifications reach this device"}</IL></button>
+            <button type="button" className="btn ghost small" onClick={test}>Send a test</button>
+          </div>}
+      {msg && <span className="small" aria-live="polite">{msg}</span>}
+    </div>
+  );
+}
+
+interface Settings { notify: NotifyS; voice: VoiceS; disk: DiskS; safeguardsDoc: string; heartbeat: { checklist: string }; budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
   desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
@@ -64,7 +98,7 @@ interface Overview {
   budgets: Budgets;
   spend: { week: { kind: string; bucket: string; usd: number; calls: number }[]; month: { kind: string; bucket: string; usd: number; calls: number }[] };
   settings: Settings;
-  status: { apiReady: boolean; reporters: string[]; push: boolean; childPushDevices: number; models: { full: string; low: string; safety: string } };
+  status: { apiReady: boolean; reporters: string[]; push: boolean; childPushDevices: number; parentPushDevices?: number; models: { full: string; low: string; safety: string } };
   childName: string;
   companion: Profile;
 }
@@ -149,7 +183,7 @@ const KIND_ICON: Record<string, IconName> = { "home-assistant": "home", kin: "ca
 const ADDABLE: [Connection["kind"], string][] = [["mcp", "MCP server"], ["home-assistant", "Home Assistant"], ["kin", "Kin"], ["jellyfin", "Jellyfin"], ["web", "Allowed websites"]];
 const BUILT_IN = new Set(["room", "kin", "jellyfin", "calculator", "dictionary", "google", "web"]);
 
-function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip" }: { initial: Settings; onSaved: () => void; section?: "settings" | "connectors"; companion?: string }) {
+function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip", publicKey = "" }: { initial: Settings; onSaved: () => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string }) {
   const [s, setS] = useState<Settings>(initial);
   const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
   const [msg, setMsg] = useState("");
@@ -179,13 +213,28 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
       {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
+        {([["set-claude", "sparkle", "Claude"], ["set-notify", "bell", "Notifications"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
       </nav>}
       <div className="psec-list">
         {section === "settings" && <>
         <ApiKeyCard onChanged={onSaved} />
+        <section className="card psec" id="set-notify">
+          <h3 className="psec-h"><span className="psec-ic"><Icon name="bell" size={18} /></span>Notifications to you</h3>
+          <span className="small">Notifications to your own phone or computer, separate from your child’s. Turn them on on each device you want them on. “Right now” reports come through even in quiet hours; everything else waits until quiet hours end. Your child’s chat text is never sent.</span>
+          <ParentPushControls publicKey={publicKey} />
+          <b style={{ fontSize: 14 }}>Reports</b>
+          <Toggle label="Right now (urgent)" checked={s.notify.now} onChange={(v) => setS({ ...s, notify: { ...s.notify, now: v } })} />
+          <Toggle label="Today" checked={s.notify.today} onChange={(v) => setS({ ...s, notify: { ...s.notify, today: v } })} />
+          <Toggle label="Just so you know" checked={s.notify.fyi} onChange={(v) => setS({ ...s, notify: { ...s.notify, fyi: v } })} />
+          <b style={{ fontSize: 14 }}>Also</b>
+          <Toggle label="The weekly summary is ready" checked={s.notify.weekly} onChange={(v) => setS({ ...s, notify: { ...s.notify, weekly: v } })} />
+          <Toggle label="Budget alerts (Low power started, the monthly hard stop reached)" checked={s.notify.budget} onChange={(v) => setS({ ...s, notify: { ...s.notify, budget: v } })} />
+          <b style={{ fontSize: 14 }}>On the lock screen</b>
+          <Toggle label="Show the report’s one-line summary" checked={s.notify.showSummary} onChange={(v) => setS({ ...s, notify: { ...s.notify, showSummary: v } })} />
+          <span className="small">{s.notify.showSummary ? "Notifications show the one-line summary you’d see under Reports (never chat text). Anyone who can see your lock screen can read it." : "Notifications only say something needs you (e.g. “Kith: needs you. Something needs you now. Open Kith to read it.”). Open Kith to read the report."}</span>
+        </section>
         <section className="card psec" id="set-heartbeat">
           <h3 className="psec-h"><span className="psec-ic"><Icon name="heart" size={18} /></span>Heartbeat</h3>
           <span className="small">Every 30 minutes, always (it can’t be switched off), the companion quietly looks over what’s coming up (reminders, exam dates, things it made, what your child mentioned) against this checklist, and decides whether anything needs doing. Usually nothing does; when something does, it either sends one gentle check-in (within your daily limit, never in quiet hours, never while they’re chatting, safety-checked) or writes a line in its journal. It runs on Low power from the desk’s budget, beats “asleep” in quiet hours without calling Claude, and skips calling Claude when nothing has changed.</span>
@@ -415,6 +464,17 @@ export function Parent({ me }: { me: Me }) {
     api<Transparency>("/api/transparency").then(setT).catch(() => undefined);
   }, []);
   useEffect(() => { load(); const i = setInterval(load, 30_000); return () => clearInterval(i); }, [load]);
+  // "Kith Parent" in the tab, and when added to the Dock or Home Screen (the manifest says so too).
+  useEffect(() => {
+    const before = document.title;
+    document.title = "Kith Parent";
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]');
+    const created = !meta;
+    if (!meta) { meta = document.createElement("meta"); meta.name = "apple-mobile-web-app-title"; document.head.appendChild(meta); }
+    const prev = meta.content;
+    meta.content = "Kith Parent";
+    return () => { document.title = before; if (created) meta?.remove(); else if (meta) meta.content = prev; };
+  }, []);
   const test = async () => {
     setTestMsg("Sending…");
     try { const r = await api<{ ok: boolean }>("/api/parent/test-report", { body: {} }); setTestMsg(r.ok ? "Delivered." : "It didn’t get through: check the reporter settings."); } catch (e) { setTestMsg((e as Error).message); }
@@ -430,7 +490,7 @@ export function Parent({ me }: { me: Me }) {
   const checks: [boolean, string, string][] = o ? [
     [o.status.apiReady, "Thinking", o.status.apiReady ? `${o.status.models.full} and ${o.status.models.low}` : "Add the Anthropic API key in Settings"],
     [o.status.reporters.length > 0, "Reports reach you", o.status.reporters.length ? o.status.reporters.join(", ") : "No reporter set up"],
-    [o.status.push, "Notifications", o.status.push ? `${o.status.childPushDevices} device(s) signed up` : "VAPID keys not set"],
+    [o.status.push && (o.status.parentPushDevices ?? 0) > 0, "Notifications to you", !o.status.push ? "VAPID keys not set" : (o.status.parentPushDevices ?? 0) > 0 ? `${o.status.parentPushDevices} of your devices · ${o.status.childPushDevices} of ${cname}’s` : "Turn them on in Settings › Notifications"],
   ] : [];
   const monthPct = o ? Math.min(100, (o.energy.usd.month / Math.max(0.01, o.budgets.hardStopUsd)) * 100) : 0;
   const projPct = o ? Math.min(100, (o.projection / Math.max(0.01, o.budgets.hardStopUsd)) * 100) : 0;
@@ -547,7 +607,7 @@ export function Parent({ me }: { me: Me }) {
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
-          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} />}
+          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} publicKey={me.push.ready ? me.push.publicKey : ""} />}
           {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
           {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}

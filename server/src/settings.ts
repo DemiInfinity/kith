@@ -116,6 +116,16 @@ export const ParentSettings = z.object({
     whisperModel: z.string().max(60).default(""),
     voices: z.array(z.object({ label: z.string().trim().min(1).max(20), voice: z.string().trim().regex(/^[A-Za-z0-9_-]{3,80}$/) })).max(6).default([]),
   }).default({ sttHost: "", sttPort: 0, ttsHost: "", ttsPort: 0, whisperModel: "", voices: [] }),
+  // Notifications to the parent's own devices. "Right now" reports ignore quiet hours; everything
+  // else waits until they end. By default the lock screen only says something needs you.
+  notify: z.object({
+    now: z.boolean().default(true),
+    today: z.boolean().default(false),
+    fyi: z.boolean().default(false),
+    weekly: z.boolean().default(true),
+    budget: z.boolean().default(true),
+    showSummary: z.boolean().default(false),
+  }).default({ now: true, today: false, fyi: false, weekly: true, budget: true, showSummary: false }),
   // Disk: a total budget, a cap on the desk's files, and how long trash is kept.
   disk: z.object({
     totalGb: z.number().min(1).max(2000).default(15),
