@@ -11,7 +11,27 @@ interface Rig {
 
 const INK = "#2A1D3A";
 
+const BUDDY_GRAD = (
+  <defs>
+    <linearGradient id="kith-buddy" x1="0.15" y1="0.05" x2="0.85" y2="1">
+      <stop offset="0" stopColor="#E7B4EE" /><stop offset="0.55" stopColor="#EFA6B8" /><stop offset="1" stopColor="#F7A055" />
+    </linearGradient>
+  </defs>
+);
+
 const RIGS: Record<Look, Rig> = {
+  // Buddy: the Kith app icon's face (design/icon/source/fg.svg, scaled to 200).
+  buddy: {
+    eyeY: 100, eyeDX: 16, mouthY: 128, eye: "round",
+    back: (
+      <>
+        {BUDDY_GRAD}
+        <path d="M100 48 C138 48 155 75 155 107 C155 139 133 155 100 155 C67 155 45 139 45 107 C45 75 62 48 100 48 Z" fill="url(#kith-buddy)" />
+        <circle cx="75" cy="120" r="6" fill="#FFF4FB" fillOpacity="0.55" />
+        <circle cx="125" cy="120" r="6" fill="#FFF4FB" fillOpacity="0.55" />
+      </>
+    ),
+  },
   fox: {
     eyeY: 104, eyeDX: 21, mouthY: 140, eye: "round",
     back: (
@@ -116,6 +136,7 @@ const RIGS: Record<Look, Rig> = {
 };
 
 export const LOOK_EMOJI: Record<Look, string> = {
+  buddy: "",
   fox: "🦊", cat: "🐱", dragon: "🐉", robot: "🤖", star: "⭐", frog: "🐸", owl: "🦉", panda: "🐼",
 };
 export const LOOKS = Object.keys(RIGS) as Look[];
@@ -208,6 +229,23 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120 }: { loo
           <circle cx="150" cy="44" r="5" /><circle cx="164" cy="44" r="5" /><circle cx="178" cy="44" r="5" />
         </g>
       )}
+    </svg>
+  );
+}
+
+/** A look's button face in pickers: its emoji, or the drawn face for looks without one. */
+export function LookIcon({ look }: { look: Look }) {
+  return LOOK_EMOJI[look] ? <>{LOOK_EMOJI[look]}</> : <AvatarSvg look={look} size={58} />;
+}
+
+/** The Kith logo mark: Buddy's face (design/icon/source/fg.svg). */
+export function LogoMark({ size = 64 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 1024 1024" aria-hidden>
+      <defs><linearGradient id="kith-logo" x1="0.15" y1="0.05" x2="0.85" y2="1"><stop offset="0" stopColor="#E7B4EE" /><stop offset="0.55" stopColor="#EFA6B8" /><stop offset="1" stopColor="#F7A055" /></linearGradient></defs>
+      <path d="M512 246 C706 246 794 382 794 548 C794 712 680 794 512 794 C344 794 230 712 230 548 C230 382 318 246 512 246 Z" fill="url(#kith-logo)" />
+      <ellipse cx="432" cy="512" rx="40" ry="62" fill="#2A1C27" /><ellipse cx="592" cy="512" rx="40" ry="62" fill="#2A1C27" />
+      <circle cx="382" cy="612" r="30" fill="#FFF4FB" fillOpacity="0.55" /><circle cx="642" cy="612" r="30" fill="#FFF4FB" fillOpacity="0.55" />
     </svg>
   );
 }

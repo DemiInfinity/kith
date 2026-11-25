@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, type Me, type Profile } from "../api";
-import { Avatar, LOOK_EMOJI, LOOKS } from "../components/Avatar";
+import { Avatar, LookIcon, LOOKS } from "../components/Avatar";
 
 /** First run: the child names their companion and picks its look. Honest from the first screen. */
 export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
@@ -34,7 +34,7 @@ export function Meet({ me, onDone }: { me: Me; onDone: (p: Profile) => void }) {
         <div className="looks" role="radiogroup" aria-label="Look">
           {LOOKS.map((l) => (
             <button key={l} className={`look ${look === l ? "on" : ""}`} role="radio" aria-checked={look === l} aria-label={l} onClick={() => setLook(l)}>
-              {LOOK_EMOJI[l]}
+              <LookIcon look={l} />
             </button>
           ))}
         </div>

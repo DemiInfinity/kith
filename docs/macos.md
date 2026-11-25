@@ -38,6 +38,16 @@ mic during a call."
 
 Option 1 avoids all of this.
 
+## Icons
+
+The app icon ("Buddy") is exported for every platform in `design/icon/icons/`:
+
+- `desktop/icon.icns`, `icon.ico` and PNGs: Tauri's `bundle.icon`.
+- `apple/`: Icon Composer layers for the macOS 26 Liquid Glass icon.
+- `menubar/`: a template glyph for a menu-bar item.
+
+The web app already uses the `web/` set (favicon, apple-touch-icon, PWA icons).
+
 ## Not done yet
 
 - **Push notifications on macOS**: Safari web push works for an added-to-Dock app; Tauri would need its own

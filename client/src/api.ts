@@ -29,7 +29,7 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
 
 // ── Shapes shared with the server ───────────────────────────────────────────────────────────
 
-export type Look = "fox" | "cat" | "dragon" | "robot" | "star" | "frog" | "owl" | "panda";
+export type Look = "buddy" | "fox" | "cat" | "dragon" | "robot" | "star" | "frog" | "owl" | "panda";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
 export type Mode = "chat" | "talk" | "oc";
 

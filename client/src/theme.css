@@ -157,8 +157,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; 
 .bar { display: block; height: 10px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
 .bar > span { display: block; height: 100%; border-radius: 999px; background: var(--lilac); transition: width 0.6s ease; }
 
-.looks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; }
-.look { aspect-ratio: 1; border-radius: 18px; font-size: 28px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; padding: 6px; }
+.looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+.look { aspect-ratio: 1.5; border-radius: 18px; font-size: 28px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; padding: 6px; }
 .look.on { border: 2px solid var(--lilac); background: var(--card-hi); }
 
 /* ── Energy ───────────────────────────────────────────────────────────────────────────── */

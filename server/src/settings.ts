@@ -85,12 +85,12 @@ export function defaultConnections(): Connection[] {
 
 // ── The companion's identity, picked by the child ────────────────────────────────────────────
 
-export const LOOKS = ["fox", "cat", "dragon", "robot", "star", "frog", "owl", "panda"] as const;
+export const LOOKS = ["buddy", "fox", "cat", "dragon", "robot", "star", "frog", "owl", "panda"] as const;
 export const TRAITS = ["Curious", "Funny", "Calm", "Encouraging", "Nerdy", "Creative", "Sporty", "Gentle"] as const;
 
 export const CompanionProfile = z.object({
   name: z.string().trim().min(1).max(24).default("Pip"),
-  look: z.enum(LOOKS).default("fox"),
+  look: z.enum(LOOKS).default("buddy"),
   traits: z.array(z.enum(TRAITS)).max(3).default(["Curious", "Funny", "Encouraging"]),
   chatty: z.number().int().min(0).max(100).default(62),
   silly: z.number().int().min(0).max(100).default(70),

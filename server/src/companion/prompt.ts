@@ -8,6 +8,7 @@ export interface PromptCtx {
 }
 
 const LOOK_WORDS: Record<CompanionProfile["look"], string> = {
+  buddy: "a soft, round, friendly blob (Buddy)",
   fox: "a little fox", cat: "a cat", dragon: "a small dragon", robot: "a friendly robot",
   star: "a star", frog: "a frog", owl: "an owl", panda: "a panda",
 };

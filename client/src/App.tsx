@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
-import { Avatar } from "./components/Avatar";
+import { Avatar, LogoMark } from "./components/Avatar";
 import { EnergyCard, HelpSheet, useRoute } from "./components/bits";
 import { Meet } from "./screens/Meet";
 import { Chat } from "./screens/Chat";
@@ -21,7 +21,7 @@ function SignIn() {
   return (
     <div className="main">
       <div className="screen narrow" style={{ alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
-        <svg width="64" height="64" viewBox="0 0 48 48" aria-hidden><circle cx="19" cy="25" r="13" fill="#D9A3E0" /><circle cx="30" cy="22" r="13" fill="#F59646" fillOpacity="0.85" /><circle cx="24.5" cy="23.5" r="5.5" fill="#FFF4FB" /></svg>
+        <LogoMark size={88} />
         <h1 style={{ fontSize: 46 }}>kith</h1>
         <span className="hand">a companion that grows up with you, kept at home</span>
         {reason === "not-allowed" && <div className="notice">That account isn’t set up for Kith. Ask the grown-up who runs it.</div>}

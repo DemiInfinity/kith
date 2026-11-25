@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Me, type Profile } from "../api";
-import { Avatar, LOOK_EMOJI, LOOKS } from "../components/Avatar";
+import { Avatar, LookIcon, LOOKS } from "../components/Avatar";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
 
@@ -77,7 +77,7 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
       <b>Pick a look</b>
       <div className="looks" role="radiogroup" aria-label="Look">
         {LOOKS.map((l) => (
-          <button key={l} className={`look ${p.look === l ? "on" : ""}`} role="radio" aria-checked={p.look === l} aria-label={l} onClick={() => set({ look: l })}>{LOOK_EMOJI[l]}</button>
+          <button key={l} className={`look ${p.look === l ? "on" : ""}`} role="radio" aria-checked={p.look === l} aria-label={l} onClick={() => set({ look: l })}><LookIcon look={l} /></button>
         ))}
       </div>
 
