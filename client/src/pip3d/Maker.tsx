@@ -225,7 +225,7 @@ export function LookPanel({ forWhat, look, setLook, companion, name }: {
   return (
     <div className="mk-pane">
       <h2>Look</h2>
-      <label className="mk-lbl" htmlFor={`name-${forWhat}`}>{forWhat === "pip" ? `${companion.toUpperCase()}’S NAME ON THE PICTURE` : "CHARACTER NAME"}</label>
+      <label className="mk-lbl" htmlFor={`name-${forWhat}`}>{forWhat === "pip" ? "NAME" : "CHARACTER NAME"}</label>
       <input id={`name-${forWhat}`} className="input" maxLength={name ? 40 : 20} value={name ? name.value : look.name}
         onChange={(e) => (name ? name.set(e.target.value) : set({ name: e.target.value }))} />
       {forWhat === "pip" && <span className="small">Pip’s real name is set in Personality; this is just for the 3D look.</span>}

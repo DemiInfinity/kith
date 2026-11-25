@@ -7,7 +7,7 @@ import { config } from "./config.js";
 import { childName, requireRole } from "./auth.js";
 import { OfflineError, textOf } from "./llm.js";
 import { energyNow } from "./companion/chat.js";
-import { loadProfile } from "./settings.js";
+import { loadProfile, saveProfile } from "./settings.js";
 import { checkOutputRules } from "./safety/rules.js";
 import { screenInput } from "./reporting/outside.js";
 import { OC_TRAITS } from "./desk/oc.js";
@@ -83,7 +83,10 @@ export function registerPip(app: FastifyInstance, d: AppDeps) {
       moods[m] = buf;
     }
     if (b.data.look.name && !(await okText(reply, b.data.look.name, "Pip's name in My Pip"))) return;
-    return savePipLook(db, b.data.look, png, moods);
+    // The name on My Pip is Pip's name everywhere (the header, profile, chat), so it renames Pip too.
+    const name = b.data.look.name.trim();
+    const profile = name && name !== loadProfile(db).name ? saveProfile(db, { ...loadProfile(db), name: name.slice(0, 24) }) : null;
+    return { ...savePipLook(db, b.data.look, png, moods), ...(profile ? { profile } : {}) };
   });
   app.get("/api/pip/picture.png", { preHandler: either }, async (req, reply) => {
     const m = z.enum(PICTURE_MOODS).safeParse((req.query as { mood?: string }).mood);

@@ -263,6 +263,15 @@ describe("My Pip endpoints", () => {
     expect((await a.inject({ url: "/api/pip/look", ...kid })).json()).toMatchObject({ moods: false });
     expect((await get("?mood=sleepy")).rawPayload.equals(main)).toBe(true);
   });
+  it("the name on My Pip renames Pip everywhere", async () => {
+    const { a, kid } = await app();
+    const r = await a.inject({ method: "PUT", url: "/api/pip/look", ...kid, payload: { look: { ...DEFAULT_LOOK, name: "Nova" }, picture: null } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().profile).toMatchObject({ name: "Nova" });
+    expect((await a.inject({ url: "/api/me", ...kid })).json().profile.name).toBe("Nova");
+    // Saving again with the same name doesn't touch the profile.
+    expect((await a.inject({ method: "PUT", url: "/api/pip/look", ...kid, payload: { look: { ...DEFAULT_LOOK, name: "Nova" }, picture: null } })).json().profile).toBeUndefined();
+  });
   it("refuses looks and pictures that aren't right", async () => {
     const { a, kid } = await app();
     const put = (payload: unknown) => a.inject({ method: "PUT", url: "/api/pip/look", ...kid, payload: payload as object });

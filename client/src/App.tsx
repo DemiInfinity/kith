@@ -303,7 +303,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   let screen: React.ReactNode;
   if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
-  else if (path === "/my-pip") screen = <MyPip me={me} />;
+  else if (path === "/my-pip") screen = <MyPip me={me} onSaved={onSaved} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
   else if (path === "/shared") screen = <Shared me={me} />;

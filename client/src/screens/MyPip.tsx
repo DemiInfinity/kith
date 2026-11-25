@@ -2,7 +2,7 @@
 // parts), see its moods, and save it: saving replaces the old look and makes the chat picture.
 
 import { useEffect, useRef, useState } from "react";
-import { api, type Me } from "../api";
+import { api, type Me, type Profile } from "../api";
 import { Avatar } from "../components/Avatar";
 import { PICTURE_MOODS, pipPictureUrl, setPipPicture, usePipPicture } from "../components/CompanionPic";
 import type { PipStage } from "../pip3d/engine";
@@ -12,7 +12,7 @@ import { action } from "../lib/action";
 
 type Tab = "describe" | "look" | "mood" | "chat";
 
-export function MyPip({ me }: { me: Me }) {
+export function MyPip({ me, onSaved }: { me: Me; onSaved?: (p: Profile) => void }) {
   const companion = me.profile.name;
   const [look, setLook] = useState<Look | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -28,7 +28,7 @@ export function MyPip({ me }: { me: Me }) {
 
   useEffect(() => {
     api<{ look: Look | null; updated: number | null; picture: boolean; moods?: boolean }>("/api/pip/look")
-      .then((r) => { setLook(r.look ? normaliseLook(r.look) : { ...DEFAULT_LOOK, name: companion }); setSavedAt(r.updated); setNeedsMoods(!!r.look && r.picture && !r.moods); })
+      .then((r) => { setLook(r.look ? { ...normaliseLook(r.look), name: companion } : { ...DEFAULT_LOOK, name: companion }); setSavedAt(r.updated); setNeedsMoods(!!r.look && r.picture && !r.moods); })
       .catch(() => setLook({ ...DEFAULT_LOOK, name: companion }));
   }, [companion]);
   const change = (l: Look) => { setLook(l); setDirty(true); };
@@ -64,7 +64,8 @@ export function MyPip({ me }: { me: Me }) {
     try {
       const picture = stage ? stage.snapshot("portrait", 256, false).toDataURL("image/png") : null;
       const moods = stage ? stage.moodPictures(PICTURE_MOODS, 256) : {};
-      const r = await api<{ updated: number; picture: boolean }>("/api/pip/look", { method: "PUT", body: { look, picture, moods } });
+      const r = await api<{ updated: number; picture: boolean; profile?: Profile }>("/api/pip/look", { method: "PUT", body: { look, picture, moods } });
+      if (r.profile) onSaved?.(r.profile);
       setSavedAt(r.updated); setDirty(false);
       if (r.picture) setPipPicture(r.updated);
       setSay(`Saved. This is me now!`);
