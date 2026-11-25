@@ -15,7 +15,10 @@ Kith calls Claude through the Claude API from the server only. The key never rea
 3. **Set the workspace's monthly spend limit** under Console › Settings › Limits (workspace limits).
    - This is the cap that really protects you. A good starting point is $50 a month.
    - Kith's own monthly figure is only a backstop.
-4. **Create an API key in that workspace** and put it in `.env` as `ANTHROPIC_API_KEY`.
+4. **Create an API key in that workspace.** Either paste it into the parent view (Settings › Claude), where it's
+   checked with Anthropic and stored encrypted (this needs `KITH_SECRET_KEY` in `.env`: `openssl rand -hex 32`), or
+   put it in `.env` as `ANTHROPIC_API_KEY`. A key saved in the parent view takes priority; only its last four
+   characters are ever shown.
 5. **Check data settings**: API inputs and outputs aren't used for training under the Commercial Terms.
 
 Kith's own limits, enforced on the server and changeable in the parent view. The defaults are designed for heavy,

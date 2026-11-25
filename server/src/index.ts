@@ -13,6 +13,7 @@ import { AnthropicLLM } from "./llm.js";
 import { Safety } from "./safety/check.js";
 import { makeReporters } from "./reporting/reporter.js";
 import { Studio } from "./desk/studio.js";
+import { currentKey } from "./apikey.js";
 import { registerAuth } from "./auth.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
@@ -45,10 +46,10 @@ async function main() {
   if (!config.desk.token) throw new Error("KITH_DESK_TOKEN must be set (the shared secret between Kith and the desk).");
   if (config.devLogin) console.warn("⚠️  KITH_DEV_LOGIN is on: anyone who can reach this server can sign in. Local testing only.");
   if (!config.oidc.issuer && !config.devLogin) console.warn("Sign-in isn't configured (KITH_OIDC_ISSUER); nobody can sign in yet.");
-  if (!config.anthropic.apiKey) console.warn("No ANTHROPIC_API_KEY: the companion will say it isn't switched on yet. Everything else works.");
-
   const db = openDb(path.join(config.dataDir, "kith.sqlite"));
-  const llm = new AnthropicLLM(db, config.anthropic.apiKey);
+  const key = currentKey(db);
+  if (!key.key) console.warn("No Anthropic API key yet (set it in the parent view, or ANTHROPIC_API_KEY): the companion will say it isn't switched on yet. Everything else works.");
+  const llm = new AnthropicLLM(db, key.key);
   const safety = new Safety(llm);
   const reporters = makeReporters();
   const storage = new Storage(db, [new GoogleBackend(db)]);

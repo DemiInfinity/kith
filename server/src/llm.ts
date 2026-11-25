@@ -23,11 +23,16 @@ export interface CallOpts {
 export interface LLM {
   readonly available: boolean;
   call(opts: CallOpts): Promise<Anthropic.Message>;
+  setKey?(apiKey: string): void;
 }
 
 export class AnthropicLLM implements LLM {
-  private client: Anthropic | null;
+  private client: Anthropic | null = null;
   constructor(private db: DB, apiKey: string) {
+    this.setKey(apiKey);
+  }
+  /** Switches to a new key straight away (the parent can set it in the parent view). */
+  setKey(apiKey: string) {
     this.client = apiKey ? new Anthropic({ apiKey, maxRetries: 2, timeout: 120_000 }) : null;
   }
   get available() {

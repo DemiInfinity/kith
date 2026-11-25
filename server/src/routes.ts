@@ -1,3 +1,4 @@
+import { canStoreKeys, checkKey, currentKey, keyStatus, looksLikeKey, removeKey, saveKey } from "./apikey.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { DB } from "./db.js";
@@ -216,6 +217,23 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const a = z.object({ x: z.number(), y: z.number() }).parse(req.body);
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
+  });
+  // The Anthropic API key, set by the parent. Never sent back (only its last four characters).
+  app.get("/api/parent/apikey", { preHandler: parent }, async () => keyStatus(db));
+  app.put("/api/parent/apikey", { preHandler: parent, config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const key = String((req.body as { key?: unknown })?.key ?? "").trim();
+    if (!canStoreKeys()) return reply.code(409).send({ error: "Set KITH_SECRET_KEY on the server first (64 hex characters: openssl rand -hex 32), so the key can be stored encrypted." });
+    if (!looksLikeKey(key)) return reply.code(400).send({ error: "That doesn’t look like an Anthropic API key (they start with sk-ant-)." });
+    const problem = await checkKey(key);
+    if (problem) return reply.code(422).send({ error: problem });
+    saveKey(db, key);
+    d.llm.setKey?.(key);
+    return keyStatus(db);
+  });
+  app.delete("/api/parent/apikey", { preHandler: parent }, async () => {
+    removeKey(db);
+    d.llm.setKey?.(currentKey(db).key);
+    return keyStatus(db);
   });
   // The desk screen went to sleep in the app: let the desk close its browser if nobody's using it.
   app.post("/api/desk/browser/sleep", { preHandler: either }, async () => {
