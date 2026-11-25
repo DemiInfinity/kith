@@ -153,6 +153,10 @@ describe("the parent's inbox for the Mac app", () => {
     expect((await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: kid } })).statusCode).toBe(403);
     const first = (await app.inject({ url: "/api/native/parent-inbox", cookies: { kith_sid: mum } })).json();
     expect(first).toEqual({ items: [], last: 1 });
+    // Polling is how Kith Parent on a Mac shows up as one of the parent's devices.
+    const { macAppConnected } = await import("../src/checkins/parentInbox.js");
+    expect(macAppConnected(db)).toBe(true);
+    expect(macAppConnected(db, Date.now() + 31 * 60_000)).toBe(false);
     const all1 = (await app.inject({ url: "/api/native/parent-inbox?after=0", cookies: { kith_sid: mum } })).json();
     expect(all1.items[0]).toMatchObject({ id: 1, kind: "test", urgent: false, title: "Kith", url: "/parent" });
     config.devLogin = was;

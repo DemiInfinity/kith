@@ -12,6 +12,7 @@ import { childName, requireRole } from "./auth.js";
 import { createThread, getThread, inThreadLanguage, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
 import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
+import { macAppConnected } from "./checkins/parentInbox.js";
 import { LANGS, logPractice } from "./study/languages.js";
 import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
@@ -539,7 +540,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   });
   app.post("/api/parent/push/test", { preHandler: parent, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
     const sent = await notifyParent(db, { kind: "test" });
-    return { sent, devices: deviceCount(db, "parent") };
+    return { sent, devices: deviceCount(db, "parent"), macApp: macAppConnected(db) };
   });
   app.post("/api/push/test", { preHandler: child, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
     const sent = await pushToChild(db, { title: loadProfile(db).name, body: "This is what my notifications look like 👋", url: "/" }, "test");
@@ -584,6 +585,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
         push: pushReady(),
         childPushDevices: deviceCount(db, "child"),
         parentPushDevices: deviceCount(db, "parent"),
+        parentMacApp: macAppConnected(db),
         models: { full: config.anthropic.fullModel, low: config.anthropic.lowModel, safety: config.anthropic.safetyModel },
       },
       childName: childName(db),

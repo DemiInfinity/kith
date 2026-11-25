@@ -36,9 +36,18 @@ export function parentInboxAfter(db: DB, after: number | null) {
   return { items, last: Math.max(last, after) };
 }
 
+/** When Kith Parent on a Mac last checked in: it counts as one of the parent's devices. */
+export function macAppSeen(db: DB): number | null {
+  const r = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'parent_mac_seen'");
+  return r ? Number(JSON.parse(r.json)) || null : null;
+}
+/** Kith Parent polls about once a minute while it runs; give it some slack for a sleeping Mac. */
+export const macAppConnected = (db: DB, now = Date.now()) => { const t = macAppSeen(db); return !!t && now - t < 30 * 60_000; };
+
 export function registerParentInbox(app: FastifyInstance, db: DB) {
   const parent = requireRole("parent");
   app.get("/api/native/parent-inbox", { preHandler: parent, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
+    run(db, "INSERT INTO settings(key, json) VALUES('parent_mac_seen', ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", JSON.stringify(Date.now()));
     const a = (req.query as { after?: string }).after;
     return parentInboxAfter(db, a !== undefined && /^\d+$/.test(a) ? Number(a) : null);
   });

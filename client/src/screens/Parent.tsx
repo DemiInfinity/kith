@@ -6,6 +6,7 @@ import { dayLabel, Toggle, when } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
+import { isMacApp } from "../lib/native";
 import { ParentHelp } from "./HelpCentre";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
@@ -166,12 +167,20 @@ function ParentPushControls({ publicKey }: { publicKey: string }) {
   };
   const test = async () => {
     setMsg("Sending…");
-    try { const r = await api<{ sent: number; devices: number }>("/api/parent/push/test", { body: {} }); setMsg(r.sent ? `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}.` : r.devices ? "It didn’t get through. Check this device’s notification settings." : "No device is set up yet."); }
+    try {
+      const r = await api<{ sent: number; devices: number; macApp?: boolean }>("/api/parent/push/test", { body: {} });
+      const where = [r.macApp ? "Kith Parent on your Mac (within a minute)" : "", r.sent ? `${r.sent} device${r.sent === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+      setMsg(where ? `Sent to ${where}.` : r.devices ? "It didn’t get through. Check this device’s notification settings." : "No device is set up yet.");
+    }
     catch (e) { setMsg((e as Error).message); }
   };
   return (
     <div className="stack" style={{ gap: 8 }}>
-      {!publicKey ? <span className="small">Notifications need VAPID keys on the server first (scripts/setup-secrets.sh makes them).</span>
+      {isMacApp() ? <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+          <span className="small" style={{ flex: 1, minWidth: 220 }}>This Mac is set: Kith Parent shows them as Mac notifications, even with the window closed. Turn on “Let notifications reach this device” on your phone too if you like.</span>
+          <button type="button" className="btn ghost small" onClick={test}>Send a test</button>
+        </div>
+        : !publicKey ? <span className="small">Phones and browsers need VAPID keys on the server first (scripts/setup-secrets.sh makes them). Kith Parent on a Mac works without them.</span>
         : st === "unsupported" ? <span className="small">This browser can’t receive notifications. On an iPhone, add Kith to the Home Screen first (Share › Add to Home Screen), then open it from there.</span>
         : st === "blocked" ? <span className="small">Notifications are blocked for this site in the browser’s settings.</span>
         : <div className="row" style={{ flexWrap: "wrap" }}>
@@ -193,7 +202,7 @@ interface Overview {
   budgets: Budgets;
   spend: { week: { kind: string; bucket: string; usd: number; calls: number }[]; month: { kind: string; bucket: string; usd: number; calls: number }[] };
   settings: Settings;
-  status: { apiReady: boolean; reporters: string[]; push: boolean; childPushDevices: number; parentPushDevices?: number; models: { full: string; low: string; safety: string } };
+  status: { apiReady: boolean; reporters: string[]; push: boolean; childPushDevices: number; parentPushDevices?: number; parentMacApp?: boolean; models: { full: string; low: string; safety: string } };
   childName: string;
   companion: Profile;
 }
@@ -585,7 +594,14 @@ export function Parent({ me }: { me: Me }) {
   const checks: [boolean, string, string][] = o ? [
     [o.status.apiReady, "Thinking", o.status.apiReady ? `${o.status.models.full} and ${o.status.models.low}` : "Add the Anthropic API key in Settings"],
     [o.status.reporters.length > 0, "Reports reach you", o.status.reporters.length ? o.status.reporters.join(", ") : "No reporter set up"],
-    [o.status.push && (o.status.parentPushDevices ?? 0) > 0, "Notifications to you", !o.status.push ? "VAPID keys not set" : (o.status.parentPushDevices ?? 0) > 0 ? `${o.status.parentPushDevices} of your devices · ${o.status.childPushDevices} of ${cname}’s` : "Turn them on in Settings › Notifications"],
+    (() => {
+      // Kith Parent on a Mac gets them natively (no VAPID keys needed); phones and browsers use web push.
+      const web = o.status.push ? o.status.parentPushDevices ?? 0 : 0;
+      const mac = !!o.status.parentMacApp;
+      const yours = [mac ? "Kith Parent on your Mac" : "", web ? `${web} other device${web === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ");
+      return [mac || web > 0, "Notifications to you", yours ? `${yours}${o.status.push ? ` · ${o.status.childPushDevices} of ${cname}’s` : ""}`
+        : !o.status.push ? "Open Kith Parent on your Mac, or set VAPID keys for phones" : "Settings › Notifications to you › Let notifications reach this device"] as [boolean, string, string];
+    })(),
   ] : [];
   const monthPct = o ? Math.min(100, (o.energy.usd.month / Math.max(0.01, o.budgets.hardStopUsd)) * 100) : 0;
   const projPct = o ? Math.min(100, (o.projection / Math.max(0.01, o.budgets.hardStopUsd)) * 100) : 0;
