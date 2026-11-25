@@ -7,8 +7,12 @@ import { z } from "zod";
 import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 import { checkInputRules, checkOutputRules } from "../safety/rules.js";
+import { Look, pngDataUrl, THUMB_MAX_BYTES } from "../pip/look.js";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Personality chips in the 3D maker's Story tab. */
+export const OC_TRAITS = ["kind", "brave", "shy", "funny", "clever", "curious", "dreamy", "loyal", "calm", "chaotic", "stubborn", "grumpy", "creative", "sporty"] as const;
 
 export const RELATIONSHIPS = ["friend", "best friend", "rival", "family", "mentor", "teammate", "nemesis", "pet", "sidekick"] as const;
 
@@ -27,8 +31,25 @@ export const Sheet = z.object({
     .array(z.object({ with: z.string().max(40), kind: z.enum(RELATIONSHIPS), note: z.string().max(200).default("") }))
     .max(12)
     .default([]),
+  // Added with the 3D maker. All optional, so characters saved before still load as they were.
+  pronouns: z.string().max(40).optional(),
+  age: z.string().max(40).optional(),
+  species: z.string().max(60).optional(),
+  catchphrase: z.string().max(80).optional(),
+  traits: z.array(z.enum(OC_TRAITS)).max(OC_TRAITS.length).transform((t) => [...new Set(t)]).optional(),
+  /** The 3D look (the client draws it). */
+  model: Look.optional(),
+  /** A small round picture of them, made in the browser from the 3D look. */
+  thumb: pngDataUrl(THUMB_MAX_BYTES).optional(),
 });
 export type Sheet = z.infer<typeof Sheet>;
+
+/** The words in a sheet (everything she or the companion wrote), without the picture's data. */
+export function sheetWords(sheet: Partial<Sheet> | Record<string, unknown>): Record<string, unknown> {
+  const { thumb: _t, model, ...rest } = sheet as Record<string, unknown>;
+  const name = (model as { name?: unknown } | undefined)?.name;
+  return typeof name === "string" && name ? { ...rest, modelName: name } : rest;
+}
 
 export interface Character { id: number; ts: number; updated: number; sheet: Sheet }
 
@@ -41,7 +62,7 @@ export const WorldEntry = z.object({
 
 /** Sheets are checked like messages: no romance, nothing sexual, no personal details. */
 export function sheetProblems(sheet: Partial<Sheet>): string[] {
-  const text = JSON.stringify(sheet);
+  const text = JSON.stringify(sheetWords(sheet));
   const inCats = checkInputRules(text).categories;
   const outCats = checkOutputRules(text);
   const bad = new Set<string>();
@@ -105,7 +126,7 @@ export function charactersForPrompt(db: DB, ids: number[]): string {
   return chars
     .map((c) => {
       const s = c.sheet;
-      return `- ${s.name} (id ${c.id}): ${[s.look && `looks: ${s.look}`, s.personality && `personality: ${s.personality}`, s.powers && `powers: ${s.powers}`, s.backstory && `backstory: ${s.backstory}`, s.palette.length ? `palette: ${s.palette.join(" ")}` : "", s.relationships.length ? `relationships: ${s.relationships.map((r) => `${r.kind} of ${r.with}`).join(", ")}` : ""].filter(Boolean).join("; ")}`;
+      return `- ${s.name} (id ${c.id}): ${[s.species && `species: ${s.species}`, s.pronouns && `pronouns: ${s.pronouns}`, s.age && `age: ${s.age}`, s.look && `looks: ${s.look}`, s.traits?.length ? `traits: ${s.traits.join(", ")}` : "", s.catchphrase && `catchphrase: ${s.catchphrase}`, s.personality && `personality: ${s.personality}`, s.powers && `powers: ${s.powers}`, s.backstory && `backstory: ${s.backstory}`, s.palette.length ? `palette: ${s.palette.join(" ")}` : "", s.relationships.length ? `relationships: ${s.relationships.map((r) => `${r.kind} of ${r.with}`).join(", ")}` : ""].filter(Boolean).join("; ")}`;
     })
     .join("\n");
 }
@@ -115,7 +136,7 @@ export function ocWorkshopNote(db: DB): string {
   const world = listWorld(db);
   return `You're in the OC workshop. Help build original characters by asking one good, specific question at a time
 (look, personality, powers, backstory, likes, palette, theme song, relationships, their world). Save answers as you go
-with save_character (merge only the fields that changed). Friendships, rivalries and adventures are great; romance and
+with save_character (merge only the fields that changed; put how they look in look_description so their 3D model matches). Friendships, rivalries and adventures are great; romance and
 anything sexual are not, so steer away kindly. Offer to make sketches, palettes, comics or scenes on the desk with
 start_desk_project and character_ids. In role-play scenes, you can voice the characters, but you stay an AI and the
 same rules apply.

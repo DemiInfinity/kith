@@ -167,7 +167,10 @@ export async function takeTurn(deps: Deps, given: { text: string; mode: Mode; ct
     }
   }
 
-  const reply = store(db, "companion", replyText, input.mode, report ? { report } : undefined, thread);
+  // Characters made or changed this turn show as cards under the reply, now and when the chat is reopened.
+  const madeChars = [...new Set(effects.characters)];
+  const meta = report || madeChars.length ? { ...(report ? { report } : {}), ...(madeChars.length ? { characters: madeChars } : {}) } : undefined;
+  const reply = store(db, "companion", replyText, input.mode, meta, thread);
   energy = energyNow(db);
 
   // Told first (the reply above), then the parent hears.
@@ -221,7 +224,7 @@ async function generateReply(
   if (cal) fx.untrusted.push(...cal.events.map((e) => e.title), ...cal.reminders.map((r) => r.title));
   const outsideTools = [...(await connectionTools(db, settings.connections)), ...nativeTools(db)].map((t) => heldTool(t, fx));
   const tools: ToolDef[] = [
-    ...builtinTools(db, deps.studio, fx).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
+    ...builtinTools(db, deps.studio, fx, llm).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...outsideTools,
     ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, fx as { confirms: Pending[]; staged: Staged[]; untrusted: string[] }, { coursework, safety }),
   ];

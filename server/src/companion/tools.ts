@@ -6,7 +6,9 @@ import type { DB } from "../db.js";
 import { addMemory, memoryProblem } from "./memory.js";
 import type { ToolDef } from "../connections/connections.js";
 import { KIND_NAMES, type Studio } from "../desk/studio.js";
-import { addWorld, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
+import { addWorld, getCharacter, listCharacters, OC_TRAITS, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
+import { describe as describeLook, NEW_CHARACTER } from "../pip/look.js";
+import type { LLM } from "../llm.js";
 import { searchHistory } from "./history.js";
 import { addSchedule, scheduleProblem } from "./schedules.js";
 import { config } from "../config.js";
@@ -77,7 +79,7 @@ export function fieldText(v: unknown): string {
 const obj = (properties: Record<string, unknown>, required: string[]) =>
   ({ type: "object" as const, additionalProperties: false, properties, required });
 
-export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): ToolDef[] {
+export function builtinTools(db: DB, studio: Studio, effects: TurnEffects, llm?: LLM): ToolDef[] {
   const tool = (name: string, description: string, input_schema: ToolDef["input_schema"], run: ToolDef["run"]): ToolDef =>
     ({ name, description, input_schema, connection: "companion", level: "act", run });
 
@@ -205,29 +207,34 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
     ),
     tool(
       "save_character",
-      "Create or update one of their original characters (OCs). Include only the fields that changed. Omit id to create a new one.",
+      "Create or update one of their original characters (OCs). Use it in any chat, not only the OC workshop, but only when they clearly ask you to make or change a character (for example \"make me a wolf girl called Luna\" or \"give Luna a beanie\"). Include only the fields that changed; omit id to create a new one. Put how they look in look_description, in plain words: it becomes their 3D model (anime chibi or round creature; hair, animal ears and tail, eyes, skin, cosy outfits, a beanie, scarf, glasses or headphones). Their characters: " + characterList(db) + ".",
       obj({
         id: { type: "integer" },
+        look_description: { type: "string", description: "How they look, in plain words, e.g. 'chibi wolf girl, long dark hair, amber eyes, headphones'. Leave out if the look isn't changing." },
         fields: obj({
           name: { type: "string" }, icon: { type: "string" }, look: { type: "string" }, personality: { type: "string" },
           powers: { type: "string" }, backstory: { type: "string" }, likes: { type: "string" }, dislikes: { type: "string" },
+          pronouns: { type: "string" }, age: { type: "string" }, species: { type: "string", description: "Species or kind, e.g. 'wolf girl'" },
+          catchphrase: { type: "string" }, traits: { type: "array", items: { type: "string", enum: [...OC_TRAITS] } },
           palette: { type: "array", items: { type: "string", description: "#RRGGBB" } }, themeSong: { type: "string" },
           relationships: { type: "array", items: obj({ with: { type: "string" }, kind: { type: "string", enum: [...RELATIONSHIPS] }, note: { type: "string" } }, ["with", "kind"]) },
         }, []),
       }, ["fields"]),
       async (input) => {
-        const v = z.object({ id: z.number().int().optional(), fields: z.record(z.string(), z.unknown()) }).parse(input);
-        const dry = saveCharacter(db, { id: v.id, fields: v.fields as never }, true);
+        const v = z.object({ id: z.number().int().optional(), look_description: z.string().max(600).optional(), fields: z.record(z.string(), z.unknown()).default({}) }).parse(input);
+        const r = await characterFields(db, llm, v);
+        if (!r.ok) return `Not saved: ${r.problem}`;
+        const dry = saveCharacter(db, { id: v.id, fields: r.fields as never }, true);
         if (!dry.ok) return `Not saved: ${dry.problems.join("; ")}`;
         await stage(effects, {
-          label: "character", text: fieldText(v.fields),
+          label: "character", text: [fieldText(v.fields), v.look_description].filter(Boolean).join("\n"),
           commit: () => {
-            const r = saveCharacter(db, { id: v.id, fields: v.fields as never });
-            if (r.ok) effects.characters.push(r.character.id);
+            const saved = saveCharacter(db, { id: v.id, fields: r.fields as never });
+            if (saved.ok) effects.characters.push(saved.character.id);
             else console.warn("[tools] a staged character couldn't be saved");
           },
         });
-        return `Saved ${dry.character.sheet.name}${v.id ? ` (id ${v.id})` : ""}. ${HELD}`;
+        return `Saved ${dry.character.sheet.name}${v.id ? ` (id ${v.id})` : ""}.${r.note} They'll see a card with their 3D look under your reply. ${HELD}`;
       },
     ),
     tool(
@@ -246,4 +253,41 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
       },
     ),
   ];
+}
+
+/** Her characters for the save_character tool, so "give Luna a beanie" can find Luna in any chat. */
+function characterList(db: DB): string {
+  const chars = listCharacters(db).slice(0, 30);
+  return chars.length ? chars.map((c) => `${c.sheet.name} (id ${c.id})`).join(", ") : "none yet";
+}
+
+/**
+ * The sheet fields a save_character call would save. A look description becomes a checked 3D
+ * look (Claude picks the parts, or the word matcher does); the model can't set the look or the
+ * picture directly. A changed look drops the old picture, so the app makes a new one.
+ */
+export async function characterFields(
+  db: DB, llm: LLM | undefined, v: { id?: number; look_description?: string; fields: Record<string, unknown> },
+): Promise<{ ok: true; fields: Record<string, unknown>; note: string } | { ok: false; problem: string }> {
+  const fields: Record<string, unknown> = { ...v.fields };
+  delete fields.model;
+  delete fields.thumb;
+  const existing = v.id ? getCharacter(db, v.id) : null;
+  if (v.id && !existing) return { ok: false, problem: "no character with that id" };
+  const name = String(fields.name ?? existing?.sheet.name ?? "").slice(0, 20);
+  const words = v.look_description?.trim() || (!existing?.sheet.model && typeof fields.look === "string" ? fields.look.trim() : "");
+  let note = "";
+  if (words) {
+    const d = await describeLook(llm, words, { for: "oc", base: existing?.sheet.model ?? NEW_CHARACTER, useModel: true });
+    if (d.refused) return { ok: false, problem: "characters stay cosy and friendly, so that look can't be made. Kindly suggest a different one." };
+    fields.model = { ...d.look, name };
+    fields.thumb = undefined;
+    if (!existing?.sheet.look && typeof fields.look !== "string") fields.look = words.slice(0, 400);
+    note = ` Their 3D look: ${d.understood.join(", ") || "updated"}.${d.notYet.length ? ` Not available yet: ${d.notYet.join(", ")}.` : ""}`;
+  } else if (existing?.sheet.model && typeof fields.name === "string") {
+    fields.model = { ...existing.sheet.model, name };
+  } else if (!existing) {
+    fields.model = { ...NEW_CHARACTER, name };
+  }
+  return { ok: true, fields, note };
 }
