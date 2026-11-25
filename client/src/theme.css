@@ -371,7 +371,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 }
 
 /* Looking around, and working on its laptop */
-.avatar .face { transition: transform 0.5s ease; transform-origin: 100px 110px; }
+.avatar .face, .avatar .head, .avatar .ears { transition: transform 0.5s ease; transform-origin: 100px 120px; }
+.avatar .head.glance-head { animation: glancehead 11s ease-in-out infinite; }
+.avatar .ears.glance-ears { animation: glanceears 11s ease-in-out infinite; }
+.avatar .head.at-screen-head { animation: peekhead 9s ease-in-out infinite; }
+.avatar .ears.at-screen-ears { animation: peekhead 9s ease-in-out infinite; }
 .avatar .face.glance { animation: glance 11s ease-in-out infinite; }
 .avatar .face.at-screen { animation: peek 9s ease-in-out infinite; }
 .avatar .screen-light { opacity: 0.14; animation: screenlight 2.4s ease-in-out infinite; mix-blend-mode: screen; }
@@ -385,10 +389,30 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 @keyframes codeline { 0% { transform: scaleX(0.1); } 70%, 100% { transform: scaleX(1); } }
 @keyframes glance {
   0%, 30%, 100% { transform: translate(0, 0); }
-  36%, 46% { transform: translate(-7px, 0) rotate(-2deg); }
+  36%, 46% { transform: translate(-6px, 0) rotate(-2deg); }
   52%, 62% { transform: translate(0, 0); }
-  68%, 78% { transform: translate(7px, 0) rotate(2deg); }
+  68%, 78% { transform: translate(6px, 0) rotate(2deg); }
   84% { transform: translate(0, 0); }
+}
+/* The head turns a little, the ears swing a little more (they're further from the middle), the face most. */
+@keyframes glancehead {
+  0%, 30%, 100% { transform: translate(0, 0) rotate(0); }
+  36%, 46% { transform: translate(-2px, 0) rotate(-2deg); }
+  52%, 62% { transform: translate(0, 0) rotate(0); }
+  68%, 78% { transform: translate(2px, 0) rotate(2deg); }
+  84% { transform: translate(0, 0) rotate(0); }
+}
+@keyframes glanceears {
+  0%, 30%, 100% { transform: translate(0, 0) rotate(0); }
+  36%, 46% { transform: translate(-4px, 1px) rotate(-4deg); }
+  52%, 62% { transform: translate(0, 0) rotate(0); }
+  68%, 78% { transform: translate(4px, 1px) rotate(4deg); }
+  84% { transform: translate(0, 0) rotate(0); }
+}
+@keyframes peekhead {
+  0%, 70%, 100% { transform: translate(0, 1px); }
+  76%, 86% { transform: translate(-1px, -1px); }
+  92% { transform: translate(0, 1px); }
 }
 @keyframes peek {
   0%, 70%, 100% { transform: translate(0, 2px); }

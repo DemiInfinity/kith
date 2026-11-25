@@ -8,6 +8,7 @@ import type { Look, Mood } from "../api";
 interface Rig {
   eyeY: number; eyeDX: number; mouthY: number; eye: "round" | "screen";
   back: React.ReactNode | ((gradientId: string) => React.ReactNode); front?: React.ReactNode;
+  ears?: React.ReactNode; markings?: React.ReactNode;
 }
 
 const INK = "#2A1D3A";
@@ -21,6 +22,10 @@ const buddyGrad = (id: string) => (
   </defs>
 );
 
+// Each look is three layers, so a glance turns the whole head:
+//   ears     move a little (they swing with the turn)
+//   back     the head itself
+//   markings the face's own patches (muzzle, eye patches, face discs, snout…) move with the eyes
 const RIGS: Record<Look, Rig> = {
   // Buddy: the Kith app icon's face (design/icon/source/fg.svg, scaled to 200).
   buddy: {
@@ -29,6 +34,10 @@ const RIGS: Record<Look, Rig> = {
       <>
         {buddyGrad(gid)}
         <path d="M100 48 C138 48 155 75 155 107 C155 139 133 155 100 155 C67 155 45 139 45 107 C45 75 62 48 100 48 Z" fill={`url(#${gid})`} />
+      </>
+    ),
+    markings: (
+      <>
         <circle cx="75" cy="120" r="6" fill="#FFF4FB" fillOpacity="0.55" />
         <circle cx="125" cy="120" r="6" fill="#FFF4FB" fillOpacity="0.55" />
       </>
@@ -36,26 +45,26 @@ const RIGS: Record<Look, Rig> = {
   },
   fox: {
     eyeY: 104, eyeDX: 21, mouthY: 140, eye: "round",
-    back: (
+    ears: (
       <>
         <path d="M58 86 L44 36 L92 64 Z" fill="#E07A2C" /><path d="M64 78 L56 50 L82 66 Z" fill="#FFE3CF" />
         <path d="M142 86 L156 36 L108 64 Z" fill="#E07A2C" /><path d="M136 78 L144 50 L118 66 Z" fill="#FFE3CF" />
-        <ellipse cx="100" cy="112" rx="58" ry="50" fill="#F28C38" />
-        <path d="M58 118 Q100 176 142 118 Q122 128 100 126 Q78 128 58 118 Z" fill="#FFF4EC" />
       </>
     ),
+    back: <ellipse cx="100" cy="112" rx="58" ry="50" fill="#F28C38" />,
+    markings: <path d="M58 118 Q100 176 142 118 Q122 128 100 126 Q78 128 58 118 Z" fill="#FFF4EC" />,
     front: <ellipse cx="100" cy="126" rx="7" ry="5" fill={INK} />,
   },
   cat: {
     eyeY: 106, eyeDX: 22, mouthY: 138, eye: "round",
-    back: (
+    ears: (
       <>
         <path d="M54 92 L58 40 L96 70 Z" fill="#E9A74F" /><path d="M146 92 L142 40 L104 70 Z" fill="#E9A74F" />
         <path d="M62 82 L64 54 L86 70 Z" fill="#FFD9E8" /><path d="M138 82 L136 54 L114 70 Z" fill="#FFD9E8" />
-        <circle cx="100" cy="114" r="54" fill="#F2B45A" />
-        <path d="M70 96 Q76 90 82 96 M118 96 Q124 90 130 96" stroke="#D98E35" strokeWidth="4" fill="none" strokeLinecap="round" />
       </>
     ),
+    back: <circle cx="100" cy="114" r="54" fill="#F2B45A" />,
+    markings: <path d="M70 96 Q76 90 82 96 M118 96 Q124 90 130 96" stroke="#D98E35" strokeWidth="4" fill="none" strokeLinecap="round" />,
     front: (
       <>
         <path d="M94 124 L106 124 L100 131 Z" fill="#E9728F" />
@@ -67,14 +76,14 @@ const RIGS: Record<Look, Rig> = {
   },
   dragon: {
     eyeY: 102, eyeDX: 22, mouthY: 142, eye: "round",
-    back: (
+    ears: (
       <>
         <path d="M66 78 Q52 44 70 30 Q66 56 82 70 Z" fill="#F2E3B0" /><path d="M134 78 Q148 44 130 30 Q134 56 118 70 Z" fill="#F2E3B0" />
         <path d="M92 64 L100 48 L108 64 Z" fill="#9B7BD0" />
-        <ellipse cx="100" cy="112" rx="56" ry="52" fill="#6FBF8E" />
-        <ellipse cx="100" cy="136" rx="34" ry="22" fill="#A8DDB5" />
       </>
     ),
+    back: <ellipse cx="100" cy="112" rx="56" ry="52" fill="#6FBF8E" />,
+    markings: <ellipse cx="100" cy="136" rx="34" ry="22" fill="#A8DDB5" />,
     front: (
       <>
         <circle cx="92" cy="128" r="3" fill="#2F6B47" /><circle cx="108" cy="128" r="3" fill="#2F6B47" />
@@ -83,15 +92,15 @@ const RIGS: Record<Look, Rig> = {
   },
   robot: {
     eyeY: 104, eyeDX: 22, mouthY: 136, eye: "screen",
-    back: (
+    ears: (
       <>
         <line x1="100" y1="64" x2="100" y2="40" stroke="#8E9AB0" strokeWidth="5" strokeLinecap="round" />
         <circle cx="100" cy="36" r="8" fill="#F59646" />
-        <rect x="50" y="64" width="100" height="92" rx="24" fill="#B8C4D6" />
-        <rect x="62" y="82" width="76" height="40" rx="14" fill="#2A2F45" />
         <circle cx="50" cy="110" r="7" fill="#8E9AB0" /><circle cx="150" cy="110" r="7" fill="#8E9AB0" />
       </>
     ),
+    back: <rect x="50" y="64" width="100" height="92" rx="24" fill="#B8C4D6" />,
+    markings: <rect x="62" y="82" width="76" height="40" rx="14" fill="#2A2F45" />,
   },
   star: {
     eyeY: 108, eyeDX: 17, mouthY: 134, eye: "round",
@@ -104,31 +113,23 @@ const RIGS: Record<Look, Rig> = {
   },
   frog: {
     eyeY: 80, eyeDX: 26, mouthY: 136, eye: "round",
-    back: (
-      <>
-        <circle cx="74" cy="82" r="22" fill="#79C26B" /><circle cx="126" cy="82" r="22" fill="#79C26B" />
-        <ellipse cx="100" cy="122" rx="64" ry="44" fill="#79C26B" />
-        <circle cx="74" cy="80" r="14" fill="#F4FBEF" /><circle cx="126" cy="80" r="14" fill="#F4FBEF" />
-      </>
-    ),
+    ears: <><circle cx="74" cy="82" r="22" fill="#79C26B" /><circle cx="126" cy="82" r="22" fill="#79C26B" /></>,
+    back: <ellipse cx="100" cy="122" rx="64" ry="44" fill="#79C26B" />,
+    markings: <><circle cx="74" cy="80" r="14" fill="#F4FBEF" /><circle cx="126" cy="80" r="14" fill="#F4FBEF" /></>,
   },
   owl: {
     eyeY: 104, eyeDX: 22, mouthY: 144, eye: "round",
-    back: (
-      <>
-        <path d="M56 80 L50 44 L84 66 Z" fill="#8A6246" /><path d="M144 80 L150 44 L116 66 Z" fill="#8A6246" />
-        <ellipse cx="100" cy="114" rx="58" ry="54" fill="#A57A5A" />
-        <circle cx="78" cy="104" r="20" fill="#E9D3B8" /><circle cx="122" cy="104" r="20" fill="#E9D3B8" />
-      </>
-    ),
+    ears: <><path d="M56 80 L50 44 L84 66 Z" fill="#8A6246" /><path d="M144 80 L150 44 L116 66 Z" fill="#8A6246" /></>,
+    back: <ellipse cx="100" cy="114" rx="58" ry="54" fill="#A57A5A" />,
+    markings: <><circle cx="78" cy="104" r="20" fill="#E9D3B8" /><circle cx="122" cy="104" r="20" fill="#E9D3B8" /></>,
     front: <path d="M93 122 L107 122 L100 134 Z" fill="#F59646" />,
   },
   panda: {
     eyeY: 106, eyeDX: 22, mouthY: 140, eye: "round",
-    back: (
+    ears: <><circle cx="60" cy="70" r="18" fill="#2A2530" /><circle cx="140" cy="70" r="18" fill="#2A2530" /></>,
+    back: <ellipse cx="100" cy="114" rx="58" ry="52" fill="#F4F1F4" />,
+    markings: (
       <>
-        <circle cx="60" cy="70" r="18" fill="#2A2530" /><circle cx="140" cy="70" r="18" fill="#2A2530" />
-        <ellipse cx="100" cy="114" rx="58" ry="52" fill="#F4F1F4" />
         <ellipse cx="78" cy="106" rx="14" ry="17" transform="rotate(-25 78 106)" fill="#2A2530" />
         <ellipse cx="122" cy="106" rx="14" ry="17" transform="rotate(25 122 106)" fill="#2A2530" />
       </>
@@ -253,12 +254,25 @@ export function AvatarSvg({ look, mood = "happy", mouth = 0, size = 120, laptop 
   const rig = RIGS[look] ?? RIGS.fox;
   const gid = `kith-g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const idle = lookAround && !laptop && mouth === 0 && (mood === "happy" || mood === "concerned");
+  const faceClass = laptop ? "face at-screen" : idle ? "face glance" : "face";
   return (
     <svg className={`avatar ${mood}${laptop ? " working" : ""}`} width={size} height={size} viewBox="0 0 200 200" role="img"
       aria-label={`${look}, ${laptop ? "working on its laptop" : mood}`}>
       <g className="breathe">
-        {typeof rig.back === "function" ? rig.back(gid) : rig.back}
-        <g className={laptop ? "face at-screen" : idle ? "face glance" : "face"}>
+        <g className={laptop ? "ears at-screen-ears" : idle ? "ears glance-ears" : "ears"}>{rig.ears}</g>
+        <g className={laptop ? "head at-screen-head" : idle ? "head glance-head" : "head"}>
+          {typeof rig.back === "function" ? rig.back(gid) : rig.back}
+        </g>
+        {/* Face markings slide across the face but stay inside the head's outline. */}
+        {rig.markings && (
+          <>
+            {look !== "frog" && <clipPath id={`${gid}-head`}>{typeof rig.back === "function" ? rig.back(`${gid}-c`) : rig.back}</clipPath>}
+            <g clipPath={look !== "frog" ? `url(#${gid}-head)` : undefined}>
+              <g className={faceClass}>{rig.markings}</g>
+            </g>
+          </>
+        )}
+        <g className={faceClass}>
           {mood === "happy" && look !== "robot" && (
             <g fill="#FF8FB8" opacity="0.35">
               <circle cx={100 - rig.eyeDX - 10} cy={rig.mouthY - 10} r="8" />
