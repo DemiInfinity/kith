@@ -7,12 +7,13 @@
     "server",
     "client",
     "desk",
-    "egress"
+    "egress",
+    "connect"
   ],
   "scripts": {
     "dev": "npm run dev -w server & npm run dev -w client",
     "build": "npm run build -w desk && npm run build -w egress && npm run build -w server && npm run build -w client",
-    "test": "npm test -w server && npm test -w desk && npm test -w egress && npm test -w client && npm test --prefix connect",
+    "test": "npm test -w server && npm test -w desk && npm test -w egress && npm test -w client && npm test -w connect",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w desk && npm run typecheck -w egress && npm run typecheck -w client",
     "vapid": "node scripts/vapid.mjs"
   },
