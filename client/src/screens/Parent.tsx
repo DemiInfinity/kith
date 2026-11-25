@@ -1,7 +1,7 @@
 import { Icon, IL, type IconName } from "../components/Icons";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
-import { Avatar } from "../components/Avatar";
+import { CompanionPic } from "../components/CompanionPic";
 import { clock, dayLabel, Toggle, when } from "../components/bits";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
@@ -905,7 +905,7 @@ export function Parent({ me }: { me: Me }) {
       </nav>
       <div className="main">
         <header className="phead">
-          <span className="phead-dp"><Avatar look={comp.look} size={56} variant="ring" mood={mode === "low" ? "sleepy" : mode === "resting" ? "resting" : "happy"} /></span>
+          <span className="phead-dp"><CompanionPic look={comp.look} size={56} variant="ring" mood={mode === "low" ? "sleepy" : mode === "resting" ? "resting" : "happy"} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <span className="hand" style={{ fontSize: "1.25rem" }}>parent view</span>
             <h2>{comp.name}<span className="pwith">, with {cname}</span></h2>

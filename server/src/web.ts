@@ -46,7 +46,7 @@ export function inlineScriptHashes(html: string): string[] {
 
 /** The app's own client routes (client/src/App.tsx and the parent view), which always get the app. */
 export const APP_ROUTES = [
-  "/", "/signin", "/parent", "/talk", "/study", "/languages", "/create", "/stories", "/art", "/oc",
+  "/", "/signin", "/parent", "/talk", "/study", "/languages", "/create", "/stories", "/art", "/oc", "/my-pip",
   "/settings", "/you", "/me", "/memory", "/shared", "/google", "/notifications", "/connectors", "/help",
   "/desk", "/lab", "/pip",
 ];

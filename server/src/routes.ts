@@ -21,7 +21,9 @@ import { addMemory, deleteMemory, listMemories } from "./companion/memory.js";
 import { sampleLine } from "./companion/prompt.js";
 import { KIND_NAMES, SANDBOX_CSP, sandboxDocument, type Studio } from "./desk/studio.js";
 import { DeskError } from "./desk/deskClient.js";
-import { addWorld, deleteCharacter, deleteWorld, listCharacters, listWorld, saveCharacter, Sheet } from "./desk/oc.js";
+import { addWorld, deleteCharacter, deleteWorld, listCharacters, listWorld, saveCharacter, Sheet, sheetWords } from "./desk/oc.js";
+import { registerPip } from "./routes-pip.js";
+import { pipPictureVersion } from "./pip/look.js";
 import { createReport, deliverReport, listReports, type Reporter } from "./reporting/reporter.js";
 import { toolLog } from "./connections/connections.js";
 import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budget.js";
@@ -79,6 +81,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       push: { ready: pushReady(), publicKey: config.push.publicKey },
       apiReady: d.llm.available,
       drawingUploads: false,
+      // When the 3D Pip's chat picture last changed (null: none yet, so the 2D avatar is used).
+      pipPicture: pipPictureVersion(db),
     };
   });
 
@@ -96,6 +100,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       energy: childEnergy(e),
       desk: { percent: studio.deskEnergy().percent, working: working ?? null, browsing },
       profile: loadProfile(db),
+      pipPicture: pipPictureVersion(db),
     };
   });
 
@@ -506,7 +511,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   // Her characters are her own writing: a worry the fixed rules find (self-harm, danger, secrets) is
   // reported (she's told first), the same as anywhere else she types.
   const ocWorry = (reply: import("fastify").FastifyReply, fields: unknown) => {
-    const text = JSON.stringify(fields ?? {}).replace(/[{}"[\]]/g, " ");
+    const text = JSON.stringify(sheetWords((fields ?? {}) as Record<string, unknown>)).replace(/[{}"[\]]/g, " ");
     const v = withRuleWorries({ level: "none", categories: [], parentSummary: "", steer: "", source: "rules" }, text);
     if (!isWorry(v)) return false;
     sendOutsideReport(reply, reportOutsideChat({ db, reporters: d.reporters, childName: childName(db) }, v, "the OC workshop"));
@@ -530,6 +535,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     return r.ok ? r : reply.code(422).send({ error: `Not saved: ${r.problems.join("; ")}` });
   });
   app.delete("/api/oc/world/:id", { preHandler: child }, async (req) => ({ ok: deleteWorld(db, Number((req.params as { id: string }).id)) }));
+
+  registerPip(app, d);
 
   // Hook for uploading the child's own drawings. Deliberately OFF: it stays disabled until a
   // child-safety image detector (e.g. Thorn Safer or IWF hash matching) is wired in here and

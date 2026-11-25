@@ -7,6 +7,7 @@ export class ApiError extends Error {
 
 import { appHint } from "./lib/appHint";
 import { announceToldGrownUp, parseToldGrownUp } from "./lib/worry";
+import type { Look as Look3D } from "./pip3d/look";
 
 const BASE = (import.meta.env.VITE_KITH_API as string | undefined) ?? "";
 
@@ -15,7 +16,7 @@ export const OFFLINE_WORDS = "Can’t reach home right now. Try again in a momen
 
 // Anything that waits on Claude, the voice servers, Google or an upload gets about a minute;
 // everything else 15 seconds, so a hung request never leaves a spinner going for ever.
-const SLOW = /^\/api\/(chat|voice\/|uploads\/|parent\/(test-chat|test-report|apikey)|desk\/make|languages\/(ask|[^/]+\/(starter|cards\/generate))|study\/(cards\/generate|practice)|stories\/[^/]+\/(suggest|passages|import-google)|google\/(read-picked|picked|actions\/))/;
+const SLOW = /^\/api\/(chat|voice\/|uploads\/|parent\/(test-chat|test-report|apikey)|desk\/make|pip\/describe|oc\/backstory|languages\/(ask|[^/]+\/(starter|cards\/generate))|study\/(cards\/generate|practice)|stories\/[^/]+\/(suggest|passages|import-google)|google\/(read-picked|picked|actions\/))/;
 export function timeoutFor(path: string, method: string): number {
   return method !== "GET" && SLOW.test(path.split("?")[0]) ? 60_000 : 15_000;
 }
@@ -97,10 +98,12 @@ export interface Me {
   role: "child" | "parent"; name: string; parentLabel: string; profile: Profile; helplines: Helpline[];
   quietHours: { start: string; end: string }; voices: string[]; kinds: string[]; looks: Look[];
   push: { ready: boolean; publicKey: string }; apiReady: boolean; drawingUploads: boolean;
+  /** When the 3D Pip's chat picture last changed; null when there isn't one. */
+  pipPicture?: number | null;
 }
 export interface Energy { mode: "full" | "low" | "resting"; percent: number; fullBackAt: number | null; weekResetsAt: number; limitedBy: string | null }
 export interface Job { id: number; ts: number; kind: string; title: string; status: "queued" | "working" | "done" | "failed"; progress: number; file_id: string | null; error: string | null }
-export interface AppState { energy: Energy; desk: { percent: number; working: Job | null; browsing?: { title: string; by: string | null } | null }; profile: Profile }
+export interface AppState { energy: Energy; desk: { percent: number; working: Job | null; browsing?: { title: string; by: string | null } | null }; profile: Profile; pipPicture?: number | null }
 export interface Message { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }
 export interface ReportInfo { level: "now" | "today" | "fyi"; childNotice: string; parentText: string }
 export interface Turn {
@@ -123,7 +126,16 @@ export interface CloudLink { item_id: string; version: number; provider: string;
 export interface Sheet {
   name: string; icon: string; look: string; personality: string; powers: string; backstory: string; likes: string; dislikes: string;
   palette: string[]; themeSong: string; relationships: { with: string; kind: string; note: string }[];
+  // From the 3D maker (older characters don't have them).
+  pronouns?: string; age?: string; species?: string; catchphrase?: string; traits?: OcTrait[];
+  model?: Look3D;
+  /** A small PNG data URL, made in the browser from the 3D look. */
+  thumb?: string;
 }
+export const OC_TRAITS = ["kind", "brave", "shy", "funny", "clever", "curious", "dreamy", "loyal", "calm", "chaotic", "stubborn", "grumpy", "creative", "sporty"] as const;
+export type OcTrait = (typeof OC_TRAITS)[number];
+/** What "Describe" gives back. */
+export interface Described { look: Look3D; understood: string[]; notYet: string[]; refused: boolean; source: "claude" | "words" }
 export interface Character { id: number; ts: number; updated: number; sheet: Sheet }
 export interface WorldEntry { id: number; kind: "place" | "event" | "group"; name: string; note: string; when: string }
 export interface Transparency {

@@ -6,6 +6,8 @@ import type { AppState, Memory } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
 import { hasKana, parseLesson, say, voiceFor } from "../lib/kana";
+import { CharacterCard } from "../components/CharacterCard";
+import { refreshCharacters } from "../lib/characters";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
 export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string; voice?: string }
@@ -63,6 +65,8 @@ const QUICK: Record<string, string[][]> = {
 export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onMood, openHelp, go }: Props) {
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [made, setMade] = useState<Record<number, Turn["effects"]>>({});
+  // Only one character preview animates at a time ("message id:character id"); the newest by default.
+  const [liveCard, setLiveCard] = useState<string | null>(null);
   const [text, setText] = useState("");
   // A document shared from the Mac app (picked, or dropped on the window): its text only.
   const [file, setFile] = useState<SharedFile | null>(null);
@@ -196,6 +200,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       const turn = await api<Turn>("/api/chat", { body: { text: body, mode, ctx: context?.ctx ?? {}, thread, file: shared ? { name: shared.name, text: shared.text } : undefined } });
       setMessages((m) => [...(m ?? []).filter((x) => x.id !== temp.id), turn.child, turn.reply]);
       if (turn.effects.jobs.length || turn.effects.confirms?.length) setMade((x) => ({ ...x, [turn.reply.id]: turn.effects }));
+      // A character made or changed: its card comes to life (and shows the new look).
+      if (turn.effects.characters.length) { refreshCharacters(); setLiveCard(`${turn.reply.id}:${turn.effects.characters[0]}`); }
       onTurn(turn);
       onMood(turn.mood);
       setAnnounce(`${name}: ${turn.reply.text}`);
@@ -222,6 +228,15 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   };
 
   const shown = messages ?? [];
+  // The newest character card is the live one until another is tapped.
+  const newestCard = (() => {
+    for (let i = shown.length - 1; i >= 0; i--) {
+      const m = shown[i];
+      if (m.role !== "companion" || !m.meta?.includes("characters")) continue;
+      try { const ids = (JSON.parse(m.meta) as { characters?: number[] }).characters; if (ids?.length) return `${m.id}:${ids[0]}`; } catch { /* not a card */ }
+    }
+    return null;
+  })();
   const lang = context?.mode === "language" ? context.ctx.lang : undefined;
   const quick = (lang ? QUICK[lang] ?? QUICK.anylang : QUICK[mode]) ?? QUICK.chat;
 
@@ -238,7 +253,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         {shown.map((m, i) => {
           const prev = shown[i - 1];
           const newDay = !prev || new Date(prev.ts).toDateString() !== new Date(m.ts).toDateString();
-          const meta = m.meta ? (JSON.parse(m.meta) as { report?: ReportInfo; checkin?: string }) : null;
+          const meta = m.meta ? (JSON.parse(m.meta) as { report?: ReportInfo; checkin?: string; characters?: number[] }) : null;
           return (
             <div key={m.id} style={{ display: "contents" }}>
               {newDay && <span className="daymark">{dayLabel(m.ts)}</span>}
@@ -263,6 +278,10 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
                   <span className="small" style={{ color: "var(--text-3)" }}>You’re not in trouble. You can see everything that’s shared in “What {me.parentLabel} sees”.</span>
                 </div>
               )}
+              {m.role === "companion" && Array.isArray(meta?.characters) && meta.characters.filter((c) => Number.isInteger(c)).slice(0, 4).map((cid) => {
+                const k = `${m.id}:${cid}`;
+                return <CharacterCard key={k} id={cid} live={(liveCard ?? newestCard) === k} onWake={() => setLiveCard(k)} go={go} />;
+              })}
               {made[m.id]?.confirms?.map((p) => <ConfirmCard key={p.id} p={p} />)}
               {made[m.id]?.jobs.map((j) => (
                 <button key={j.id} className="filecard" onClick={() => go("/pip")}>

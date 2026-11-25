@@ -40,7 +40,8 @@ What the child says:
    and study, language and story topics: they wait (a 503) rather than go through unchecked.
 5. **Worries typed outside chat are reported too, never just refused.** If the check finds something worrying in
    soul.md, identity notes, a memory, a desk idea or change, a scheduled reminder or desk job, a study, language or
-   story topic, a language request, or (by the fixed rules) her own story passages or OC sheets, it's reported exactly
+   story topic, a language request, a "describe it" for Pip or a character, notes for "Help me write it", or (by the
+   fixed rules) her own story passages or OC sheets (all their fields, pronouns to backstory), it's reported exactly
    as in chat: the report is recorded, she's told first (a message from the companion in her main chat, and the same
    words on screen, with the helplines and a pointer to chat), and only then is it sent. Content that's merely not
    allowed (romance, grown-up stuff, personal details) is still just turned down.
@@ -72,6 +73,13 @@ title, the summary, the visible text, the strings inside a game's scripts, flash
 chapter of a story is checked on its own as it's written. Google changes are capped (a Doc change at 4 blocks of 2,000
 characters, a Sheet change at 50 rows of 10 cells, Slides at 4 changes) so the card can show every word of what will be
 applied.
+
+**3D looks come from fixed lists.** Pip's 3D look and each character's are plain data checked against fixed lists
+(kind, hair, ears, cosy outfits from a set list, a few extras); anything else is refused. "Describe it" asks the small
+model to pick from those lists only (its answer is checked again), and turns down romantic or grown-up looks before
+asking; when the model can't be used, simple word matching does the same. Pictures are made in the browser from the
+3D look and only accepted as small PNGs. "Help me write it" drafts a short, kind backstory and gets the output check
+before she sees it.
 
 **What the companion's tools would save waits for its reply.** Memories, reminders and other schedules, desk projects,
 OC sheets and world entries, language requests, Google proposals, and actions through the parent's connections or the
