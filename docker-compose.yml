@@ -1,0 +1,69 @@
+# Kith: the app, its offline desk, and local voice (speech-to-text and Piper).
+#   cp .env.example .env   # then fill it in (see docs/setup.md)
+#   docker compose up -d --build
+#   docker compose --profile voice up -d --build   # also start local whisper + piper
+name: kith
+
+services:
+  kith:
+    build: { context: ., target: kith }
+    image: kith:local
+    env_file: .env
+    environment:
+      KITH_DESK_URL: http://desk:8790
+      KITH_STT_HOST: ${KITH_STT_HOST:-whisper}
+      KITH_TTS_HOST: ${KITH_TTS_HOST:-piper}
+    ports:
+      - "${KITH_BIND:-127.0.0.1}:${KITH_PORT:-8787}:8787"
+    volumes:
+      - kith-data:/data
+    networks: [default, deskland]
+    depends_on: [desk]
+    restart: unless-stopped
+
+  # The companion's desk: no internet (internal network), no API key, read-only filesystem.
+  desk:
+    build: { context: ., target: desk }
+    image: kith-desk:local
+    environment:
+      KITH_DESK_TOKEN: ${KITH_DESK_TOKEN:?set KITH_DESK_TOKEN in .env}
+    volumes:
+      - desk-data:/desk
+    networks: [deskland]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 64
+    restart: unless-stopped
+
+  # Local speech-to-text (Wyoming protocol). Audio is processed in memory and never stored.
+  whisper:
+    image: rhasspy/wyoming-whisper:latest
+    command: ["--model", "${KITH_WHISPER_MODEL:-tiny-int8}", "--language", "${KITH_STT_LANGUAGE:-en}"]
+    volumes:
+      - whisper-data:/data
+    networks: [default]
+    profiles: [voice]
+    restart: unless-stopped
+
+  # Local text-to-speech. If you already run Piper elsewhere, skip this and set KITH_TTS_HOST.
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    command: ["--voice", "${KITH_PIPER_DEFAULT_VOICE:-en_GB-cori-medium}"]
+    volumes:
+      - piper-data:/data
+    networks: [default]
+    profiles: [voice]
+    restart: unless-stopped
+
+networks:
+  deskland:
+    internal: true
+
+volumes:
+  kith-data:
+  desk-data:
+  whisper-data:
+  piper-data:

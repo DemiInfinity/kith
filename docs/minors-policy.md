@@ -18,8 +18,8 @@ Read the pages yourself before you rely on them, because they change.
 
 Run on an API organisation under the Commercial Terms; confirm in Console › Settings.
 
-Kith's API usage runs on an API organisation in the Anthropic Console. That organisation is linked to Demi's Max plan
-credit but separate from her claude.ai account. Demi considers it covered by the Commercial Terms. The build keeps every
+Kith's API usage runs on an API organisation in the Anthropic Console. That organisation is linked to the maintainer's Max plan
+credit but separate from their claude.ai account. The maintainer considers it covered by the Commercial Terms. The build keeps every
 minors safeguard listed below:
 
 - an AI notice each session;
@@ -53,7 +53,7 @@ Account available to anyone else". That holds even though the key never leaves t
 A Claude Max plan is a consumer plan, so an API credit that comes with it most likely sits under the Consumer Terms. This
 hasn't been checked: look at which terms the Console organisation accepted (Console › Settings › Organization).
 
-**Ways forward (Demi's decision):**
+**Ways forward (the maintainer's decision):**
 
 1. Run Kith's API usage under an **organisation account on the Commercial Terms**, then follow the minors guidelines below.
    Whether a family-only, non-commercial app counts as organisational use is for Anthropic to say, not for us to assume.
