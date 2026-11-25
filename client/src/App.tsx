@@ -261,7 +261,6 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {/* Short names on a phone, where the picture takes the middle of the bar. */}
             <option value="">{narrow ? "Eng" : "English"}</option><option value="es">{narrow ? "Esp" : "Español"}</option><option value="ja">日本語</option>
           </select>
-          <button className="chip tb-back" style={{ minHeight: 32 }} onClick={() => pickThread(1)} aria-label="Back to main chat"><Icon name="back" size={16} /><span>Main chat</span></button>
         </div>
       )}
       <Chat key={thread} me={me} thread={thread} context={chatContext}
