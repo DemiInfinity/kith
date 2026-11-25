@@ -68,9 +68,14 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const e = energyNow(db);
     const jobs = studio.jobs(5);
     const working = jobs.find((j) => j.status === "working" || j.status === "queued");
+    let browsing: { title: string; by: string | null } | null = null;
+    try {
+      const l = await studio.desk.live();
+      if (l.takenOverBy || l.busy) browsing = { title: l.title, by: l.takenOverBy ?? null };
+    } catch { /* desk asleep or unreachable */ }
     return {
       energy: childEnergy(e),
-      desk: { percent: studio.deskEnergy().percent, working: working ?? null },
+      desk: { percent: studio.deskEnergy().percent, working: working ?? null, browsing },
       profile: loadProfile(db),
     };
   });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
-import { HelpSheet, useRoute } from "./components/bits";
+import { doingText, HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat, type ChatContext } from "./screens/Chat";
@@ -124,7 +124,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const onTurn = (t: Turn) => { setState((s) => (s ? { ...s, energy: t.energy } : s)); void load(); };
   const name = me.profile.name;
   const working = state?.desk.working;
-  const moodText = `${baseMood === "happy" ? "happy" : baseMood === "thinking" ? "thinking" : baseMood === "sleepy" ? "sleepy" : baseMood === "resting" ? "resting" : "here for you"}${working ? " · " + (working.kind === "story" ? "writing a story" : `making ${working.title}`) : ""}`;
+  const doing = doingText(state, baseMood);
+  const onProfile = path === "/desk" || path.startsWith("/pip");
   const openHelp = () => setHelp(true);
   const showAside = path === "/" || path === "/talk";
 
@@ -168,7 +169,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       <nav className="sidebar" aria-label="Sections">
         <button className="me" onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
           <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" laptop={!!working} />
-          <span><b>{name}</b><span>{moodText}</span></span>
+          <span><b>{name}</b><span>{doing}</span></span>
         </button>
         {NAV.map((n) => {
           const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
@@ -186,11 +187,19 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       </nav>
       <div className="main">
         {path !== "/talk" && (
-          <header className="topbar mobile-only">
-            <button onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", padding: 0 }}><Avatar look={me.profile.look} mood={baseMood} size={42} variant="side" laptop={!!working} /></button>
-            <span className="who" onClick={() => go("/pip")}><b>{name}</b><span>AI, not a person · {moodText}</span></span>
-            <button className="iconbtn" onClick={() => setDrawer(true)} aria-label="Side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>
-            <button className="callbtn" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={17} /> Call</button>
+          <header className={`topbar mobile-only ${onProfile ? "slim" : ""}`}>
+            <button className="tb-logo" onClick={() => go("/")} aria-label="Kith home"><img src="/icon-192.png" alt="" width={38} height={38} /></button>
+            {!onProfile && (
+              <button className="tb-who" onClick={() => go("/pip")} aria-label={`${name}’s profile. ${name} is ${doing}.`}>
+                <Avatar look={me.profile.look} mood={baseMood} size={54} variant="side" laptop={!!working} />
+                <b>{name}</b>
+                <span aria-live="polite">{doing}</span>
+              </button>
+            )}
+            <span className="tb-right">
+              <button className="iconbtn" onClick={() => setDrawer(true)} aria-label="Side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>
+              <button className="iconbtn call" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={21} /></button>
+            </span>
           </header>
         )}
         {screen}

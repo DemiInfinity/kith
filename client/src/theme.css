@@ -72,9 +72,15 @@ h2.screen-title { font-size: 30px; line-height: 1.05; margin-top: -6px; }
   display: flex; align-items: center; gap: 10px; padding: calc(8px + var(--safe-top)) 14px 8px;
   border-bottom: 1px solid var(--line-soft);
 }
-.topbar .who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.topbar .who b { font-family: var(--serif); font-size: 19px; font-weight: 600; }
-.topbar .who span { font-size: 12px; font-weight: 800; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* App icon on the left, the companion in the middle (picture, name, what it's doing), side chats and call on the right. */
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.topbar .tb-logo { justify-self: start; border: 0; background: none; padding: 0; display: grid; }
+.topbar .tb-right { justify-self: end; display: flex; gap: 8px; }
+.topbar .tb-who { display: flex; flex-direction: column; align-items: center; gap: 1px; border: 0; background: none; color: inherit; padding: 0; min-width: 0; max-width: 60vw; cursor: pointer; }
+.topbar .tb-who b { font-family: var(--serif); font-size: 18px; font-weight: 600; line-height: 1.15; margin-top: 2px; }
+.topbar .tb-who span { font-size: 12px; font-weight: 800; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.topbar.slim .tb-right { grid-column: 3; }
+.iconbtn.call { background: var(--lilac); color: var(--ink); border-color: var(--lilac); }
 
 .tabbar {
   display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line-soft); background: var(--side);
@@ -513,3 +519,6 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .pcomp .dwin { min-height: 0; max-height: 100%; }
 .pcomp .dwin-body { flex: 1; min-height: 0; }
 .pcomp .pbar { flex-wrap: nowrap; }
+.pstatus { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-2); margin: 2px 0 4px; }
+.pstatus b { color: var(--text); }
+.topbar .tb-logo img { width: 38px; height: 38px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); display: block; }

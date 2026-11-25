@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type AppState, type Job, type Me, type Mood } from "../api";
 import { Avatar } from "../components/Avatar";
-import { EnergyCard, Markdown, clock } from "../components/bits";
+import { EnergyCard, Markdown, clock, doingText } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
 import { Icon, IL, type IconName } from "../components/Icons";
 
@@ -80,6 +80,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
         <Avatar look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <h2 style={{ fontSize: 32 }}>{name}</h2>
+          <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>
           <span style={{ fontSize: 14, fontWeight: 800, color: "var(--lilac-soft)" }}>AI companion, not a person · {me.profile.traits.join(" · ") || "warm"}</span>
           <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Lives on your family’s home server · made by you {me.name ? `(${me.name})` : ""} · {me.parentLabel} is in the loop</div>
         </div>

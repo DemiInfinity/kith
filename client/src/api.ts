@@ -49,7 +49,7 @@ export interface Me {
 }
 export interface Energy { mode: "full" | "low" | "resting"; percent: number; fullBackAt: number | null; weekResetsAt: number; limitedBy: string | null }
 export interface Job { id: number; ts: number; kind: string; title: string; status: "queued" | "working" | "done" | "failed"; progress: number; file_id: string | null; error: string | null }
-export interface AppState { energy: Energy; desk: { percent: number; working: Job | null }; profile: Profile }
+export interface AppState { energy: Energy; desk: { percent: number; working: Job | null; browsing?: { title: string; by: string | null } | null }; profile: Profile }
 export interface Message { id: number; ts: number; role: "child" | "companion"; text: string; mode: Mode; meta: string | null }
 export interface ReportInfo { level: "now" | "today" | "fyi"; childNotice: string; parentText: string }
 export interface Turn {

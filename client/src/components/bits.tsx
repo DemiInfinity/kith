@@ -193,3 +193,16 @@ export function Toggle({ label, checked, onChange }: { label: string; checked: b
     </label>
   );
 }
+
+/** What the companion is doing right now, in a few words (shown under its name). */
+export function doingText(state: { energy: Energy; desk: { working: { kind: string; title: string; status?: string } | null; browsing?: { title: string; by: string | null } | null } } | null, mood: string): string {
+  const w = state?.desk.working;
+  const b = state?.desk.browsing;
+  if (state?.energy.mode === "resting") return "resting until the energy tops up";
+  if (w) return w.status === "queued" ? `about to make ${w.title}` : w.kind === "story" ? "writing a story" : `making ${w.title}`;
+  if (b?.by) return `${b.by} is using its browser`;
+  if (b) return b.title ? `reading “${b.title}”` : "looking something up";
+  if (mood === "thinking") return "thinking…";
+  if (state?.energy.mode === "low") return "on low power, still here to chat";
+  return "free to chat";
+}
