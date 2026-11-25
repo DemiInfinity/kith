@@ -15,6 +15,9 @@ export default defineConfig({
     // (the server sends welcome.html for "/" when nobody's signed in).
     rollupOptions: { input: { main: resolve(import.meta.dirname, "index.html"), welcome: resolve(import.meta.dirname, "welcome.html"),
       terms: resolve(import.meta.dirname, "terms.html"), privacy: resolve(import.meta.dirname, "privacy.html"), setup: resolve(import.meta.dirname, "setup.html"),
-      parents: resolve(import.meta.dirname, "parents.html") } },
+      parents: resolve(import.meta.dirname, "parents.html"),
+      // Error pages the server sends (styles inline, so they work even if the app's files don't load).
+      e403: resolve(import.meta.dirname, "errors/403.html"), e404: resolve(import.meta.dirname, "errors/404.html"),
+      e500: resolve(import.meta.dirname, "errors/500.html"), e503: resolve(import.meta.dirname, "errors/503.html") } },
   },
 });

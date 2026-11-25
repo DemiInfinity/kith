@@ -1,10 +1,8 @@
 import { manifestFor } from "./manifest.js";
 import path from "node:path";
-import fs from "node:fs";
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
-import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
 import crypto from "node:crypto";
 import { loadParentSettings } from "./settings.js";
@@ -17,6 +15,7 @@ import { Studio } from "./desk/studio.js";
 import { currentKey } from "./apikey.js";
 import { sessionFor, registerAuth, rateLimitKey } from "./auth.js";
 import { reqSerializer } from "./logging.js";
+import { registerRobotsHeader, registerWeb, sendErrorPage, type Web } from "./web.js";
 import { registerRoutes } from "./routes.js";
 import { childName } from "./auth.js";
 import { schedulerHealthy, startScheduler } from "./scheduler.js";
@@ -81,10 +80,16 @@ async function main() {
     if (!reply.getHeader("Content-Security-Policy")) reply.header("Content-Security-Policy", APP_CSP);
   });
 
+  // Set once the built client is registered (below); until then errors are JSON only.
+  let web: Web | null = null;
+  registerRobotsHeader(app);
+
   app.setErrorHandler((err: Error, req, reply) => {
     if (err instanceof ZodError) return reply.code(400).send({ error: "That doesn't look right.", issues: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     if (status >= 500) req.log.error(err);
+    // A browser asking for a page gets a friendly page; API calls stay JSON.
+    if (status >= 500 && sendErrorPage(web, req, reply, status)) return reply;
     return reply.code(status).send({ error: status >= 500 ? "Something went wrong." : err.message });
   });
 
@@ -129,36 +134,9 @@ async function main() {
   registerStudy(app, { db, llm, safety, storage });
   registerNative(app, db);
 
-  const clientDir = path.resolve(config.clientDir);
-  if (fs.existsSync(clientDir)) {
-    await app.register(fastifyStatic, {
-      root: clientDir, wildcard: false, index: false,
-      // Built assets have hashed names; everything else (sw.js, manifest, index) is re-checked.
-      setHeaders: (res, p) => res.header("Cache-Control", p.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache"),
-    });
-    const indexHtml = fs.readFileSync(path.join(clientDir, "index.html"));
-    // Public pages: real HTML that search engines can read. "/" is the welcome page for anyone
-    // who isn't signed in, and the app for anyone who is.
-    const page = (name: string) => { const f = path.join(clientDir, `${name}.html`); return fs.existsSync(f) ? fs.readFileSync(f) : null; };
-    const publicPages: Record<string, Buffer | null> = { "/parents": page("parents"), "/terms": page("terms"), "/privacy": page("privacy"), "/setup": page("setup") };
-    const welcomeHtml = page("welcome");
-    const sendPage = (reply: import("fastify").FastifyReply, html: Buffer) => reply.type("text/html").header("Cache-Control", "no-cache").header("Vary", "Cookie").send(html);
-    app.get("/", (req, reply) => {
-      const signedIn = Boolean(sessionFor(db, req.cookies?.kith_sid));
-      return sendPage(reply, !signedIn && welcomeHtml ? welcomeHtml : indexHtml);
-    });
-    for (const [route, html] of Object.entries(publicPages)) {
-      if (html) app.get(route, (_req, reply) => sendPage(reply, html));
-    }
-    app.get("/*", (req, reply) => {
-      const p = path.join(clientDir, path.normalize(req.url.split("?")[0]).replace(/^(\.\.[/\\])+/, ""));
-      if (p.startsWith(clientDir) && fs.existsSync(p) && fs.statSync(p).isFile()) return reply.sendFile(path.relative(clientDir, p));
-      if (req.url.startsWith("/api/") || req.url.startsWith("/auth/")) return reply.code(404).send({ error: "not found" });
-      return reply.type("text/html").header("Cache-Control", "no-cache").send(indexHtml);
-    });
-  } else {
-    app.log.warn(`No built client at ${clientDir}; API only.`);
-  }
+  web = await registerWeb(app, path.resolve(config.clientDir), (req) => Boolean(sessionFor(db, req.cookies?.kith_sid)));
+  if (!web) app.log.warn(`No built client at ${path.resolve(config.clientDir)}; API only.`);
+
 
   const scheduler = startScheduler({ db, llm, safety, reporters, childName: childName(db), studio });
   await app.listen({ port: config.port, host: config.host });

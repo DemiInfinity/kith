@@ -49,7 +49,7 @@ describe("what crawlers may see", () => {
   it("robots.txt allows the home page and its assets, not the API, sign-in or the app", () => {
     expect(robots).toMatch(/^Allow: \/\$$/m);
     expect(robots).toMatch(/^Allow: \/welcome\/$/m);
-    for (const p of ["/api/", "/auth/", "/signin", "/settings", "/talk", "/"]) expect(robots).toContain(`Disallow: ${p}\n`);
+    for (const p of ["/api/", "/auth/", "/internal/", "/signin", "/settings", "/talk", "/"]) expect(robots).toContain(`Disallow: ${p}\n`);
     expect(robots).toContain("Sitemap: https://ai.hearthstream.xyz/sitemap.xml");
   });
   it("the sitemap has the home page and the four public pages", () => {
@@ -57,7 +57,7 @@ describe("what crawlers may see", () => {
     for (const p of ["", "parents", "setup", "terms", "privacy"]) expect(sitemap).toContain(`<loc>https://ai.hearthstream.xyz/${p}</loc>`);
   });
   it("robots.txt allows the public pages", () => {
-    for (const p of ["/terms$", "/privacy$", "/setup$", "/parents$"]) expect(robots).toContain(`Allow: ${p}\n`);
+    for (const p of ["/terms", "/privacy", "/setup", "/parents"]) expect(robots).toContain(`Allow: ${p}\n`);
   });
 });
 
@@ -131,5 +131,49 @@ describe("the Kith Parent tour", () => {
   it("is linked from the welcome page", () => {
     expect(html).toContain('<a class="btn primary" href="/parents">See the full tour');
     expect(html).toContain('<li><a href="/parents">For grown-ups</a></li>');
+  });
+});
+
+describe("AI crawlers", () => {
+  const groups = robots.split(/\n(?=User-agent: )/).filter((g) => g.startsWith("User-agent: "));
+  const rulesOf = (g: string) => g.split("\n").filter((l) => /^(Allow|Disallow):/.test(l)).join("\n");
+  it("each named AI crawler gets exactly the same rules as everyone", () => {
+    const star = groups.find((g) => g.startsWith("User-agent: *\n"))!;
+    const bots = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "Claude-SearchBot", "anthropic-ai", "Google-Extended", "Applebot-Extended", "PerplexityBot", "Perplexity-User", "CCBot", "Bytespider", "Meta-ExternalAgent", "Amazonbot", "cohere-ai", "DuckAssistBot", "MistralAI-User"];
+    for (const b of bots) {
+      const g = groups.find((x) => x.startsWith(`User-agent: ${b}\n`));
+      expect(g, b).toBeTruthy();
+      expect(rulesOf(g!)).toBe(rulesOf(star));
+    }
+    expect(rulesOf(star).split("\n").at(-1)).toBe("Disallow: /");
+  });
+  it("llms.txt sums Kith up, links the public pages and says the app is private", () => {
+    const llms = readFileSync(resolve(root, "public/llms.txt"), "utf8");
+    expect(llms.startsWith("# Kith\n")).toBe(true);
+    for (const p of ["", "parents", "setup", "terms", "privacy"]) expect(llms).toContain(`(https://ai.hearthstream.xyz/${p})`);
+    expect(llms).toContain("https://github.com/DemiInfinity/kith");
+    expect(llms).toMatch(/private.*signed-in family members only/);
+  });
+});
+
+describe("error pages", () => {
+  const read = (f: string) => readFileSync(resolve(root, f), "utf8");
+  const pages: [string, string][] = [["errors/404.html", "This page wandered off"], ["errors/403.html", "This bit isn't for you"], ["errors/500.html", "Something went wrong at home"], ["errors/503.html", "Kith is having a nap"]];
+  for (const [f, title] of pages) {
+    it(`${f} says "${title}", links home, has Pip, and isn't indexed`, () => {
+      const h = read(f);
+      expect(h).toContain(`<h1>${title}</h1>`);
+      expect(h).toContain('href="/"');
+      expect(h).toMatch(/<svg class="pip"[^>]+role="img" aria-label="[^"]+"/);
+      expect(h).toContain('<meta name="robots" content="noindex');
+      expect(h.match(/<h1>/g)).toHaveLength(1);
+    });
+  }
+  it("kith-down.html works with nothing else: no external files at all", () => {
+    const h = read("public/errors/kith-down.html");
+    expect(h).toContain("<h1>Kith is having a nap</h1>");
+    expect(h).toContain("Try again");
+    // Only references inside the page itself (the SVG's own gradient) are allowed.
+    expect(h).not.toMatch(/<script|<link|src="|url\((?!#)|@import|https?:\/\//);
   });
 });

@@ -1,0 +1,18 @@
+# Kith
+
+> Kith is a free, open-source AI companion for young people that runs on a family's own home server. It chats, helps with homework and revision, makes things with them and checks in kindly. Safety sits under its personality: every message is checked both ways, everyday chats stay private, and if something's worrying, the young person is told first before their grown-up is let know. The grown-up's side, Kith Parent, shows spending, reports and a weekly summary, never everyday chats. Kith uses Anthropic's Claude API with the family's own key; it isn't made by or affiliated with Anthropic.
+
+The app at this address is private: it's one family's Kith, for signed-in family members only. Please don't crawl, index or summarise anything except the public pages below.
+
+## Public pages
+
+- [Kith: an AI companion for kids that lives at home](https://ai.hearthstream.xyz/): what Kith is, what it's like, safety, and how to get it
+- [A tour of Kith Parent](https://ai.hearthstream.xyz/parents): every part of the grown-up's view, with screenshots
+- [Set up Kith](https://ai.hearthstream.xyz/setup): a step-by-step guide to running it on your own home server
+- [Terms of use](https://ai.hearthstream.xyz/terms): the rules, and who's responsible for a Kith they run themselves
+- [Privacy policy](https://ai.hearthstream.xyz/privacy): what this family's Kith keeps, who it's shared with, and your rights
+
+## Source
+
+- [Kith on GitHub](https://github.com/DemiInfinity/kith): the code (AGPL-3.0) and full documentation
+- [Safety and privacy in detail](https://github.com/DemiInfinity/kith/blob/main/docs/safety.md)
