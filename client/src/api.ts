@@ -6,6 +6,7 @@ export class ApiError extends Error {
 }
 
 import { appHint } from "./lib/appHint";
+import { announceToldGrownUp, parseToldGrownUp } from "./lib/worry";
 
 const BASE = (import.meta.env.VITE_KITH_API as string | undefined) ?? "";
 
@@ -57,6 +58,9 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
     }
     if (!res.ok) {
       const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      // A worry typed outside chat: the grown-up has been told. Shown as a gentle sheet, not an error.
+      const told = parseToldGrownUp(res.status, j);
+      if (told) throw new ApiError(announceToldGrownUp(told), res.status, "told-grown-up");
       // A gateway in front of Kith answering for it means home itself isn't there.
       if (!j.error && [502, 503, 504].includes(res.status)) throw new ApiError(OFFLINE_WORDS, res.status, "offline");
       throw new ApiError(j.error ?? `Something went wrong (${res.status}).`, res.status, j.code);

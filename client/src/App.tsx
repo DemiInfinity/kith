@@ -24,6 +24,7 @@ import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
 import { usePoll } from "./lib/poll";
 import { action, Toaster } from "./lib/action";
+import { WorrySheet } from "./components/WorrySheet";
 
 // The bigger screens load when they're first opened, so the chat starts quickly on a phone.
 const Parent = lazy(() => import("./screens/Parent").then((m) => ({ default: m.Parent })));
@@ -288,6 +289,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const doing = doingText(state, baseMood);
   const onProfile = false;
   const openHelp = () => setHelp(true);
+  // A worry typed outside chat: its words are already in the main chat.
+  const goToChat = () => { setProfileOpen(false); pickThread(1); go("/"); };
 
   let screen: React.ReactNode;
   if (path === "/talk") screen = energy ? <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} /> : <TalkLoading name={name} openHelp={openHelp} go={go} />;
@@ -390,6 +393,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
       </div>
       {path !== "/talk" && !onProfile && <ProfilePanel open={profileOpen} tab={profileTab} me={me} state={state} mood={baseMood} go={(to) => { setProfileOpen(false); go(to); }} onClose={() => setProfileOpen(false)} />}
       <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
+      <WorrySheet name={me.profile.name} goToChat={goToChat} openHelp={openHelp} />
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>
   );

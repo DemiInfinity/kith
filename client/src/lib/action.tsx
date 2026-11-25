@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isAbort } from "../api";
+import { isToldGrownUp } from "./worry";
 
 const EVENT = "kith-toast";
 
@@ -23,9 +24,10 @@ export function failureWords(e: unknown, what?: string): string {
 export function action<A extends unknown[]>(fn: (...args: A) => Promise<unknown> | unknown, what?: string): (...args: A) => void {
   return (...args: A) => {
     try {
-      void Promise.resolve(fn(...args)).catch((e) => { if (!isAbort(e)) toast(failureWords(e, what)); });
+      // A worry the grown-up was told about already has its own sheet: no toast on top.
+      void Promise.resolve(fn(...args)).catch((e) => { if (!isAbort(e) && !isToldGrownUp(e)) toast(failureWords(e, what)); });
     } catch (e) {
-      toast(failureWords(e, what));
+      if (!isToldGrownUp(e)) toast(failureWords(e, what));
     }
   };
 }
