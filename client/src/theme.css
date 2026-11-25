@@ -927,6 +927,13 @@ dialog.sheet h3:focus { outline: none; }
 .mk-sizes img { border-radius: 50%; object-fit: cover; }
 .orb.pic { overflow: hidden; }
 .orb.pic img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+/* The picture changes with Pip's mood (a soft cross-fade), and can come alive as the live 3D Pip. */
+.orb.pic img.pic-mood { animation: picIn .35s ease-out; }
+@keyframes picIn { from { opacity: .35; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.orb.pic .pic-live { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; opacity: 0; transition: opacity .3s ease;
+  background: radial-gradient(circle at 50% 42%, rgba(231,180,238,.30), rgba(231,180,238,0) 70%), #211520; }
+.orb.pic .pic-live.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .orb.pic img.pic-mood { animation: none; } }
 @media (max-width: 1299px) { .mk-hint { display: none; } }
 @media (max-width: 899px) {
   .maker { grid-template-columns: minmax(0, 1fr); min-height: 0; gap: 10px; }

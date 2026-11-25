@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Me } from "../api";
 import { Avatar } from "../components/Avatar";
-import { pipPictureUrl, setPipPicture, usePipPicture } from "../components/CompanionPic";
+import { PICTURE_MOODS, pipPictureUrl, setPipPicture, usePipPicture } from "../components/CompanionPic";
 import type { PipStage } from "../pip3d/engine";
 import { DEFAULT_LOOK, normaliseLook, type Look } from "../pip3d/look";
 import { ago, DescribePanel, fileName, LookPanel, MakerStage, MakerTabs, MoodPanel, savePng, SnapMenu, useSay, useStill } from "../pip3d/Maker";
@@ -23,11 +23,12 @@ export function MyPip({ me }: { me: Me }) {
   const [say, setSay] = useSay();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState("");
+  const [needsMoods, setNeedsMoods] = useState(false);
   const pic = usePipPicture();
 
   useEffect(() => {
-    api<{ look: Look | null; updated: number | null }>("/api/pip/look")
-      .then((r) => { setLook(r.look ? normaliseLook(r.look) : { ...DEFAULT_LOOK, name: companion }); setSavedAt(r.updated); })
+    api<{ look: Look | null; updated: number | null; picture: boolean; moods?: boolean }>("/api/pip/look")
+      .then((r) => { setLook(r.look ? normaliseLook(r.look) : { ...DEFAULT_LOOK, name: companion }); setSavedAt(r.updated); setNeedsMoods(!!r.look && r.picture && !r.moods); })
       .catch(() => setLook({ ...DEFAULT_LOOK, name: companion }));
   }, [companion]);
   const change = (l: Look) => { setLook(l); setDirty(true); };
@@ -41,12 +42,29 @@ export function MyPip({ me }: { me: Me }) {
     return () => clearTimeout(timer.current);
   }, [tab, stage, look]);
 
+  // A Pip saved before the mood stills existed: make them once, quietly, with the saved look.
+  const filling = useRef(false);
+  useEffect(() => {
+    if (!needsMoods || !stage || !look || dirty || filling.current) return;
+    const t = setTimeout(() => {
+      filling.current = true; setNeedsMoods(false);
+      try {
+        const picture = stage.snapshot("portrait", 256, false).toDataURL("image/png");
+        const moods = stage.moodPictures(PICTURE_MOODS, 256);
+        void api<{ updated: number; picture: boolean }>("/api/pip/look", { method: "PUT", body: { look, picture, moods } })
+          .then((r) => { if (r.picture) setPipPicture(r.updated); }).catch(() => undefined);
+      } catch { /* try again next time */ }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [needsMoods, stage, look, dirty]);
+
   const save = action(async () => {
     if (!look) return;
     setBusy(true);
     try {
       const picture = stage ? stage.snapshot("portrait", 256, false).toDataURL("image/png") : null;
-      const r = await api<{ updated: number; picture: boolean }>("/api/pip/look", { method: "PUT", body: { look, picture } });
+      const moods = stage ? stage.moodPictures(PICTURE_MOODS, 256) : {};
+      const r = await api<{ updated: number; picture: boolean }>("/api/pip/look", { method: "PUT", body: { look, picture, moods } });
       setSavedAt(r.updated); setDirty(false);
       if (r.picture) setPipPicture(r.updated);
       setSay(`Saved. This is me now!`);

@@ -22,6 +22,8 @@ export interface PipStage {
   setActive(active: boolean): void;
   /** A picture of the character: "portrait" is square on the head and shoulders, "full" is 4:5. */
   snapshot(framing?: Framing, px?: number, clear?: boolean): HTMLCanvasElement;
+  /** A still head-and-shoulders PNG (data URL) for each mood, posed with no movement. */
+  moodPictures<M extends Mood3D>(moods: readonly M[], px?: number): Record<M, string>;
   /** Frees every GL resource and stops listening. The stage can't be used afterwards. */
   dispose(): void;
 }

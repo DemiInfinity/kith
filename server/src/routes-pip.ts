@@ -11,7 +11,7 @@ import { loadProfile } from "./settings.js";
 import { checkOutputRules } from "./safety/rules.js";
 import { screenInput } from "./reporting/outside.js";
 import { OC_TRAITS } from "./desk/oc.js";
-import { describe, Look, loadPipLook, pipPicture, PICTURE_MAX_BYTES, pngFromDataUrl, savePipLook } from "./pip/look.js";
+import { describe, Look, loadPipLook, PICTURE_MOODS, pipPicture, PICTURE_MAX_BYTES, pngFromDataUrl, savePipLook, type PictureMood } from "./pip/look.js";
 import type { AppDeps } from "./routes.js";
 
 const COSY = "Let's keep it cosy and friendly: no romance or grown-up stuff.";
@@ -63,22 +63,31 @@ export function registerPip(app: FastifyInstance, d: AppDeps) {
     return ok;
   };
 
+  const hasMoods = () => !!db.prepare("SELECT 1 FROM settings WHERE key = 'pip_moods'").get();
   // ── The one main Pip ─────────────────────────────────────────────────────────────────
   app.get("/api/pip/look", { preHandler: either }, async () => {
     const p = loadPipLook(db);
-    return { look: p?.look ?? null, updated: p?.updated ?? null, picture: p?.picture ?? false };
+    return { look: p?.look ?? null, updated: p?.updated ?? null, picture: p?.picture ?? false, moods: hasMoods() };
   });
   // Saving replaces the old look (there's only one Pip), with the chat picture made in the browser.
-  app.put("/api/pip/look", { preHandler: child, bodyLimit: 400_000, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
-    const b = z.object({ look: Look, picture: z.string().max(300_000).nullable().default(null) }).safeParse(req.body);
+  app.put("/api/pip/look", { preHandler: child, bodyLimit: 1_400_000, config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const b = z.object({ look: Look, picture: z.string().max(300_000).nullable().default(null),
+      moods: z.partialRecord(z.enum(PICTURE_MOODS), z.string().max(300_000)).default({}) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: "That look isn't one Pip can wear." });
     const png = b.data.picture === null ? null : pngFromDataUrl(b.data.picture, PICTURE_MAX_BYTES, 512);
     if (b.data.picture !== null && !png) return reply.code(400).send({ error: "That picture didn't come through. Try saving again." });
+    const moods: Partial<Record<PictureMood, Buffer>> = {};
+    for (const [m, url] of Object.entries(b.data.moods) as [PictureMood, string][]) {
+      const buf = pngFromDataUrl(url, PICTURE_MAX_BYTES, 512);
+      if (!buf) return reply.code(400).send({ error: "That picture didn't come through. Try saving again." });
+      moods[m] = buf;
+    }
     if (b.data.look.name && !(await okText(reply, b.data.look.name, "Pip's name in My Pip"))) return;
-    return savePipLook(db, b.data.look, png);
+    return savePipLook(db, b.data.look, png, moods);
   });
-  app.get("/api/pip/picture.png", { preHandler: either }, async (_req, reply) => {
-    const p = pipPicture(db);
+  app.get("/api/pip/picture.png", { preHandler: either }, async (req, reply) => {
+    const m = z.enum(PICTURE_MOODS).safeParse((req.query as { mood?: string }).mood);
+    const p = pipPicture(db, m.success ? m.data : undefined);
     if (!p) return reply.code(404).send({ error: "No picture yet." });
     return reply.header("Content-Type", "image/png").header("Cache-Control", "private, max-age=86400")
       .header("X-Content-Type-Options", "nosniff").send(p.png);

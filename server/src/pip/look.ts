@@ -87,7 +87,10 @@ export const pngDataUrl = (maxBytes: number, maxSide = 512) =>
 
 // ── The one main Pip, stored in the settings table ─────────────────────────────────────────────
 
-export interface PipLook { look: Look; updated: number; picture: boolean }
+export interface PipLook { look: Look; updated: number; picture: boolean; moods?: boolean }
+/** The moods the chat picture can show: one still each, made when Pip is saved. */
+export const PICTURE_MOODS = ["happy", "thinking", "sleepy", "listening"] as const;
+export type PictureMood = (typeof PICTURE_MOODS)[number];
 
 export function loadPipLook(db: DB): PipLook | null {
   const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'pip_look'");
@@ -98,17 +101,26 @@ export function loadPipLook(db: DB): PipLook | null {
 }
 
 /** Saving replaces the old look (there's only one Pip). The picture is replaced too, or removed. */
-export function savePipLook(db: DB, look: Look, picture: Buffer | null): PipLook {
+export function savePipLook(db: DB, look: Look, picture: Buffer | null, moods: Partial<Record<PictureMood, Buffer>> = {}): PipLook {
   const updated = Date.now();
   const put = (key: string, json: string) =>
     run(db, "INSERT INTO settings(key, json) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json", key, json);
   put("pip_look", JSON.stringify({ look, updated }));
   if (picture) put("pip_picture", JSON.stringify({ png: picture.toString("base64"), updated }));
   else run(db, "DELETE FROM settings WHERE key = 'pip_picture'");
-  return { look, updated, picture: !!picture };
+  // The mood stills belong to this look: new ones, or none (old ones wouldn't match).
+  const pics = Object.fromEntries(Object.entries(moods).map(([m, b]) => [m, b.toString("base64")]));
+  if (picture && Object.keys(pics).length) put("pip_moods", JSON.stringify({ pics, updated }));
+  else run(db, "DELETE FROM settings WHERE key = 'pip_moods'");
+  return { look, updated, picture: !!picture, moods: !!picture && Object.keys(pics).length > 0 };
 }
 
-export function pipPicture(db: DB): { png: Buffer; updated: number } | null {
+export function pipPicture(db: DB, mood?: PictureMood): { png: Buffer; updated: number } | null {
+  if (mood) {
+    const m = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'pip_moods'");
+    const pic = m ? (JSON.parse(m.json) as { pics?: Record<string, string>; updated?: number }) : null;
+    if (pic?.pics?.[mood]) return { png: Buffer.from(pic.pics[mood], "base64"), updated: pic.updated ?? 0 };
+  }
   const row = get<{ json: string }>(db, "SELECT json FROM settings WHERE key = 'pip_picture'");
   if (!row) return null;
   const j = JSON.parse(row.json) as { png?: string; updated?: number };

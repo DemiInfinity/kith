@@ -231,7 +231,7 @@ describe("My Pip endpoints", () => {
   });
   it("saving replaces the one Pip, and the picture is served to the family", async () => {
     const { a, kid, grownUp } = await app();
-    expect((await a.inject({ url: "/api/pip/look", ...kid })).json()).toEqual({ look: null, updated: null, picture: false });
+    expect((await a.inject({ url: "/api/pip/look", ...kid })).json()).toEqual({ look: null, updated: null, picture: false, moods: false });
     expect((await a.inject({ url: "/api/pip/picture.png", ...kid })).statusCode).toBe(404);
     const pic = png(256, 256);
     const r = await a.inject({ method: "PUT", url: "/api/pip/look", ...kid, payload: { look: { ...DEFAULT_LOOK, ears: "fox" }, picture: dataUrl(pic) } });
@@ -244,6 +244,24 @@ describe("My Pip endpoints", () => {
     expect(img.headers["content-type"]).toBe("image/png");
     expect(img.rawPayload.equals(pic)).toBe(true);
     expect((await a.inject({ url: "/api/me", ...grownUp })).json().pipPicture).toBeTypeOf("number");
+  });
+  it("keeps a still for each mood, serves the right one, and drops them when the look changes without them", async () => {
+    const { a, kid, grownUp } = await app();
+    const main = png(256, 256), sleepy = png(256, 256, 40), thinking = png(256, 256, 80);
+    const put = (payload: unknown) => a.inject({ method: "PUT", url: "/api/pip/look", ...kid, payload: payload as object });
+    expect((await put({ look: DEFAULT_LOOK, picture: dataUrl(main), moods: { sleepy: dataUrl(sleepy), thinking: dataUrl(thinking) } })).statusCode).toBe(200);
+    expect((await a.inject({ url: "/api/pip/look", ...kid })).json()).toMatchObject({ picture: true, moods: true });
+    const get = (q: string) => a.inject({ url: `/api/pip/picture.png${q}`, ...grownUp });
+    expect((await get("?mood=sleepy")).rawPayload.equals(sleepy)).toBe(true);
+    expect((await get("?mood=thinking")).rawPayload.equals(thinking)).toBe(true);
+    expect((await get("?mood=happy")).rawPayload.equals(main)).toBe(true); // none saved for happy: the main picture
+    expect((await get("?mood=../../etc")).rawPayload.equals(main)).toBe(true); // unknown moods: the main picture
+    expect((await put({ look: DEFAULT_LOOK, picture: dataUrl(main), moods: { sleepy: "data:image/png;base64,AAAA" } })).statusCode).toBe(400);
+    expect((await put({ look: DEFAULT_LOOK, picture: dataUrl(main), moods: { dancing: dataUrl(sleepy) } })).statusCode).toBe(400);
+    // Saved again without stills: the old ones wouldn't match the new look, so they go.
+    expect((await put({ look: { ...DEFAULT_LOOK, ears: "cat" }, picture: dataUrl(main) })).statusCode).toBe(200);
+    expect((await a.inject({ url: "/api/pip/look", ...kid })).json()).toMatchObject({ moods: false });
+    expect((await get("?mood=sleepy")).rawPayload.equals(main)).toBe(true);
   });
   it("refuses looks and pictures that aren't right", async () => {
     const { a, kid } = await app();

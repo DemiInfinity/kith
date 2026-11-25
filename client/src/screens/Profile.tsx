@@ -74,7 +74,7 @@ function Section({ icon, title, hint, text, editable, onSave, placeholder }: { i
 }
 
 /** The companion's profile: who it is, its desk, what's scheduled, and its files. */
-export function Profile({ me, state, mood, go, initialTab = "desk", panel = false, onClose }: { me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; initialTab?: Tab; panel?: boolean; onClose?: () => void }) {
+export function Profile({ me, state, mood, go, initialTab = "desk", panel = false, onClose, live = true }: { me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; initialTab?: Tab; panel?: boolean; onClose?: () => void; live?: boolean }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [files, setFiles] = useState<Files | null>(null);
   const [sched, setSched] = useState<Schedule | null>(null);
@@ -102,7 +102,7 @@ export function Profile({ me, state, mood, go, initialTab = "desk", panel = fals
     <div className="screen" style={panel ? { width: "100%" } : { maxWidth: 1400, margin: "0 auto", width: "100%" }}>
       {panel && <div className="spread"><span className="hand">{name}’s profile</span><button className="x" aria-label="Close profile" onClick={onClose}><Icon name="close" /></button></div>}
       <div className="profilehead">
-        <CompanionPic look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} />
+        <CompanionPic look={me.profile.look} mood={mood} size={104} variant="ring" laptop={!!state?.desk.working} live={live ? "on" : "off"} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <h2 style={{ fontSize: "2rem" }}>{name}</h2>
           <div className="pstatus" aria-live="polite"><span className={`dot ${state?.desk.working || state?.desk.browsing ? "" : "idle"}`} /><b>Now:</b> {doingText(state, mood)}</div>
@@ -265,7 +265,7 @@ export function ProfilePanel({ open, tab = "desk", me, state, mood, go, onClose 
   }, [open, onClose]);
   return (
     <aside className={`profilepanel ${open ? "open" : ""}`} role="dialog" aria-label={`${me.profile.name}’s profile`} aria-hidden={!open} inert={!open}>
-      <div className="pp-inner">{seen && <Profile me={me} state={state} mood={mood} go={go} panel onClose={onClose} initialTab={tab} />}</div>
+      <div className="pp-inner">{seen && <Profile me={me} state={state} mood={mood} go={go} panel onClose={onClose} initialTab={tab} live={open} />}</div>
     </aside>
   );
 }

@@ -1076,6 +1076,14 @@ return {
   setStill(s) { still = !!s; invalidate(); },
   setActive(a) { active = !!a; invalidate(); },
   snapshot,
+  /** A still head-and-shoulders picture (PNG data URL) for each mood, posed with no movement. */
+  moodPictures(moods, px = 256) {
+    const wasStill = still, wasMood = state.mood, out = {};
+    still = true;
+    try { for (const m of moods) { state.mood = m; out[m] = snapshot("portrait", px, false).toDataURL("image/png"); } }
+    finally { still = wasStill; state.mood = wasMood; invalidate(); }
+    return out;
+  },
   dispose,
 };
 }
