@@ -38,6 +38,7 @@ export interface Profile {
   name: string; look: Look; traits: string[]; chatty: number; silly: number; detail: number; voice: string;
   helpWith: { homework: boolean; stories: boolean; music: boolean };
   checkins: { askHowThingsWent: boolean; morningHello: boolean; waterWhileRevising: boolean };
+  notifications: { checkins: boolean; reminders: boolean; deskReady: boolean };
   setupDone: boolean;
 }
 export interface Helpline { name: string; number: string; sub: string; kind: "helpline" | "emergency" }

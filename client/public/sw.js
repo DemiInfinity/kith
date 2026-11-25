@@ -33,7 +33,7 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   let data = { title: "Kith", body: "", url: "/" };
   try { data = { ...data, ...event.data.json() }; } catch {}
-  event.waitUntil(self.registration.showNotification(data.title, { body: data.body, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: data.url }, tag: "kith-checkin" }));
+  event.waitUntil(self.registration.showNotification(data.title, { body: data.body, icon: "/icon-192.png", badge: "/icon-192.png", data: { url: data.url }, tag: data.tag || "kith" }));
 });
 
 self.addEventListener("notificationclick", (event) => {

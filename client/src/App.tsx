@@ -17,6 +17,7 @@ import { Parent } from "./screens/Parent";
 import { registerServiceWorker } from "./lib/push";
 import { Google } from "./screens/Google";
 import { AvatarLab } from "./screens/AvatarLab";
+import { Notifications } from "./screens/Notifications";
 import { Study } from "./screens/Study";
 import { Art } from "./screens/Art";
 import { Stories } from "./screens/Stories";
@@ -62,7 +63,7 @@ const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: "/create", icon: "create", label: "Create" },
   { to: "/settings", icon: "settings", label: "Settings" },
 ];
-const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google"];
+const SETTINGS_PAGES = ["/settings", "/me", "/memory", "/shared", "/google", "/notifications"];
 
 function CreateMenu({ me, go }: { me: Me; go: (to: string) => void }) {
   return (
@@ -144,6 +145,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/stories") screen = <Stories me={me} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else if (path === "/lab") screen = <AvatarLab />;
+  else if (path === "/notifications") screen = <Notifications me={me} onSaved={onSaved} />;
   else screen = (
     <>
       {thread !== 1 && (

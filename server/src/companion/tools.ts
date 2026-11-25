@@ -8,6 +8,8 @@ import type { ToolDef } from "../connections/connections.js";
 import { KIND_NAMES, type Studio } from "../desk/studio.js";
 import { addWorld, RELATIONSHIPS, saveCharacter } from "../desk/oc.js";
 import { searchHistory } from "./history.js";
+import { addSchedule } from "./schedules.js";
+import { config } from "../config.js";
 
 export interface TurnEffects {
   memories: string[];
@@ -23,6 +25,27 @@ export function builtinTools(db: DB, studio: Studio, effects: TurnEffects): Tool
     ({ name, description, input_schema, connection: "companion", level: "act", run });
 
   return [
+    tool(
+      "schedule",
+      "Schedule something they ASKED you to: a reminder (sent to their phone and shown in chat; never in quiet hours) or something to make on your desk at a set time. Only when they ask. Use their local time.",
+      obj({
+        title: { type: "string", description: "Short, e.g. 'Revise fractions' or 'Weekly Victorians quiz'" },
+        kind: { type: "string", enum: ["reminder", "make"] },
+        when: { type: "string", description: "Local date and time, YYYY-MM-DDTHH:MM" },
+        repeat: { type: "string", enum: ["none", "daily", "weekdays", "weekly"] },
+        make_kind: { type: "string", description: "For 'make': what kind of desk thing (quiz, flashcards, story…)" },
+        make_brief: { type: "string", description: "For 'make': what it should be" },
+      }, ["title", "kind", "when", "repeat"]),
+      async (input) => {
+        const v = input as { title: string; kind: string; when: string; repeat: string; make_kind?: string; make_brief?: string };
+        const r = addSchedule(db, {
+          title: v.title, kind: v.kind, when: v.when, repeat: v.repeat,
+          make: v.kind === "make" ? { kind: v.make_kind ?? "notes", brief: v.make_brief ?? v.title } : undefined,
+        }, config.timezone);
+        if (!r.ok) return `Not scheduled: ${r.error}`;
+        return `Scheduled (${r.schedule.repeat === "none" ? "once" : r.schedule.repeat}). It's on your profile under Scheduled, where they can pause or delete it.`;
+      },
+    ),
     tool(
       "recall_history",
       "Search your archived past conversations with them. Only use this when they ask you to remember something specific from before that isn't in your summary or recent messages.",

@@ -18,6 +18,8 @@ import { charactersForPrompt } from "./oc.js";
 import type { Storage } from "../storage/storage.js";
 import { Browser, untrusted, WEB_RULES } from "./browse.js";
 import { logActivity } from "./activity.js";
+import { pushToChild } from "../checkins/push.js";
+import { inQuietHours } from "../budget/time.js";
 
 export const KINDS = {
   story: { format: "md", icon: "📖", what: "a story in Markdown, with a title line and short paragraphs" },
@@ -150,6 +152,9 @@ export class Studio {
           const req = JSON.parse(row.request);
           const fileId = req.kind === "edit" ? await this.edit(id, req) : await this.make(id, req);
           this.update(id, { status: "done", progress: 100, file_id: fileId });
+          if (!inQuietHours(Date.now(), config.timezone, loadParentSettings(this.db).quietHours)) {
+            void pushToChild(this.db, { title: loadProfile(this.db).name, body: `✨ ${row.title} is ready on my desk`, url: "/pip" }, "deskReady");
+          }
           logActivity(this.db, "✅", `${req.kind === "edit" ? "Changed" : "Made"} ${row.title}${this.deskEnergy().mode === "low" || LOW_POWER_KINDS.has(req.kind) ? " (Low power)" : ""}`);
         } catch (err) {
           const msg = err instanceof DeskError && err.problems.length

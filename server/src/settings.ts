@@ -135,6 +135,10 @@ export const CompanionProfile = z.object({
       waterWhileRevising: z.boolean().default(true),
     })
     .default({ askHowThingsWent: true, morningHello: false, waterWhileRevising: true }),
+  // Which notifications reach their phone.
+  notifications: z
+    .object({ checkins: z.boolean().default(true), reminders: z.boolean().default(true), deskReady: z.boolean().default(true) })
+    .default({ checkins: true, reminders: true, deskReady: true }),
   // soul.md and identity.md notes: the child's own words. No safeguards live here; they can't override them.
   soul: z.string().max(3000).default(""),
   identityNotes: z.string().max(2000).default(""),

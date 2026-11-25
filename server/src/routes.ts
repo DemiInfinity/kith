@@ -23,7 +23,8 @@ import { activitySince } from "./desk/activity.js";
 import { companionFiles, safeguardsDoc } from "./companion/files.js";
 import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
-import { pushReady, removeSubscription, saveSubscription } from "./checkins/push.js";
+import { pushReady, pushToChild, removeSubscription, saveSubscription } from "./checkins/push.js";
+import { addSchedule, deleteSchedule, listSchedules, setActive } from "./companion/schedules.js";
 import { speakable, synthesize, transcribe } from "./voice/wyoming.js";
 import type { Energy } from "./budget/budget.js";
 import type { LLM } from "./llm.js";
@@ -89,6 +90,21 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   app.patch("/api/threads/:id", { preHandler: child }, async (req, reply) => {
     const b = z.object({ title: z.string().max(60).optional(), archived: z.boolean().optional() }).parse(req.body ?? {});
     return updateThread(db, Number((req.params as { id: string }).id), b) ? { ok: true } : reply.code(400).send({ error: "The main chat can’t be archived." });
+  });
+
+  // ── Things they asked to schedule ─────────────────────────────────────────────────────
+  app.get("/api/schedules", { preHandler: either }, async () => ({ schedules: listSchedules(db) }));
+  app.post("/api/schedules", { preHandler: child }, async (req, reply) => {
+    const r = addSchedule(db, req.body, config.timezone);
+    return r.ok ? r.schedule : reply.code(422).send({ error: r.error });
+  });
+  app.patch("/api/schedules/:id", { preHandler: child }, async (req) => {
+    setActive(db, Number((req.params as { id: string }).id), z.object({ active: z.boolean() }).parse(req.body).active);
+    return { ok: true };
+  });
+  app.delete("/api/schedules/:id", { preHandler: child }, async (req) => {
+    deleteSchedule(db, Number((req.params as { id: string }).id));
+    return { ok: true };
   });
 
   // ── Chat history archive (the child's only) ───────────────────────────────────────────
@@ -373,6 +389,10 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   app.post("/api/push/subscribe", { preHandler: child }, async (req) => {
     saveSubscription(db, Sub.parse(req.body));
     return { ok: true };
+  });
+  app.post("/api/push/test", { preHandler: child, config: { rateLimit: { max: 3, timeWindow: "1 minute" } } }, async () => {
+    const sent = await pushToChild(db, { title: loadProfile(db).name, body: "This is what my notifications look like 👋", url: "/" }, "test");
+    return { sent };
   });
   app.post("/api/push/unsubscribe", { preHandler: child }, async (req) => {
     removeSubscription(db, z.object({ endpoint: z.string() }).parse(req.body).endpoint);

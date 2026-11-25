@@ -9,6 +9,7 @@ interface Files {
   soul: string; soulIsDefault: boolean; identity: string; identityNotes: string;
   memories: { id: number; icon: string; text: string; date: string | null }[]; summary: string;
 }
+interface Mine { id: number; title: string; kind: "reminder" | "make"; at: number; repeat: string; active: number }
 interface Schedule {
   jobs: Job[];
   checkins: {
@@ -54,10 +55,14 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
   const [tab, setTab] = useState<Tab>(initialTab);
   const [files, setFiles] = useState<Files | null>(null);
   const [sched, setSched] = useState<Schedule | null>(null);
+  const [mine, setMine] = useState<Mine[]>([]);
+  const [form, setForm] = useState({ title: "", when: "", repeat: "none" });
+  const [schedErr, setSchedErr] = useState("");
+  const loadMine = () => api<{ schedules: Mine[] }>("/api/schedules").then((r) => setMine(r.schedules)).catch(() => undefined);
   const name = me.profile.name;
   useEffect(() => {
     if (tab === "who" && !files) api<Files>("/api/pip/files").then(setFiles).catch(() => undefined);
-    if (tab === "scheduled") api<Schedule>("/api/pip/schedule").then(setSched).catch(() => undefined);
+    if (tab === "scheduled") { api<Schedule>("/api/pip/schedule").then(setSched).catch(() => undefined); void loadMine(); }
   }, [tab, files]);
   useEffect(() => setTab(initialTab), [initialTab]);
 
@@ -92,6 +97,34 @@ export function Profile({ me, state, mood, go, initialTab = "desk" }: { me: Me; 
 
       {tab === "scheduled" && (
         <div className="stack" style={{ maxWidth: 760, gap: 12 }}>
+          <div className="card">
+            <b>You asked for</b>
+            {mine.length === 0 && <span className="small">Nothing yet. Ask {name} in chat (“remind me at 7 to revise”, “every Sunday make me a quiz”) or add one here.</span>}
+            {mine.map((m) => (
+              <div key={m.id} className="row" style={{ fontSize: 14, borderTop: "1px solid var(--line-soft)", paddingTop: 6, opacity: m.active ? 1 : 0.55 }}>
+                <span>{m.kind === "reminder" ? "⏰" : "✨"}</span>
+                <span style={{ flex: 1 }}>{m.title}<br /><span className="small">{m.active ? new Date(m.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "paused"}{m.repeat !== "none" ? ` · ${m.repeat}` : ""}</span></span>
+                <button className="btn ghost small" onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "PATCH", body: { active: !m.active } }); void loadMine(); }}>{m.active ? "Pause" : "Resume"}</button>
+                <button className="x" aria-label={`Delete ${m.title}`} onClick={async () => { await api(`/api/schedules/${m.id}`, { method: "DELETE" }); void loadMine(); }}>✕</button>
+              </div>
+            ))}
+            <form className="stack" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 10 }} onSubmit={async (e) => {
+              e.preventDefault();
+              try { await api("/api/schedules", { body: { title: form.title, kind: "reminder", when: form.when, repeat: form.repeat } }); setForm({ title: "", when: "", repeat: "none" }); setSchedErr(""); void loadMine(); }
+              catch (err) { setSchedErr((err as Error).message); }
+            }}>
+              <b style={{ fontSize: 14 }}>Add a reminder</b>
+              <input className="input" placeholder="What? e.g. Revise fractions" value={form.title} maxLength={120} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              <div className="grid2">
+                <input className="input" type="datetime-local" aria-label="When" value={form.when} onChange={(e) => setForm({ ...form, when: e.target.value })} />
+                <select className="select" aria-label="Repeat" value={form.repeat} onChange={(e) => setForm({ ...form, repeat: e.target.value })}>
+                  <option value="none">Just once</option><option value="daily">Every day</option><option value="weekdays">School days</option><option value="weekly">Every week</option>
+                </select>
+              </div>
+              {schedErr && <span className="small" style={{ color: "var(--ember)" }}>{schedErr}</span>}
+              <button className="btn primary small" type="submit" disabled={!form.title.trim() || !form.when}>Add</button>
+            </form>
+          </div>
           <div className="card">
             <b>On the desk</b>
             {sched?.jobs.length === 0 && <span className="small">Nothing queued. Ask {name} to make something!</span>}
@@ -170,7 +203,8 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
   const rows: [string, string, string, string][] = [
     ["/pip", "🪪", `${name}’s profile`, `Its desk, what’s scheduled, and who ${name} is (soul, personality, memory)`],
     ["/me", "✨", "Personality", "Name, look, traits and voice"],
-    ["/memory", "🧠", `What ${name} remembers`, "See and delete memories; check-ins and notifications"],
+    ["/notifications", "🔔", "Notifications", "Turn on, test, and choose what reaches your phone"],
+    ["/memory", "🧠", `What ${name} remembers`, "See and delete memories; check-ins"],
     ["/shared", "👀", `What ${me.parentLabel} sees`, "Nothing secret here"],
     ["/google", "☁️", "Google Drive", "Save what you make to your own Drive"],
   ];

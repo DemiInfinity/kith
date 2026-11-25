@@ -18,11 +18,13 @@ import { deliverReport, failedReports, type Reporter } from "./reporting/reporte
 import { allRollingKeys } from "./companion/context.js";
 import { purgeHistory } from "./companion/history.js";
 import { logActivity } from "./desk/activity.js";
+import { dueSchedules, listSchedules, markRan } from "./companion/schedules.js";
+import type { Studio } from "./desk/studio.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 
-export interface SchedulerDeps { db: DB; llm: LLM; safety: SafetyChecker; reporters: Reporter[]; childName: string }
+export interface SchedulerDeps { db: DB; llm: LLM; safety: SafetyChecker; reporters: Reporter[]; childName: string; studio?: Studio }
 
 export function startScheduler(deps: SchedulerDeps) {
   const tick = () => runOnce(deps).catch((err) => console.error("[scheduler]", err));
@@ -33,6 +35,7 @@ export function startScheduler(deps: SchedulerDeps) {
 export async function runOnce(deps: SchedulerDeps, now = Date.now()) {
   retention(deps.db, now);
   await retryReports(deps);
+  await schedules(deps, now);
   await checkins(deps, now);
   await journal(deps, now);
   await weeklySummary(deps, now);
@@ -110,6 +113,26 @@ async function checkins(deps: SchedulerDeps, now: number) {
   run(db, "INSERT INTO checkins(ts, kind, text, delivered) VALUES (?,?,?,?)", now, plan.kind, text, delivered);
   run(db, "INSERT INTO messages(ts, role, text, mode, meta) VALUES (?, 'companion', ?, 'chat', ?)", now, text, JSON.stringify({ checkin: plan.kind }));
   if (plan.memoryId) run(db, "UPDATE memories SET asked = 1 WHERE id = ?", plan.memoryId);
+}
+
+/** Things the child asked to have scheduled. */
+async function schedules(deps: SchedulerDeps, now: number) {
+  const { db } = deps;
+  const settings = loadParentSettings(db);
+  const profile = loadProfile(db);
+  for (const s of dueSchedules(listSchedules(db), now, config.timezone, settings.quietHours)) {
+    if (s.kind === "reminder") {
+      const text = `⏰ ${s.title}`;
+      await pushToChild(db, { title: profile.name, body: text, url: "/" }, "reminders");
+      run(db, "INSERT INTO messages(ts, role, text, mode, meta) VALUES (?, 'companion', ?, 'chat', ?)", now, text, JSON.stringify({ schedule: s.id }));
+      logActivity(db, "⏰", `Reminder: ${s.title}`);
+    } else if (deps.studio) {
+      const make = JSON.parse(s.payload) as { kind: string; brief: string; lookUp?: string };
+      const job = deps.studio.enqueue({ kind: make.kind as never, title: s.title, brief: make.brief, lookUp: make.lookUp });
+      if (!job.ok) logActivity(db, "⚠️", `Couldn't start scheduled “${s.title}”: ${job.error}`);
+    }
+    markRan(db, s, now, config.timezone);
+  }
 }
 
 async function journal(deps: SchedulerDeps, now: number) {

@@ -108,7 +108,7 @@ async function main() {
     app.log.warn(`No built client at ${clientDir}; API only.`);
   }
 
-  startScheduler({ db, llm, safety, reporters, childName: childName(db) });
+  startScheduler({ db, llm, safety, reporters, childName: childName(db), studio });
   await app.listen({ port: config.port, host: config.host });
 }
 
