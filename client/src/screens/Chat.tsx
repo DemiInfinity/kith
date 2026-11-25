@@ -128,7 +128,33 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       }
     }).catch((e) => setErr((e as Error).message));
   }, [thread]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
+  // Open at the newest message, and stay at the bottom while things below load in and grow
+  // (character cards, pictures), unless she has scrolled up to read something.
+  const list = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const toBottom = () => { const el = list.current; if (el && stick.current) el.scrollTop = el.scrollHeight; };
+  useEffect(() => {
+    stick.current = true; toBottom();
+    const ts = [60, 200, 500, 1000, 2000, 3500].map((ms) => setTimeout(toBottom, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [messages, busy]);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    let last = el.scrollTop;
+    const onScroll = () => {
+      const up = el.scrollTop < last - 2; last = el.scrollTop;
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      if (up && !near) stick.current = false; else if (near) stick.current = true;
+    };
+    const ro = new ResizeObserver(toBottom);
+    const watch = () => el.querySelectorAll(".msg, img, canvas").forEach((n) => ro.observe(n));
+    watch();
+    const mo = new MutationObserver(() => { watch(); toBottom(); });
+    mo.observe(el, { childList: true, subtree: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => { ro.disconnect(); mo.disconnect(); el.removeEventListener("scroll", onScroll); };
+  }, []);
   // The composer grows with what's typed (up to its max height), and shrinks again after sending.
   useEffect(() => {
     const t = box.current;
@@ -252,7 +278,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   return (
     <>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announce}</div>
-      <div className="messages" onClick={(e) => { if ((e.target as HTMLElement).classList.contains("messages")) setPicked(null); }}>
+      <div className="messages" ref={list} onClick={(e) => { if ((e.target as HTMLElement).classList.contains("messages")) setPicked(null); }}>
         {notice && (
           <div className="notice">
             I’m {name}, an AI, not a person. I live on your family’s home server. Our everyday chats stay between us; if something worries me, I’ll tell you first before I tell {me.parentLabel}.

@@ -368,7 +368,8 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </div>
       </nav>
       {dock && path === "/" && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
-      <div className={`main ${!onProfile && path !== "/talk" && !makerPage ? "hang-m" : ""} ${path !== "/talk" && !onProfile && !makerPage ? "hang-d" : ""}`}>
+      {/* Only the chat leaves room under the header for Pip's hanging picture; other pages start right under it. */}
+      <div className={`main ${path === "/" ? "hang-m hang-d" : ""}`}>
         {path !== "/talk" && !onProfile && (
           <header className="topbar deskbar desktop-only">
             <span className="tb-left">{path === "/" && !dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>

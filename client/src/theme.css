@@ -553,7 +553,7 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .topbar .tb-label { display: flex; flex-direction: column; align-items: center; margin-top: 2px; padding: 3px 12px 4px; border-radius: 14px; background: rgba(36, 24, 32, 0.82); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line-soft); max-width: 100%; }
 .topbar .tb-label b { margin-top: 0; }
 .main .messages { padding-top: calc(18px + var(--hang, 0px)); }
-.main > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang, 0px)); }
+.main > .screen { padding-top: calc(10px + var(--safe-top) + var(--hang, 14px)); }
 /* The side-chat bar sits straight under the header, with the picture floating over its middle;
    its title and buttons keep to the sides so nothing hides under the picture. */
 .main > .threadbar:not(.desktop-only) { margin-top: 0; position: relative; z-index: 1; min-height: 46px; }
