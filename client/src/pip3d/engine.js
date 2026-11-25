@@ -31,7 +31,10 @@ const maxFps = opts.maxFps || 0; let lastFrame = 0;
 let yaw = -0.25, yawV = 0, dragging = false, lastX = 0;
 let need = true, running = false, raf = 0;
 // framing "portrait": the live view is framed on the head and shoulders (small previews), like a profile picture.
-let portraitBox = null;
+// framing "full": the whole character standing, filling the view (the call screen).
+let frameBox = null;
+// Talking: how open the mouth is (0 = the mood's own mouth), set from the voice while it plays.
+let talkOpen = 0;
 
 // ── renderer ─────────────────────────────────────────────────────────────────────
 // ── renderer ─────────────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ scene.add(new THREE.HemisphereLight(0xfbeaf6, 0x2a1020, 0.5));
 
 // A tall stage steps the camera back, so wide things (the bed, the easel) still fit across it.
 function resize(){ const r = canvas.parentElement.getBoundingClientRect(); if (!r.width || !r.height) return; renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height;
-  if (portraitBox) { aimAt(portraitBox, "portrait"); return; }
+  if (frameBox) { aimAt(frameBox, opts.framing, opts.framing === "full" ? 1.16 : undefined); return; }
   camera.position.set(0, 0.25, Math.min(9, 6.2 / Math.min(1, camera.aspect))); camera.lookAt(0, 0.25, 0); camera.updateProjectionMatrix(); }
 const ro = new ResizeObserver(() => { resize(); invalidate(); }); ro.observe(canvas.parentElement);
 
@@ -931,7 +934,7 @@ function apply() {
   parts.scarf.position.y = isChibi ? -.18 : 0;
   for (const e of ["wolf", "fox", "cat", "bunny", "bear"]) { parts[e].visible = state.ears === e; parts[e].traverse(o => { if (o.isMesh && o.material !== pinkInner) o.material = isChibi ? hairMat : bodyMat; }); }
   for (const w of ["beanie", "scarf", "glasses", "headphones"]) parts[w].visible = state.wear.has(w);
-  if (opts.framing === "portrait") { portraitBox = framingBox("portrait"); resize(); }
+  if (opts.framing === "portrait" || opts.framing === "full") { frameBox = framingBox(opts.framing); resize(); }
   invalidate();
 }
 
@@ -983,7 +986,9 @@ function loop(now) {
   for (const c of blobCheeks) { const b = m === "shy" || m === "loving" ? 1.45 : m === "excited" ? 1.15 : 1; c.scale.set(1.25 * b, .8 * b, 1); }
   if (m === "thinking") { eL.position.y = eR.position.y = .05; for (const e of [eL, eR]) e.children.forEach(c => c.position.x = c.userData.ox + .045); }
   smile.visible = open.visible = flat.visible = smirk.visible = tongueOut.visible = false; smile.rotation.z = Math.PI; smile.position.y = 0; flat.scale.set(1, 1, 1);
-  const mouth = { happy: "smile", excited: "grin", thinking: "smirk", sleepy: "O-small", surprised: "O", shy: "wavy", sad: "frown", proud: "smirk", loving: "smile", cheeky: "tongue" }[m] || "smile-small";
+  const moodMouth = { happy: "smile", excited: "grin", thinking: "smirk", sleepy: "O-small", surprised: "O", shy: "wavy", sad: "frown", proud: "smirk", loving: "smile", cheeky: "tongue" }[m] || "smile-small";
+  // while talking, the voice picks the shape: a closed "M", then "E", "O" and a wide "A" as it gets louder
+  const mouth = talkOpen <= 0 ? moodMouth : talkOpen < .3 ? "M" : talkOpen < .55 ? "E" : talkOpen < .8 ? "O" : "A";
   if (mouth === "smile") { smile.visible = true; smile.scale.set(1.25, 1.25, 1); }
   else if (mouth === "smile-small") { smile.visible = true; smile.scale.set(.85, .7, 1); }
   else if (mouth === "smirk") smirk.visible = true;
@@ -991,6 +996,9 @@ function loop(now) {
   else if (mouth === "wavy") { flat.visible = true; flat.scale.set(1, .7, 1); }
   else if (mouth === "tongue") { smile.visible = true; smile.scale.set(.8, .7, 1); tongueOut.visible = true; }
   else if (mouth === "grin") { open.visible = true; open.scale.set(1.6, 1.3, 1); tongue.visible = true; }
+  else if (mouth === "M") { flat.visible = true; flat.scale.set(.8, 1, 1); }
+  else if (mouth === "E") { open.visible = true; open.scale.set(1.15, .5, 1); tongue.visible = false; }
+  else if (mouth === "A") { open.visible = true; open.scale.set(1.05, 1.15, 1); tongue.visible = true; }
   else { open.visible = true; const s = { O: [.75, 1.05], "O-small": [.55, .55] }[mouth] || [1, 1]; open.scale.set(s[0], s[1], 1); tongue.visible = false; }
   // gentle sway of the blob's ears and the chibi's tail
   const sway = still ? 0 : Math.sin(t * 2.2) * .04;
@@ -1029,9 +1037,9 @@ function framingBox(framing) {
   box.min.y = hc.y - .78; box.min.x = Math.max(box.min.x, hc.x - .75); box.max.x = Math.min(box.max.x, hc.x + .75);
   return box;
 }
-function aimAt(box, framing) {
+function aimAt(box, framing, margin) {
   const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
-  const half = Math.max(sz.y / 2, sz.x / 2 / camera.aspect) * (framing === "full" ? 1.08 : 1.12);
+  const half = Math.max(sz.y / 2, sz.x / 2 / camera.aspect) * (margin ?? (framing === "full" ? 1.08 : 1.12));
   camera.position.set(c.x, c.y, c.z + half / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) + sz.z / 2); camera.lookAt(c);
   camera.updateProjectionMatrix();
 }
@@ -1079,6 +1087,7 @@ return {
   setActivity(a) { if (state.activity === a) return; state.activity = a; apply(); },
   setStill(s) { still = !!s; invalidate(); },
   setActive(a) { active = !!a; invalidate(); },
+  setMouth(open) { const v = Math.max(0, Math.min(1, Number(open) || 0)); if (v === talkOpen) return; talkOpen = v; invalidate(); },
   snapshot,
   /** A still head-and-shoulders picture (PNG data URL) for each mood, posed with no movement. */
   moodPictures(moods, px = 256) {

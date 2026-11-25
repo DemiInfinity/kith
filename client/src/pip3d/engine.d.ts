@@ -10,8 +10,11 @@ export interface StageOptions {
   activity?: Activity;
   /** False draws one frame and then waits (a preview that isn't on screen). Default true. */
   active?: boolean;
-  /** "portrait" frames the live view on the head and shoulders (small previews). Default: the whole stage. */
-  framing?: "portrait";
+  /**
+   * "portrait" frames the live view on the head and shoulders (small previews); "full" frames the whole
+   * character standing, filling the view (the call screen). Default: the whole stage.
+   */
+  framing?: Framing;
   /** Draw at most this many frames a second (small pictures, to save battery). Default: every frame. */
   maxFps?: number;
 }
@@ -22,6 +25,8 @@ export interface PipStage {
   setActivity(activity: Activity): void;
   setStill(still: boolean): void;
   setActive(active: boolean): void;
+  /** Talking: how open the mouth is, 0 to 1, from the voice as it plays (0 = the mood's own mouth). */
+  setMouth(open: number): void;
   /** A picture of the character: "portrait" is square on the head and shoulders, "full" is 4:5. */
   snapshot(framing?: Framing, px?: number, clear?: boolean): HTMLCanvasElement;
   /** A still head-and-shoulders PNG (data URL) for each mood, posed with no movement. */
