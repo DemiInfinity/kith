@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type Character, type CloudLink, type DeskItem, type DeskView, type Energy, type Job, type Me } from "../api";
 import { AvatarSvg } from "../components/Avatar";
 import { Icon, type IconName } from "../components/Icons";
@@ -70,16 +71,39 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   // The monitor is a standard 16:9 screen, drawn at one size and scaled to fit, so it looks the
   // same on a phone, a tablet or a big screen (just smaller).
   const monRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.6);
+  // Full screen: the same desk in a pop-up, as big as the window allows (still 16:9).
+  const [full, setFull] = useState(false);
+  // On an upright phone, full screen turns the desk sideways so it uses the whole height.
+  const [turned, setTurned] = useState(false);
+  /** Where a click on the (possibly turned) page lands, in the page's own 1280×720 pixels. */
+  const toPage = (cx: number, cy: number, r: DOMRect) => turned
+    ? { x: ((cy - r.top) / r.height) * 1280, y: (1 - (cx - r.left) / r.width) * 720 }
+    : { x: ((cx - r.left) / r.width) * 1280, y: ((cy - r.top) / r.height) * 720 };
   useEffect(() => {
-    const el = monRef.current;
+    const el = full ? stageRef.current : monRef.current;
     if (!el) return;
-    const fit = () => setScale(Math.min(1.25, el.clientWidth / MON.w));
+    const fit = () => {
+      if (!full) { setTurned(false); setScale(Math.min(1.25, el.clientWidth / MON.w)); return; }
+      const w = el.clientWidth, h = el.clientHeight;
+      const flat = Math.min(w / MON.w, h / MON.h), side = Math.min(h / MON.w, w / MON.h);
+      const turn = h > w && side > flat * 1.2;
+      setTurned(turn);
+      setScale(turn ? side : flat);
+    };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [full]);
+  useEffect(() => {
+    if (!full) return;
+    // Esc closes it, unless you're typing into the page (then Esc goes to the page).
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.(".screen169")) setFull(false); };
+    addEventListener("keydown", k);
+    return () => removeEventListener("keydown", k);
+  }, [full]);
   const lastPoke = useRef(Date.now());
   const poke = () => { lastPoke.current = Date.now(); if (!awake) setAwake(true); };
   const [driving, setDriving] = useState(false);
@@ -279,14 +303,14 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
                 onPointerMove={(e) => {
                   if (!driving) return;
                   const r = e.currentTarget.getBoundingClientRect();
-                  const p = { x: ((e.clientX - r.left) / r.width) * 1280, y: ((e.clientY - r.top) / r.height) * 720 };
+                  const p = toPage(e.clientX, e.clientY, r);
                   setPointer(p);
                   sendPointer(p.x, p.y);
                 }}
                 onClick={(e) => {
                   if (!driving) return;
                   const r = e.currentTarget.getBoundingClientRect();
-                  const p = { x: ((e.clientX - r.left) / r.width) * 1280, y: ((e.clientY - r.top) / r.height) * 720 };
+                  const p = toPage(e.clientX, e.clientY, r);
                   setPointer(p);
                   e.currentTarget.focus();
                   flushTyped();
@@ -342,10 +366,8 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const power = today?.power;
   const spent = (today?.budget.full ?? 0) + (today?.budget.low ?? 0);
   const slice = today?.budget.slice || 1;
-  return (
-    <div className="deskpage">
-      <div className="deskmain">
-        <div className="pmonitor" ref={monRef} style={{ height: MON.h * scale }}>
+  const monitor = (
+        <div className="pmonitor" ref={full ? undefined : monRef} style={full ? { height: MON.h * scale, width: MON.w * scale, transform: turned ? "rotate(90deg)" : undefined, flex: "none" } : { height: MON.h * scale }}>
         <div className="pcomp" style={{ width: MON.w, height: MON.h, transform: `scale(${scale})` }}>
           <div className="pbar">
             <b>{name}’s computer</b>
@@ -354,6 +376,7 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
             {today?.google && <span className="pchip" style={{ background: "rgba(127,216,164,0.18)", color: "#9BE3B8" }}><Icon name="cloud" size={14} /> Drive synced</span>}
             {power && <span className="pchip" style={{ background: power.mode === "full" ? "rgba(245,150,70,0.2)" : "rgba(156,194,232,0.2)", color: power.mode === "full" ? "#F7B57A" : "#B8D4F0" }}><Icon name={power.mode === "full" ? "fire" : power.mode === "low" ? "battery" : "moon"} size={14} /> {power.mode === "full" ? "Full power" : power.mode === "low" ? `Low power${power.fullBackAt ? ` until ${clock(power.fullBackAt)}` : ""}` : "Resting"}</span>}
             <b>{new Date(now).toLocaleDateString("en-GB", { weekday: "short" })} {clock(now)}</b>
+            <button className="pfull" onClick={() => setFull(!full)} aria-label={full ? "Leave full screen" : "Full screen"} title={full ? "Leave full screen" : "Full screen"}><Icon name={full ? "shrink" : "expand"} size={16} /></button>
           </div>
           <div className={`pscreen ${win === "max" ? "hasmax" : ""}`} onPointerDown={poke} onKeyDown={poke} onWheel={poke}>
             {!awake && (
@@ -422,6 +445,19 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
           </div>
         </div>
         </div>
+  );
+
+  return (
+    <div className="deskpage">
+      <div className="deskmain">
+        {full ? (
+          <button className="pmonitor-away" onClick={() => setFull(false)} style={{ height: 160 }}>{name}’s computer is open full screen. Click to bring it back here.</button>
+        ) : monitor}
+        {full && createPortal(
+          <div className="deskmodal" role="dialog" aria-modal="true" aria-label={`${name}’s computer, full screen`} onClick={(e) => { if (e.target === e.currentTarget) setFull(false); }}>
+            <button className="deskmodal-x" onClick={() => setFull(false)} aria-label="Close full screen"><Icon name="close" size={22} /></button>
+            <div className="deskmodal-stage" ref={stageRef}>{monitor}</div>
+          </div>, document.body)}
         {info}
         <span className="small">{name}’s desk is a locked-down container on the home server. {name} can write, draw and build small things there{today?.google ? ", and save them into the Kith folder in your Google Drive" : ""}. Its browser reads the web through a block list ({me.parentLabel} chooses what’s blocked), stops at robot checks, treats what it reads as information rather than instructions, and logs every page. It can’t sign in, install anything, message anyone, delete your files or touch the rest of the house.</span>
       </div>

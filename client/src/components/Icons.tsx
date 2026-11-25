@@ -9,7 +9,7 @@ export type IconName = "chat" | "study" | "create" | "settings" | "grownup" | "c
   | "shield" | "bulb" | "question" | "brush" | "landmark" | "map" | "mask" | "trash" | "plus" | "arrow" | "back" | "play"
   | "speaker" | "joystick" | "eye" | "cards" | "timer" | "note" | "siren" | "phone" | "bell" | "brain" | "cloud" | "idcard"
   | "calendar" | "heart" | "pencil" | "compass" | "folder" | "journal" | "cap" | "gamepad" | "people" | "sparkle" | "laptop"
-  | "music" | "breath" | "chat2" | "star" | "home";
+  | "music" | "breath" | "chat2" | "star" | "home" | "expand" | "shrink";
 
 const P: Record<IconName, (on: boolean) => ReactNode> = {
   // a speech bubble with three dots
@@ -176,6 +176,8 @@ const P: Record<IconName, (on: boolean) => ReactNode> = {
   music: () => <><path d="M9 17.5V6l10-2v11" /><circle cx="6.5" cy="17.5" r="2.5" /><circle cx="16.5" cy="15" r="2.5" /></>,
   breath: () => <><path d="M3.5 9h11a2.5 2.5 0 1 0-2.5-2.5" /><path d="M3.5 13h15a2.5 2.5 0 1 1-2.5 2.5" /><path d="M3.5 17h6" /></>,
   chat2: () => <path d="M5 6.5C5 5.1 6.1 4 7.5 4h9C17.9 4 19 5.1 19 6.5v7c0 1.4-1.1 2.5-2.5 2.5H11l-4 3.5V16h.5H7.5C6.1 16 5 14.9 5 13.5v-7Z" />,
+  expand: () => <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
+  shrink: () => <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
   home: () => <><path d="M4 11l8-6.5 8 6.5" /><path d="M6 9.5V19h12V9.5" /><path d="M10 19v-5h4v5" /></>,
   star: () => <path d="M12 3.8l2.4 5 5.4.6-4 3.7 1.1 5.4L12 15.8l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6L12 3.8Z" />,
   // a little computer

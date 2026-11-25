@@ -231,10 +231,19 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
 
 
 /** On a computer: the companion's profile (the same one as on a phone), in a panel beside the chat. */
-export function ProfilePanel({ me, state, mood, go, onClose }: { me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; onClose: () => void }) {
+export function ProfilePanel({ open, tab = "desk", me, state, mood, go, onClose }: { open: boolean; tab?: Tab; me: Me; state: AppState | null; mood: Mood; go: (to: string) => void; onClose: () => void }) {
+  // Stays mounted so it can slide in and out smoothly; its contents load the first time it opens.
+  const [seen, setSeen] = useState(open);
+  useEffect(() => { if (open) setSeen(true); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", k);
+    return () => removeEventListener("keydown", k);
+  }, [open, onClose]);
   return (
-    <aside className="profilepanel" aria-label={`${me.profile.name}’s profile`}>
-      <Profile me={me} state={state} mood={mood} go={go} panel onClose={onClose} />
+    <aside className={`profilepanel ${open ? "open" : ""}`} role="dialog" aria-label={`${me.profile.name}’s profile`} aria-hidden={!open} inert={!open}>
+      <div className="pp-inner">{seen && <Profile me={me} state={state} mood={mood} go={go} panel onClose={onClose} initialTab={tab} />}</div>
     </aside>
   );
 }

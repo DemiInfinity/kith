@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type AppState, type Me, type Mood, type Profile, type Turn } from "./api";
 import { Avatar, LogoMark } from "./components/Avatar";
 import { doingText, HelpSheet, useRoute } from "./components/bits";
@@ -8,7 +8,7 @@ import { Chat, type ChatContext } from "./screens/Chat";
 import { SideChats, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
-import { Profile as PipProfile, ProfilePanel, Settings } from "./screens/Profile";
+import { ProfilePanel, Settings } from "./screens/Profile";
 import { Remembers } from "./screens/Remembers";
 import { Shared } from "./screens/Shared";
 import { OC } from "./screens/OC";
@@ -48,12 +48,14 @@ function SignIn() {
 }
 
 // Settings and the companion's profile hold the rest (personality, memories, What … sees, Google, the desk).
-const NAV: { to: string; icon: IconName; label: string }[] = [
+// The same sections as the phone's tab bar; on a computer, Create's parts are listed under it.
+const NAV: { to: string; icon: IconName; label: string; sub?: boolean }[] = [
   { to: "/", icon: "chat", label: "Chat" },
   { to: "/study", icon: "study", label: "Study" },
-  { to: "/stories", icon: "stories", label: "Stories with a friend" },
-  { to: "/art", icon: "art", label: "Art" },
-  { to: "/oc", icon: "oc", label: "OC workshop" },
+  { to: "/create", icon: "create", label: "Create" },
+  { to: "/stories", icon: "stories", label: "Stories with a friend", sub: true },
+  { to: "/art", icon: "art", label: "Art", sub: true },
+  { to: "/oc", icon: "oc", label: "OC workshop", sub: true },
   { to: "/settings", icon: "settings", label: "Settings" },
 ];
 const TABS: { to: string; icon: IconName; label: string }[] = [
@@ -90,6 +92,21 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const [dock, setDockRaw] = useState<boolean>(() => { try { return localStorage.getItem("kith-dock") !== "0"; } catch { return true; } });
   const setDock = (v: boolean) => { setDockRaw(v); try { localStorage.setItem("kith-dock", v ? "1" : "0"); } catch { /* fine */ } };
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileTab, setProfileTab] = useState<"desk" | "scheduled" | "who">("desk");
+  // The profile isn't a page any more: it slides in over whatever you were doing. Old links to
+  // /pip (and /desk) open it and leave you where you were.
+  const lastPath = useRef("/");
+  useEffect(() => {
+    if (path === "/desk" || path.startsWith("/pip")) {
+      const t = path.split("/")[2] ?? "desk";
+      setProfileTab(t === "scheduled" ? "scheduled" : ["who", "soul", "personality", "memory"].includes(t) ? "who" : "desk");
+      setProfileOpen(true);
+      history.replaceState(null, "", lastPath.current);
+      dispatchEvent(new PopStateEvent("popstate"));
+    } else {
+      lastPath.current = path + location.search;
+    }
+  }, [path]);
   const [thread, setThread] = useState<number>(() => {
     try { return Number(sessionStorage.getItem("kith-thread")) || 1; } catch { return 1; }
   });
@@ -129,15 +146,11 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   const name = me.profile.name;
   const working = state?.desk.working;
   const doing = doingText(state, baseMood);
-  const onProfile = path === "/desk" || path.startsWith("/pip");
+  const onProfile = false;
   const openHelp = () => setHelp(true);
 
   let screen: React.ReactNode;
   if (path === "/talk" && energy) screen = <Talk me={me} energy={energy} onTurn={onTurn} openHelp={openHelp} go={go} />;
-  else if (path === "/desk" || path.startsWith("/pip")) {
-    const t = path.split("/")[2] ?? "desk";
-    screen = <PipProfile me={me} state={state} mood={baseMood} go={go} initialTab={t === "scheduled" ? "scheduled" : ["who", "soul", "personality", "memory"].includes(t) ? "who" : "desk"} />;
-  }
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
   else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
@@ -166,43 +179,43 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   return (
     <div className="app">
       <nav className="sidebar" aria-label="Sections">
-        <button className="me" onClick={() => go("/pip")} aria-label={`${name}’s profile`} style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
-          <Avatar look={me.profile.look} mood={baseMood} size={52} variant="side" laptop={!!working} />
-          <span><b>{name}</b><span>{doing}</span></span>
+        <button className="me brand" onClick={() => go("/")} aria-label="Kith home" style={{ border: 0, background: "none", color: "inherit", textAlign: "left", cursor: "pointer" }}>
+          <img src="/icon-192.png" alt="" width={44} height={44} />
+          <span><b>Kith</b></span>
         </button>
         {NAV.map((n) => {
           const on = n.to === path || (n.to === "/settings" && SETTINGS_PAGES.includes(path));
           return (
-            <button key={n.to} className={`navbtn ${on ? "on" : ""}`} aria-current={on ? "page" : undefined} onClick={() => go(n.to)}>
-              <span className="ic"><Icon name={n.icon} on={on} size={22} /></span>{n.label}
+            <button key={n.to} className={`navbtn ${on ? "on" : ""} ${n.sub ? "sub" : ""}`} aria-current={on ? "page" : undefined} onClick={() => go(n.to)}>
+              <span className="ic"><Icon name={n.icon} on={on} size={n.sub ? 18 : 22} /></span>{n.label}
             </button>
           );
         })}
         <button className="navbtn" style={{ color: "var(--ember)" }} onClick={openHelp}><span className="ic"><Icon name="grownup" size={22} /></span>Grown-up?</button>
         <div className="foot">
           <span className="small">{name} is an AI, not a person. It lives on your family’s home server.</span>
-          <button className="btn primary block" style={{ minHeight: 44, fontSize: 14 }} onClick={() => go("/talk")}><Icon name="call" size={18} /> Call {name}</button>
         </div>
       </nav>
       {dock && path === "/" && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
-      <div className={`main ${!onProfile && path !== "/talk" ? "hang-m" : ""} ${path === "/" && !profileOpen ? "hang-d" : ""}`}>
-        {path === "/" && (
+      <div className={`main ${!onProfile && path !== "/talk" ? "hang-m" : ""} ${path !== "/talk" && !onProfile ? "hang-d" : ""}`}>
+        {path !== "/talk" && !onProfile && (
           <header className="topbar deskbar desktop-only">
-            <span className="tb-left">{!dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>
-            {!profileOpen && (
-              <button className="tb-who" onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-                <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
-                <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
-              </button>
-            )}
-            <span className="tb-right" />
+            <span className="tb-left">{path === "/" && !dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>
+            <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
+              aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
+              <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} /></span>
+              <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
+            </button>
+            <span className="tb-right">
+              <button className="iconbtn call" onClick={() => go("/talk")} aria-label={`Call ${name}`}><Icon name="call" size={21} /></button>
+            </span>
           </header>
         )}
         {path !== "/talk" && (
           <header className={`topbar mobile-only ${onProfile ? "slim" : ""}`}>
             <button className="tb-logo" onClick={() => go("/")} aria-label="Kith home"><img src="/icon-192.png" alt="" width={38} height={38} /></button>
             {!onProfile && (
-              <button className="tb-who" onClick={() => go("/pip")} aria-label={`${name}’s profile. ${name} is ${doing}.`}>
+              <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
                 <span className="tb-dp"><Avatar look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
                 <span className="tb-label"><b>{name}</b><span aria-live="polite">{doing}</span></span>
               </button>
@@ -222,7 +235,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
           <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Grown-up?</span></button>
         </nav>
       </div>
-      {path === "/" && profileOpen && <ProfilePanel me={me} state={state} mood={baseMood} go={go} onClose={() => setProfileOpen(false)} />}
+      {path !== "/talk" && !onProfile && <ProfilePanel open={profileOpen} tab={profileTab} me={me} state={state} mood={baseMood} go={(to) => { setProfileOpen(false); go(to); }} onClose={() => setProfileOpen(false)} />}
       <SideChats me={me} open={drawer} current={thread} onClose={() => setDrawer(false)} onPick={pickThread} />
       <HelpSheet open={help} onClose={() => setHelp(false)} parentLabel={me.parentLabel} helplines={me.helplines} />
     </div>

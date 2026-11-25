@@ -556,17 +556,28 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .chatsdock { width: 290px; flex: none; padding: 16px 14px; display: flex; flex-direction: column; gap: 12px; background: var(--aside); border-right: 1px solid var(--line-soft); overflow-y: auto; }
 @media (max-width: 1099px) { .chatsdock { display: none; } }
 /* The profile panel on the right. */
-.profilepanel { width: 380px; flex: none; padding: 18px; display: flex; flex-direction: column; gap: 14px; background: var(--aside); border-left: 1px solid var(--line-soft); overflow-y: auto; animation: ppin 0.22s ease; }
+.profilepanel { width: 0; flex: none; display: flex; flex-direction: column; background: var(--aside); border-left: 1px solid transparent; overflow: hidden; opacity: 0;
+  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease, border-color 0.3s ease; }
+.profilepanel.open { width: 480px; opacity: 1; border-left-color: var(--line-soft); }
+.profilepanel .pp-inner { width: 480px; height: 100%; overflow-y: auto; transform: translateX(24px); transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
+.profilepanel.open .pp-inner { transform: none; }
 @keyframes ppin { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
 .profilepanel .pp-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .profilepanel .pp-head h2 { margin: 6px 0 0; font-size: 30px; }
 .profilepanel .pp-dp { border-radius: 50%; padding: 3px; border: 2.5px solid var(--lilac); display: grid; }
 .profilepanel .pp-sub { font-size: 13.5px; font-weight: 800; color: var(--lilac-soft); }
 .profilepanel .pp-link { flex-direction: row; align-items: center; gap: 12px; }
-@media (max-width: 1099px) { .profilepanel { display: none; } }
-@media (prefers-reduced-motion: reduce) { .profilepanel { animation: none; } }
+/* On a phone the profile slides in from the right over everything, with its own close button. */
+@media (max-width: 1099px) {
+  .profilepanel { position: fixed; inset: 0; z-index: 60; width: 100%; opacity: 1; border: 0; transform: translateX(100%); visibility: hidden;
+    transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.42s; }
+  .profilepanel.open { width: 100%; transform: none; visibility: visible; transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s; }
+  .profilepanel .pp-inner { width: 100%; transform: none; }
+  .profilepanel > .pp-inner > .screen { padding-top: calc(12px + var(--safe-top)); padding-bottom: calc(24px + var(--safe-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .profilepanel, .profilepanel .pp-inner, .topbar .tb-who { transition: none !important; } }
 /* The profile panel holds the phone profile. */
-.profilepanel { width: 480px; padding: 0; gap: 0; }
+.profilepanel { padding: 0; gap: 0; }
 .profilepanel > .screen { padding: 14px 18px 24px; }
 .profilepanel .deskpage { flex-direction: column; }
 .profilepanel .deskside { width: 100%; }
@@ -587,3 +598,20 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
   .main > .screen.narrow .card { padding: 18px 20px; }
 }
 @media (min-width: 1100px) { .main > .screen .notice { max-width: none; align-self: stretch; justify-self: stretch; width: auto; margin-left: 0; margin-right: 0; } }
+/* The centre picture fades and shrinks away smoothly when the profile opens (and back when it closes). */
+.topbar .tb-who { transition: opacity 0.35s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
+.topbar .tb-who.gone { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.86); pointer-events: none; }
+.topbar.deskbar .tb-right { grid-column: 3; justify-self: end; }
+.sidebar .me.brand img { border-radius: 12px; box-shadow: 0 0 0 1px var(--line); }
+.sidebar .me.brand span span { display: block; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The desk, full screen: a pop-up over everything, the monitor as big as fits (16:9), with an X. */
+.pfull { width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.pfull:hover { background: rgba(255,255,255,0.18); }
+.deskmodal { position: fixed; inset: 0; z-index: 80; background: rgba(8,5,8,0.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: calc(56px + var(--safe-top)) 24px calc(24px + var(--safe-bottom)); animation: dmin 0.28s ease; }
+.deskmodal-stage { width: 100%; height: 100%; display: grid; place-items: center; }
+.deskmodal-x { position: absolute; top: calc(12px + var(--safe-top)); right: 16px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--text); display: grid; place-items: center; cursor: pointer; }
+.deskmodal .pmonitor { box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+.pmonitor-away { width: 100%; border-radius: 18px; border: 1px dashed var(--line); background: var(--card-2); color: var(--muted); font: inherit; cursor: pointer; }
+@keyframes dmin { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .deskmodal { animation: none; } }
+.navbtn.sub { min-height: 38px; padding-left: 30px; font-size: 14px; }
