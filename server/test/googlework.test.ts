@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { openDb, type DB } from "../src/db.js";
+import { all, openDb, run, type DB } from "../src/db.js";
 import { config } from "../src/config.js";
 import { allowedCall, authUrl, CALENDAR_SCOPE, exchangeCode, GoogleDrive, googleConfigured, MIME, rememberFile, saveGoogle, scopesFor, seal, TASKS_SCOPE, viaConnect } from "../src/storage/google.js";
 import { loadParentSettings, saveParentSettings } from "../src/settings.js";
-import { apply, decline, need, pendingList, proposeCalendar, proposeFileEdit, proposeTask, readFile, setCoursework } from "../src/storage/googleWork.js";
+import { apply, decline, failStuckApplying, need, pendingList, proposeCalendar, proposeFileEdit, proposeTask, readFile, setCoursework, type Pending } from "../src/storage/googleWork.js";
+import type { Staged } from "../src/companion/tools.js";
 import { googleTools } from "../src/companion/googleTools.js";
 
 process.env.KITH_SECRET_KEY = "a".repeat(64);
@@ -246,5 +247,58 @@ describe("Kith Connect (the shared sign-in helper)", () => {
     expect(JSON.parse(calls[1].body)).toEqual({ refresh_token: "rt" });
     expect(calls.some((c) => c.body.includes("secret"))).toBe(false);
     restore();
+  });
+});
+
+// ── Second audit: whole proposals are checked, shown in full, and held until the reply passes ──
+describe("proposals (second audit)", () => {
+  beforeEach(() => setFeatures(db, { edit: true, calendar: true, tasks: true }));
+  it("shows every word of the change on the card, within caps small enough to show", () => {
+    const long = "x".repeat(1990) + " the end";
+    const p = proposeFileEdit(db, { fileId: DOC, summary: "Add an ending", changes: [{ op: "append", text: long }] });
+    expect(p.lines[1].text).toBe(long);
+    expect(() => proposeFileEdit(db, { fileId: DOC, summary: "s", changes: [{ op: "append", text: "y".repeat(2001) }] })).toThrow();
+    expect(() => proposeFileEdit(db, { fileId: DOC, summary: "s", changes: Array.from({ length: 5 }, () => ({ op: "append", text: "a" })) })).toThrow();
+    const rows = Array.from({ length: 30 }, (_, i) => [`r${i}`, "b"]);
+    const s = proposeFileEdit(db, { fileId: SHEET, summary: "rows", changes: [{ op: "append_rows", rows }] });
+    expect(s.lines.filter((l) => l.op === "+")).toHaveLength(30);
+    expect(() => proposeFileEdit(db, { fileId: SHEET, summary: "rows", changes: [{ op: "append_rows", rows }, { op: "append_rows", rows }] })).toThrow(/50 rows/);
+    expect(() => proposeFileEdit(db, { fileId: SHEET, summary: "wide", changes: [{ op: "append_rows", rows: [Array.from({ length: 11 }, () => "c")] }] })).toThrow();
+  });
+  it("checks all of a proposal's text, in chunks", async () => {
+    const drive = new GoogleDrive(db, () => undefined, fakeGoogle().f);
+    const read: string[] = [];
+    const safety = { checkInput: async () => ({}), checkOutput: async (t: string) => { read.push(t); return { ok: !t.includes("FORBIDDEN"), categories: [], reason: "" }; } } as never;
+    const tools = googleTools(db, drive, { confirms: [] }, { coursework: false, safety });
+    const edit = tools.find((t) => t.name === "google_propose_edit")!;
+    const text = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+    const out = await edit.run({ file_id: DOC, summary: "s", changes: [{ op: "append", text: text(300) }, { op: "append", text: text(300) }, { op: "append", text: text(300) }, { op: "append", text: `${text(200)} FORBIDDEN` }] });
+    expect(out).toMatch(/can't suggest/);
+    expect(pendingList(db)).toEqual([]);
+  });
+  it("in a chat turn, a proposal is staged: only a passing reply makes it a card", async () => {
+    const drive = new GoogleDrive(db, () => undefined, fakeGoogle().f);
+    const safety = { checkOutput: async () => ({ ok: true, categories: [], reason: "" }) } as never;
+    const fx = { confirms: [] as Pending[], staged: [] as Staged[] };
+    const tools = googleTools(db, drive, fx, { coursework: false, safety });
+    await tools.find((t) => t.name === "homework_propose")!.run({ op: "add", title: "Maths p.14" });
+    expect(pendingList(db)).toEqual([]);
+    expect(fx.staged).toHaveLength(1);
+    await fx.staged[0].commit();
+    expect(pendingList(db).map((p) => p.title)).toEqual(["Add to your Homework list"]);
+    expect(fx.confirms).toHaveLength(1);
+    // And one whose reply didn't pass is withdrawn: never a card, and a yes can't apply it.
+    await tools.find((t) => t.name === "homework_propose")!.run({ op: "add", title: "English" });
+    fx.staged[1].discard!();
+    expect(pendingList(db)).toHaveLength(1);
+    const withdrawn = all<{ id: number }>(db, "SELECT id FROM google_actions WHERE status = 'withdrawn'");
+    expect((await apply(db, drive, withdrawn[0].id)).ok).toBe(false);
+  });
+  it("fails a change stuck in 'applying' for 15 minutes", () => {
+    const p = proposeTask(db, { op: "add", title: "Maths" });
+    run(db, "UPDATE google_actions SET status = 'applying' WHERE id = ?", p.id);
+    expect(failStuckApplying(db, Date.now())).toBe(0);
+    expect(failStuckApplying(db, Date.now() + 16 * 60_000)).toBe(1);
+    expect(all<{ status: string }>(db, "SELECT status FROM google_actions")[0].status).toBe("failed");
   });
 });

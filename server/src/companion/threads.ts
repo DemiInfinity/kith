@@ -41,12 +41,19 @@ export function updateThread(db: DB, id: number, patch: { title?: string; archiv
 }
 
 /** A plain chat turn in a Spanish or Japanese side chat becomes language practice in that language. */
+/**
+ * Language practice comes only from the side chat's own record, and only for a language the
+ * grown-up approved and switched on. Whatever the client says (ctx.lang, mode "language") is
+ * ignored: without an approved thread language, it's an ordinary chat.
+ */
 export function inThreadLanguage<M extends string, C extends { lang?: ThreadLang; topic?: string }>(db: DB, b: { thread?: number; mode: M; ctx: C }): { mode: M | "language" | "chat"; ctx: C } {
+  const plain = { ...b.ctx, lang: undefined, topic: b.mode === "language" ? undefined : b.ctx.topic } as C;
+  const notLanguage = (b.mode === "language" ? "chat" : b.mode) as M | "chat";
   // The main chat is always English: language practice only happens in side chats.
-  if (!b.thread || b.thread === MAIN_THREAD) return b.mode === "language" ? { mode: "chat", ctx: { ...b.ctx, lang: undefined, topic: undefined } } : { mode: b.mode, ctx: b.ctx };
+  if (!b.thread || b.thread === MAIN_THREAD) return { mode: notLanguage, ctx: plain };
   const t = getThread(db, b.thread);
   // A language the grown-up removed (or hasn't approved) is an ordinary chat again.
-  if (!t?.lang || b.mode !== "chat" || !isActive(db, t.lang)) return { mode: b.mode, ctx: b.ctx };
+  if (!t?.lang || !isActive(db, t.lang) || (b.mode !== "chat" && b.mode !== "language")) return { mode: notLanguage, ctx: plain };
   return { mode: "language", ctx: { ...b.ctx, lang: t.lang, topic: b.ctx.topic ?? t.topic ?? undefined } };
 }
 

@@ -19,7 +19,7 @@ import { callJson, type LLM } from "../llm.js";
 import { listMemories } from "./memory.js";
 import { listSchedules } from "./schedules.js";
 import { countdowns, listSubjects } from "../study/study.js";
-import { isGuiltTrip } from "../safety/rules.js";
+import { checkOutputRules, isGuiltTrip } from "../safety/rules.js";
 import type { SafetyChecker } from "../safety/check.js";
 import { pushToChild } from "../checkins/push.js";
 import { logActivity } from "../desk/activity.js";
@@ -101,6 +101,9 @@ export async function heartbeat(deps: HeartbeatDeps, now = Date.now()): Promise<
     return "error";
   }
 
+  // The "why" is shown to them and their grown-up, so it passes the output check too (else a plain note).
+  d = { ...d, why: await safeWhy(deps.safety, d.why) };
+
   if (d.action === "checkin" && d.message.trim()) {
     const ok = state.checkinsToday < settings.maxCheckinsPerDay && !(state.lastChildMinutesAgo !== null && state.lastChildMinutesAgo < 60)
       && !isGuiltTrip(d.message) && (await deps.safety.checkOutput(d.message, "")).ok;
@@ -122,6 +125,14 @@ export async function heartbeat(deps: HeartbeatDeps, now = Date.now()): Promise<
   }
   record(db, now, "quiet", d.why || "all quiet", sig);
   return "quiet";
+}
+
+async function safeWhy(safety: SafetyChecker, why: string): Promise<string> {
+  const w = (why ?? "").trim().slice(0, 200);
+  if (!w) return "";
+  if (checkOutputRules(w).length) return "(note held back)";
+  const v = await safety.checkOutput(w, "", "desk").catch(() => ({ ok: false }));
+  return v.ok ? w : "(note held back)";
 }
 
 /** For the Scheduled tab and the parent view. */
