@@ -22,6 +22,7 @@
 mod eventkit;
 mod files;
 mod native;
+mod signin;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -35,7 +36,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
 
-const MAIN: &str = "main";
+pub const MAIN: &str = "main";
 /// Used when neither a saved address nor a built-in one is set: a Kith server on this Mac
 /// (`docker compose up` serves it on port 8787).
 const DEFAULT_SERVER: &str = "http://localhost:8787";
@@ -65,9 +66,17 @@ pub struct Shell {
     notify_times: Vec<Instant>,
     /// Origins already given the native capability this run.
     granted: Vec<String>,
+    /// A sign-in going on in her browser (signin.rs): bring Kith forward when it's done.
+    handoff: Option<Instant>,
 }
 
 pub type State = Arc<Mutex<Shell>>;
+
+pub fn mark_handoff(app: &AppHandle) {
+    if let Some(st) = app.try_state::<State>() {
+        st.lock().unwrap().handoff = Some(Instant::now());
+    }
+}
 
 fn config_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("config.json"))
@@ -168,10 +177,24 @@ fn decide(app: &AppHandle, state: &State, url: &Url) -> bool {
     let server = s.config.server.clone();
     if let Some(server) = server.as_deref() {
         if same_origin(url, server) {
+            // Sign-in happens in her browser (passkeys only work there), then is handed back.
+            if url.path() == "/auth/login" && !url.query_pairs().any(|(k, _)| k == "handoff") {
+                drop(s);
+                signin::start(app, server.to_string());
+                return false;
+            }
             if url.path().starts_with("/auth/login") {
                 s.signing_in = Some(Instant::now());
             } else if !url.path().starts_with("/auth/") {
                 s.signing_in = None;
+                // Signed in from the browser: come back to the front.
+                if s.handoff.take().is_some_and(|t| t.elapsed() < Duration::from_secs(300)) {
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        let a = app.clone();
+                        let _ = app.run_on_main_thread(move || show_main(&a));
+                    });
+                }
             }
             return true;
         }

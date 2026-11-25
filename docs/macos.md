@@ -65,12 +65,22 @@ These need the server to be on the version with `server/src/native.ts`. An older
 | Link | Opens |
 | --- | --- |
 | Your Kith server | In the window |
-| Sign-in: everything after `<server>/auth/login` until you're back on the server, plus any `signInHosts` in the config | In the window |
+| Signing in (Pocket ID) | In your browser, then handed back to the app (below) |
+| Signing out of the provider, and any `signInHosts` in the config | In the window |
 | Anything else (Google Drive, links in chat, `mailto:`) | In your default browser |
 
-Sign-in stays in the window on purpose. If Pocket ID (or another provider) opened in Safari, the sign-in cookie would
-land in Safari, not in the app. Pop-ups (`window.open`, `target="_blank"`) never open a second app window: Kith pages
-load in the main window, and anything else goes to the browser.
+**Signing in.** Pocket ID signs in with passkeys, and macOS only lets passkeys run in a real browser (or in an app
+Apple has approved for that site). So "Sign in with Pocket ID" in the app works like this (`mac/src-tauri/src/signin.rs`):
+
+1. The app starts a one-time handoff with the server (`/auth/login?handoff=<random id>`) and opens Pocket ID's page in
+   your browser.
+2. The Kith window says "Finish signing in in your browser" and checks `/auth/handoff/<id>` every second and a half.
+3. Once you've used your passkey, the browser shows "You're signed in". The server hands the session to the app once,
+   and Kith comes back to the front.
+
+The handoff lapses after two minutes, and the server only stores a hash of the id. Pop-ups (`window.open`,
+`target="_blank"`) never open a second app window: Kith pages load in the main window, and anything else goes to the
+browser.
 
 The Kith server's pages get no access to the app itself (no Tauri commands). Only the bundled start page can save the
 server address.
