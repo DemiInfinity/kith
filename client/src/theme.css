@@ -712,3 +712,11 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .slashtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slashmenu { max-height: 320px; }
 .cmdcard { align-self: center; width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 18px; background: var(--card); border: 1px dashed var(--line); }
+/* The "/" menu and command cards float above the chat box instead of taking space in the chat. */
+.composewrap { position: relative; }
+.composewrap .slashmenu, .cmdpop { position: absolute; left: 16px; right: 16px; bottom: calc(100% - 6px); z-index: 20; margin: 0; }
+.cmdpop { max-width: 560px; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 -14px 40px rgba(0,0,0,0.45); max-height: min(60vh, 460px); overflow-y: auto; animation: popin 0.18s ease; }
+.cmdpop-body { display: flex; flex-direction: column; gap: 8px; }
+.composewrap .slashmenu { animation: popin 0.14s ease; }
+@keyframes popin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cmdpop, .composewrap .slashmenu { animation: none; } }

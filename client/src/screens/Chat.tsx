@@ -89,7 +89,16 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       }
     }).catch((e) => setErr((e as Error).message));
   }, [thread]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy, cards]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
+  // The command card floats over the chat; Esc or a click elsewhere closes it.
+  useEffect(() => {
+    if (!cards.length) return;
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setCards([]); };
+    const c = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest?.(".cmdpop, .composer, .slashmenu")) setCards([]); };
+    addEventListener("keydown", k);
+    addEventListener("mousedown", c);
+    return () => { removeEventListener("keydown", k); removeEventListener("mousedown", c); };
+  }, [cards.length]);
 
   /** Runs a built-in command. Returns false if it isn't one. */
   const runBuiltin = async (raw: string): Promise<boolean> => {
@@ -98,7 +107,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     const cmd = m[1].toLowerCase();
     if (!BUILTIN.some((b) => b.cmd === cmd)) return false;
     setText("");
-    const card = (body: React.ReactNode) => setCards((c) => [...c, { id: Date.now(), cmd, body }]);
+    const card = (body: React.ReactNode) => setCards([{ id: Date.now(), cmd, body }]);
     try {
       if (cmd === "desk") go("/pip");
       else if (cmd === "schedule") go("/pip/scheduled");
@@ -214,17 +223,6 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
             </div>
           );
         })}
-        {cards.map((c) => {
-          const b = BUILTIN.find((x) => x.cmd === c.cmd);
-          return (
-            <div key={c.id} className="cmdcard" role="note">
-              <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: 13 }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
-                <button className="x" aria-label="Close" onClick={() => setCards((x) => x.filter((y) => y.id !== c.id))}><Icon name="close" size={14} /></button></div>
-              {c.body}
-              <span className="small" style={{ color: "var(--faint)" }}>Only you see this. {name} wasn’t asked, so no energy was used.</span>
-            </div>
-          );
-        })}
         {busy && <div className="msg pip"><div className="bubble" aria-label={`${name} is thinking`}><span className="typing"><i /><i /><i /></span></div></div>}
         {err && <div className="notice" style={{ borderColor: "var(--ember)" }}>{err}</div>}
         <div ref={end} />
@@ -244,6 +242,19 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           {quick.map(([ic, t]) => <button key={t} onClick={() => send(t)}><Icon name={ic as IconName} size={15} style={{ verticalAlign: -3, marginRight: 4 }} />{t}</button>)}
         </div>
       )}
+      <div className="composewrap">
+      {cards.length > 0 && slashMatches.length === 0 && (() => {
+        const c = cards[0];
+        const b = BUILTIN.find((x) => x.cmd === c.cmd);
+        return (
+          <div className="cmdpop" role="dialog" aria-label={b?.name ?? c.cmd}>
+            <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: 13 }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
+              <button className="x" aria-label="Close" onClick={() => setCards([])}><Icon name="close" size={14} /></button></div>
+            <div className="cmdpop-body">{c.body}</div>
+            <span className="small" style={{ color: "var(--faint)" }}>Only you see this. {name} wasn’t asked, so no energy was used.</span>
+          </div>
+        );
+      })()}
       {slashMatches.length > 0 && (
         <div className="slashmenu" role="listbox" aria-label="Commands">
           {slashMatches.map((k, i) => (
@@ -270,6 +281,7 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
         <button type="button" className="roundbtn" aria-label="Talk instead" onClick={() => go("/talk")}><Icon name="mic" size={22} /></button>
         <button type="submit" className="roundbtn send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>
       </form>
+      </div>
     </>
   );
 }
