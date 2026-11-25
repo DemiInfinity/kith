@@ -12,6 +12,8 @@ export interface StageOptions {
   active?: boolean;
   /** "portrait" frames the live view on the head and shoulders (small previews). Default: the whole stage. */
   framing?: "portrait";
+  /** Draw at most this many frames a second (small pictures, to save battery). Default: every frame. */
+  maxFps?: number;
 }
 
 export interface PipStage {

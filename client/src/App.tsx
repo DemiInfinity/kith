@@ -369,7 +369,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {/* My Pip shows Pip itself in 3D, so its picture isn't repeated up here. */}
             {path !== "/my-pip" && <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} tabIndex={profileOpen ? -1 : 0} aria-hidden={profileOpen}
               aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-              <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} live="hover" /></span>
+              <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={64} variant="side" laptop={!!working} live={profileOpen ? "off" : "on"} /></span>
               <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
             </button>}
             <span className="tb-right">
@@ -383,7 +383,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
             {/* On a phone the 3D makers need the room: no picture up here on My Pip or the OC workshop. */}
             {!onProfile && !makerPage && (
               <button className={`tb-who ${profileOpen ? "gone" : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Open ${name}’s profile. ${name} is ${doing}.`}>
-                <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} /></span>
+                <span className="tb-dp"><CompanionPic look={me.profile.look} mood={baseMood} size={58} variant="side" laptop={!!working} live={profileOpen ? "off" : "on"} /></span>
                 <span className="tb-label"><b>{name}</b><span>{doing}</span></span>
               </button>
             )}

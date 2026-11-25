@@ -1,9 +1,8 @@
 // The companion as a small picture: the chat picture made from the 3D Pip when there is one
 // (My Pip saves it), otherwise the 2D avatar.
 // - It follows Pip's mood: My Pip saves a still for each of happy, thinking, sleepy and listening.
-// - It can come alive: `live="hover"` turns it into the live 3D Pip while a mouse is over it (the
-//   header), `live="on"` while it's shown (the profile panel, which a tap on the header opens).
-//   Never with reduced motion.
+// - It can come alive as the live 3D Pip: `live="on"` while it's shown (the header, at a low frame
+//   rate; the profile panel), `live="hover"` only while a mouse is over it. Never with reduced motion.
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, type Look, type Mood } from "../api";
@@ -54,27 +53,31 @@ export function CompanionPic({ look, mood = "happy", size = 52, variant = "plain
       onPointerLeave={live === "hover" ? () => setHover(false) : undefined}>
       <img key={pm} className="pic-mood" src={pipPictureUrl(v, pm)} alt={alt} width={size} height={size} draggable={false}
         onError={() => setPipPicture(null)} />
-      {alive && !reducedMotion() && <LivePic mood={pm} version={v} />}
+      {alive && !reducedMotion() && <LivePic mood={pm} version={v} fps={size <= 72 ? 24 : 0} />}
     </span>
   );
 }
 
 /** The live 3D Pip over the still picture: loads the engine on first use and fades in when ready. */
-function LivePic({ mood, version: v }: { mood: Mood3D; version: number }) {
+function LivePic({ mood, version: v, fps }: { mood: Mood3D; version: number; fps: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const stage = useRef<PipStage | null>(null);
   const [ready, setReady] = useState(false);
   const first = useRef(mood);
   useEffect(() => {
     let gone = false;
+    let io: IntersectionObserver | null = null;
     void (async () => {
       const l = await savedLook();
       if (gone || !l || !ref.current) return;
       const { createPipStage, webglAvailable } = await import("../pip3d/engine");
       if (gone || !ref.current || !webglAvailable()) return;
-      try { stage.current = createPipStage(ref.current, l, { framing: "portrait", mood: first.current }); setReady(true); } catch { /* the still stays */ }
+      try { stage.current = createPipStage(ref.current, l, { framing: "portrait", mood: first.current, maxFps: fps, active: false }); setReady(true); } catch { /* the still stays */ return; }
+      // Only moves while it can be seen (the phone and computer headers are both on the page; one is hidden).
+      io = new IntersectionObserver(([e]) => stage.current?.setActive(!!e?.isIntersecting));
+      io.observe(ref.current);
     })();
-    return () => { gone = true; stage.current?.dispose(); stage.current = null; };
+    return () => { gone = true; io?.disconnect(); stage.current?.dispose(); stage.current = null; };
   }, [v]);
   useEffect(() => { stage.current?.setMood(mood); }, [mood]);
   return <canvas ref={ref} className={`pic-live ${ready ? "on" : ""}`} aria-hidden="true" />;

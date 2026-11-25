@@ -27,6 +27,7 @@ let state = toState(look);
 if (opts.mood) state.mood = opts.mood;
 if (opts.activity) state.activity = opts.activity;
 let still = !!opts.still, active = opts.active !== false, disposed = false;
+const maxFps = opts.maxFps || 0; let lastFrame = 0;
 let yaw = -0.25, yawV = 0, dragging = false, lastX = 0;
 let need = true, running = false, raf = 0;
 // framing "portrait": the live view is framed on the head and shoulders (small previews), like a profile picture.
@@ -950,6 +951,9 @@ const gaze = new THREE.Vector2(), wander = new THREE.Vector2(), zero = new THREE
 function loop(now) {
   running = false; if (disposed || document.hidden) return;
   if (!active && !need) return;
+  // a small picture (the header) runs at a lower frame rate to save battery
+  if (maxFps && !need && now - lastFrame < 1000 / maxFps - 2) { running = true; raf = requestAnimationFrame(loop); return; }
+  lastFrame = now;
   // gaze: where it likes to look, mostly at you, sometimes a glance away or up
   if (now > nextLook) { const r = Math.random();
     if (r < .5) wander.set((Math.random() - .5) * .15, (Math.random() - .5) * .1); else if (r < .75) wander.set((Math.random() < .5 ? -1 : 1) * (.5 + Math.random() * .5), (Math.random() - .4) * .4); else wander.set((Math.random() - .5) * .8, .45 + Math.random() * .3);
