@@ -92,8 +92,14 @@ always kept (added back if it's removed). If the list were ever empty, the safet
 
 ## Data
 
-- **Chats on the home server:** kept for 30 days (configurable down to 1), then deleted. Check-ins and tool logs too.
-- **Kept longer:** reports, weekly summaries and the journal are kept for a year, so both can look back.
+- **Chats on the home server:** kept for 30 days (configurable down to 1), then deleted. The same goes for everything
+  else that holds their words: the chat archive (by each chapter's last day), check-ins, tool and browsing logs,
+  homework-help notes, the message a side chat was split from, the details of Google changes once they're done or
+  declined, and the request behind each desk job once it's finished.
+- **Kept longer:** reports, weekly summaries and the journal are kept for a year, so both can look back, then
+  deleted.
+- **Deleting means gone:** deleted rows are overwritten in the database file (SQLite `secure_delete`), and the file is
+  compacted once a week. Backups you make keep their own copies, so delete them on the same schedule.
 - **Anthropic:**
   - Under the Commercial Terms, Anthropic doesn't train on API inputs or outputs.
   - It deletes them within 30 days. Content flagged as a policy violation can be kept up to 2 years.

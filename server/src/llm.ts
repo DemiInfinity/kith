@@ -4,7 +4,8 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { DB } from "./db.js";
-import { recordSpend, type Bucket, type SpendKind } from "./budget/budget.js";
+import { cancelSpend, reserveSpend, settleSpend, type Bucket, type SpendKind } from "./budget/budget.js";
+import { estimateCostUsd, type UsageLike } from "./budget/pricing.js";
 
 export class OfflineError extends Error {
   constructor() {
@@ -40,11 +41,42 @@ export class AnthropicLLM implements LLM {
   }
   async call({ bucket, kind, params, long }: CallOpts): Promise<Anthropic.Message> {
     if (!this.client) throw new OfflineError();
-    const msg = long
-      ? await this.client.messages.stream(params).finalMessage()
-      : await this.client.messages.create(params);
-    recordSpend(this.db, { bucket, kind, model: params.model, usage: msg.usage });
+    return metered(this.db, { bucket, kind, params }, async (seen) => {
+      if (!long) return this.client!.messages.create(params);
+      const stream = this.client!.messages.stream(params);
+      stream.on("streamEvent", () => { seen.usage = stream.currentMessage?.usage; });
+      return stream.finalMessage();
+    });
+  }
+}
+
+/**
+ * Books a call's worst-case cost before it's made and settles it afterwards. A call that fails
+ * after Claude started on it (a timeout, a dropped connection, a stream that broke part-way) may
+ * still be billed, so it's counted at the best estimate: the usage seen so far, or the worst case.
+ * A call the API refused outright (an HTTP error status) isn't billed and isn't counted.
+ */
+export async function metered(
+  db: DB, opts: { bucket: Bucket; kind: SpendKind; params: Anthropic.MessageCreateParamsNonStreaming },
+  run: (seen: { usage?: UsageLike }) => Promise<Anthropic.Message>,
+): Promise<Anthropic.Message> {
+  const { model } = opts.params;
+  const worst = estimateCostUsd(opts.params as never);
+  const id = reserveSpend(db, { bucket: opts.bucket, kind: opts.kind, model, usd: worst });
+  const seen: { usage?: UsageLike } = {};
+  try {
+    const msg = await run(seen);
+    settleSpend(db, id, model, msg.usage);
     return msg;
+  } catch (err) {
+    const refused = err instanceof Anthropic.APIError && typeof err.status === "number";
+    if (refused) cancelSpend(db, id);
+    else if (seen.usage && (seen.usage.input_tokens ?? 0) > 0) {
+      // Part of a stream arrived: what it used so far, and no less than its input.
+      settleSpend(db, id, model, seen.usage);
+    }
+    // Otherwise the worst-case reservation stands.
+    throw err;
   }
 }
 

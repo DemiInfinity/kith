@@ -59,9 +59,13 @@ export function listHistory(base = config.dataDir): HistoryFile[] {
       if (!f.endsWith(".md")) continue;
       const full = path.join(dir, t, f);
       const st = fs.statSync(full);
-      const first = fs.readFileSync(full, "utf8").split("\n", 1)[0].replace(/^# /, "");
+      const text = fs.readFileSync(full, "utf8");
+      const first = text.split("\n", 1)[0].replace(/^# /, "");
       const date = /^\d{4}-\d{2}-\d{2}/.test(f) ? f.slice(0, 10) : "";
-      out.push({ file: `${t}/${f}`, thread: Number(m[1]), from: date, to: date, title: first, size: st.size, mtime: st.mtimeMs });
+      // The chapter ends on its last day heading.
+      const days = text.match(/^## \d{4}-\d{2}-\d{2}$/gm);
+      const to = days ? days[days.length - 1].slice(3) : date;
+      out.push({ file: `${t}/${f}`, thread: Number(m[1]), from: date, to, title: first, size: st.size, mtime: st.mtimeMs });
     }
   }
   return out.sort((a, b) => b.mtime - a.mtime);
@@ -101,11 +105,16 @@ export function searchHistory(query: string, base = config.dataDir, limit = 3, m
   return out;
 }
 
-/** Deletes archive files older than the retention period (same rule as chats). */
+/**
+ * Deletes archived chapters whose last day is older than the retention period (same rule as
+ * chats). It goes by the chapter's own dates, not the file's time, which a copy or restore resets.
+ */
 export function purgeHistory(retentionDays: number, now = Date.now(), base = config.dataDir) {
   const cutoff = now - retentionDays * 86_400_000;
+  const cutoffDay = localDate(cutoff, config.timezone);
   for (const h of listHistory(base)) {
-    if (h.mtime < cutoff) fs.rmSync(path.join(historyDir(base), h.file), { force: true });
+    const old = h.to ? h.to < cutoffDay : h.mtime < cutoff;
+    if (old) fs.rmSync(path.join(historyDir(base), h.file), { force: true });
   }
 }
 

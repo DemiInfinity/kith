@@ -106,8 +106,15 @@ function adopt(p: Page) {
     if (i >= 0) { tabs.splice(i, 1); if (active >= tabs.length) active = Math.max(0, tabs.length - 1); }
   });
   tabs.push(p);
+  // Too many tabs: the oldest go. They're taken off the strip straight away (their close events
+  // arrive later, and find nothing left to remove).
+  for (const old of capTabs(tabs)) void old.close().catch(() => undefined);
   active = tabs.length - 1;
-  while (tabs.length > MAX_TABS) void tabs[0].close().catch(() => undefined);
+}
+
+/** Takes the oldest tabs off `list` (in place) so at most `max` stay, and returns the ones removed. */
+export function capTabs<T>(list: T[], max = MAX_TABS): T[] {
+  return list.length > max ? list.splice(0, list.length - max) : [];
 }
 
 async function newTab(): Promise<Page> {
@@ -278,6 +285,11 @@ export async function release() {
   driver = null;
   if (releaseTimer) clearTimeout(releaseTimer);
   live = { ...live, why: "", busy: false };
+}
+
+/** The desk is stopping: close Chromium whatever it's doing (cookies and site data stay on disk). */
+export async function closeBrowser() {
+  await shutdown();
 }
 
 /** The screen went to sleep: close the browser now if nobody's using it (it starts again on demand). */

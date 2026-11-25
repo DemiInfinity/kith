@@ -14,7 +14,7 @@ import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 import { config } from "../config.js";
 import { loadParentSettings, loadProfile } from "../settings.js";
-import { inQuietHours, localDate, localParts } from "../budget/time.js";
+import { inQuietHours, localDate, localParts, startOfDay } from "../budget/time.js";
 import { callJson, type LLM } from "../llm.js";
 import { listMemories } from "./memory.js";
 import { listSchedules } from "./schedules.js";
@@ -49,7 +49,7 @@ export function gather(db: DB, now: number) {
   const made = all<{ title: string; status: string }>(db, "SELECT title, status FROM desk_jobs WHERE ts > ? ORDER BY ts DESC LIMIT 5", now - 24 * 60 * MIN);
   const memories = listMemories(db).slice(0, 8).map((m) => m.text);
   const lastChild = get<{ ts: number }>(db, "SELECT MAX(ts) AS ts FROM messages WHERE role = 'child'")?.ts ?? null;
-  const checkinsToday = get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM checkins WHERE ts > ?", now - (localParts(now, tz).hour * 60 + localParts(now, tz).minute) * MIN)?.n ?? 0;
+  const checkinsToday = get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM checkins WHERE ts >= ?", startOfDay(now, tz))?.n ?? 0;
   return { reminders, exams, made, memories, lastChildMinutesAgo: lastChild ? Math.round((now - lastChild) / MIN) : null, checkinsToday };
 }
 

@@ -7,7 +7,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
 import { usage, tidy } from "./disk.js";
-import { act, browse, clearStorage, sleep, liveView, release, takeOver, takenOver } from "./browser.js";
+import { act, browse, clearStorage, closeBrowser, sleep, liveView, release, takeOver, takenOver } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
@@ -140,3 +140,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`Pip's desk is listening on ${PORT} (offline)`));
+
+// docker compose down / upgrades: stop taking requests, close Chromium (its storage is on disk), go.
+process.once("SIGTERM", () => {
+  server.close();
+  setTimeout(() => process.exit(0), 5_000).unref();
+  void closeBrowser().catch(() => undefined).finally(() => process.exit(0));
+});

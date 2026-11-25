@@ -29,3 +29,18 @@ export function costUsd(model: string, usage: UsageLike): number {
     ((usage.cache_creation_input_tokens ?? 0) * p.cacheWrite) / m
   );
 }
+
+/**
+ * A rough upper estimate of a call's cost before it's made: the request's size in characters / 3 as
+ * input tokens (generous: English is ~4 characters a token), images at ~1,600 tokens each, and
+ * every allowed output token.
+ */
+export function estimateCostUsd(params: { model: string; max_tokens?: number; [k: string]: unknown }): number {
+  const { model, max_tokens, ...rest } = params;
+  let images = 0;
+  const json = JSON.stringify(rest, (k, v) => {
+    if (k === "data" && typeof v === "string" && v.length > 1000) { images++; return ""; }
+    return v;
+  });
+  return costUsd(model, { input_tokens: Math.ceil(json.length / 3) + images * 1600, output_tokens: max_tokens ?? 4096 });
+}

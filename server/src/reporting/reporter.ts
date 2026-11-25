@@ -104,20 +104,51 @@ export function createReport(db: DB, r: { level: ReportLevel; category: string; 
   return { id: Number(res.lastInsertRowid), ts, ...r, status: "pending" };
 }
 
-/** Deliver through every reporter. A failure is recorded and retried by the scheduler. */
-export async function deliverReport(db: DB, reporters: Reporter[], report: Report, ctx: { companionName: string; childName: string }) {
-  const results: string[] = [];
-  let ok = true;
+const MIN = 60_000;
+/** Retries stop after this long; the report stays in the list as failed. */
+export const RETRY_FOR_MS = 7 * 24 * 60 * MIN;
+/** A pending report this old was never delivered (the server stopped first), so it's picked up. */
+export const STALE_PENDING_MS = 2 * MIN;
+
+/** Wait before the next try, after `attempts` failures: 5, 15 and 60 minutes, then hourly. */
+export function retryDelay(attempts: number): number {
+  return ([5, 15, 60][attempts - 1] ?? 60) * MIN;
+}
+
+interface DeliveryRow { reporter: string; status: string; attempts: number; next_at: number | null; last_error: string | null }
+
+/**
+ * Deliver through each reporter that hasn't had it yet. Each reporter's result is kept, so a retry
+ * only goes to the ones that failed (the parent doesn't get the same report twice on the others),
+ * and only once that reporter's backoff is up. Returns true once every reporter has it.
+ */
+export async function deliverReport(db: DB, reporters: Reporter[], report: Report, ctx: { companionName: string; childName: string }, now = Date.now()) {
+  const rows = new Map(all<DeliveryRow>(db, "SELECT reporter, status, attempts, next_at, last_error FROM report_deliveries WHERE report_id = ?", report.id).map((r) => [r.reporter, r]));
   for (const rep of reporters) {
+    const row = rows.get(rep.name);
+    if (row?.status === "sent") continue;
+    if (row?.next_at && row.next_at > now) continue;
     try {
       await rep.send(report, ctx);
-      results.push(`${rep.name}: sent`);
+      rows.set(rep.name, { reporter: rep.name, status: "sent", attempts: (row?.attempts ?? 0) + 1, next_at: null, last_error: null });
+      run(db, `INSERT INTO report_deliveries(report_id, reporter, status, attempts, next_at, last_error, delivered_ts) VALUES (?,?, 'sent', ?, NULL, NULL, ?)
+        ON CONFLICT(report_id, reporter) DO UPDATE SET status = 'sent', attempts = excluded.attempts, next_at = NULL, last_error = NULL, delivered_ts = excluded.delivered_ts`,
+        report.id, rep.name, (row?.attempts ?? 0) + 1, Date.now());
     } catch (err) {
-      ok = false;
-      results.push(`${rep.name}: ${(err as Error).message}`);
+      const attempts = (row?.attempts ?? 0) + 1;
+      const msg = (err as Error).message.slice(0, 200);
+      rows.set(rep.name, { reporter: rep.name, status: "failed", attempts, next_at: now + retryDelay(attempts), last_error: msg });
+      run(db, `INSERT INTO report_deliveries(report_id, reporter, status, attempts, next_at, last_error) VALUES (?,?, 'failed', ?, ?, ?)
+        ON CONFLICT(report_id, reporter) DO UPDATE SET status = 'failed', attempts = excluded.attempts, next_at = excluded.next_at, last_error = excluded.last_error`,
+        report.id, rep.name, attempts, now + retryDelay(attempts), msg);
     }
   }
-  run(db, "UPDATE reports SET status = ?, delivered_ts = ?, delivery = ? WHERE id = ?", ok ? "delivered" : "failed", Date.now(), results.join("; "), report.id);
+  const ok = reporters.every((r) => rows.get(r.name)?.status === "sent");
+  const summary = reporters.map((r) => {
+    const d = rows.get(r.name);
+    return `${r.name}: ${d?.status === "sent" ? "sent" : (d?.last_error ?? "not tried yet")}`;
+  }).join("; ");
+  run(db, "UPDATE reports SET status = ?, delivered_ts = ?, delivery = ? WHERE id = ?", ok ? "delivered" : "failed", Date.now(), summary, report.id);
   return ok;
 }
 
@@ -127,10 +158,17 @@ export function listReports(db: DB, limit = 50) {
   );
 }
 
-export function failedReports(db: DB): Report[] {
-  return all<{ id: number; ts: number; level: ReportLevel; category: string; child_notice: string; parent_text: string }>(
-    db, "SELECT id, ts, level, category, child_notice, parent_text FROM reports WHERE status = 'failed' AND ts > ?", Date.now() - 7 * 86_400_000,
-  ).map((r) => ({ id: r.id, ts: r.ts, level: r.level, category: r.category, childNotice: r.child_notice, parentText: r.parent_text, status: "failed" }));
+/**
+ * Reports to try again: failed ones from the last 7 days, and ones still pending after a couple of
+ * minutes (the server stopped before it could send them). Per-reporter backoff is applied in
+ * deliverReport, so this can be called every tick.
+ */
+export function reportsToRetry(db: DB, now = Date.now()): Report[] {
+  return all<{ id: number; ts: number; level: ReportLevel; category: string; child_notice: string; parent_text: string; status: "pending" | "failed" }>(
+    db,
+    "SELECT id, ts, level, category, child_notice, parent_text, status FROM reports WHERE ts > ? AND (status = 'failed' OR (status = 'pending' AND ts < ?)) ORDER BY ts",
+    now - RETRY_FOR_MS, now - STALE_PENDING_MS,
+  ).map((r) => ({ id: r.id, ts: r.ts, level: r.level, category: r.category, childNotice: r.child_notice, parentText: r.parent_text, status: r.status }));
 }
 
 export function getReport(db: DB, id: number) {
