@@ -123,6 +123,9 @@ fn provider_url(agent: &ureq::Agent, server: &str, login: &str) -> Result<String
     if matches!(url.scheme(), "https" | "http") { Ok(url.to_string()) } else { Err(None) }
 }
 
+/// How long the server keeps a started handoff (HANDOFF_START_MS in server/src/auth.ts).
+const HANDOFF_MINUTES: u32 = 15;
+
 /// The script added to the Kith page: a note on top, and the polling.
 fn page_script(h: &Handoff) -> String {
     let id = &h.id;
@@ -137,59 +140,80 @@ fn page_script(h: &Handoff) -> String {
   const id = {id:?};
   const headers = {headers};
   const code = {code};
+  const HANDOFF_MINUTES = {HANDOFF_MINUTES};
   if (window.__kithSignin) window.__kithSignin.stop = true;
   const run = {{ stop: false }};
   window.__kithSignin = run;
   document.getElementById("kith-signin")?.remove();
   const el = (tag, css, text) => {{ const e = document.createElement(tag); if (css) e.style.cssText = css; if (text) e.textContent = text; return e; }};
-  const button = (text, primary) => el("button", "font:inherit;font-weight:800;padding:10px 20px;border-radius:999px;cursor:pointer;" + (primary ? "border:none;background:#f59646;color:#2a170c" : "border:1px solid #4a3046;background:transparent;color:#e4b8ec"), text);
+  const button = (text, primary) => Object.assign(el("button", "font:inherit;font-weight:800;padding:10px 20px;border-radius:999px;cursor:pointer;" + (primary ? "border:none;background:#f59646;color:#2a170c" : "border:1px solid #4a3046;background:transparent;color:#e4b8ec"), text), {{ type: "button" }});
   const box = el("div", "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(28,18,25,.94);color:#fbeaf6;font:16px/1.45 Nunito,system-ui,sans-serif;text-align:center");
   box.id = "kith-signin";
-  box.setAttribute("role", "status");
+  // For VoiceOver: a modal dialog named by its heading and described by its words. The code is read
+  // out digit by digit from hidden text (the big digits themselves are hidden from it), and changes
+  // to the words are announced (role=status).
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-labelledby", "kith-signin-title");
+  box.setAttribute("aria-describedby", "kith-signin-code kith-signin-words");
   const inner = el("div", "max-width:440px;display:flex;flex-direction:column;gap:12px;align-items:center;padding:0 16px");
-  const title = el("b", "font:600 26px/1.15 Fraunces,Georgia,serif", "Finish signing in in your browser");
+  const title = el("h2", "margin:0;outline:none;font:600 26px/1.15 Fraunces,Georgia,serif", "Finish signing in in your browser");
+  title.id = "kith-signin-title";
+  title.tabIndex = -1;
   const big = el("div", "font:800 52px/1.1 ui-rounded,system-ui,sans-serif;letter-spacing:.18em;padding:6px 18px 6px calc(18px + .18em);border-radius:16px;background:#2a1c27;border:2px solid #4a3046;color:#fbeaf6", code || "");
-  big.setAttribute("aria-label", code ? "Code " + code.split("").join(" ") : "");
-  const words = el("span", "color:#c9a9d1", code ? "Use your passkey there. Then check your browser shows " + code + ", and tap Yes." : "Use your passkey there. Kith will carry on here by itself.");
+  big.setAttribute("aria-hidden", "true");
+  const spoken = el("span", "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap", code ? "Your code is " + code.split("").join(" ") + "." : "");
+  spoken.id = "kith-signin-code";
+  const words = el("p", "margin:0;color:#c9a9d1", code ? "Use your passkey there. Then check your browser shows " + code + ", and tap Yes." : "Use your passkey there. Kith will carry on here by itself.");
+  words.id = "kith-signin-words";
+  words.setAttribute("role", "status");
   const buttons = el("div", "display:flex;gap:10px;flex-wrap:wrap;justify-content:center");
   const again = button("Try again", true);
   const close = button("Cancel", false);
   again.hidden = true;
   buttons.append(again, close);
   inner.append(title);
-  if (code) inner.append(big);
+  if (code) inner.append(big, spoken);
   inner.append(words, buttons);
   box.append(inner);
   document.body.appendChild(box);
+  title.focus();
   // Something went wrong: say so kindly and offer to start again (the app catches /auth/login and
   // starts a fresh handoff in the browser).
   const stopped = (heading, text) => {{
     title.textContent = heading;
     words.textContent = text;
     big.remove();
-    box.setAttribute("role", "alert");
+    spoken.remove();
+    box.setAttribute("aria-describedby", "kith-signin-words");
     again.hidden = false;
     close.textContent = "Close";
+    again.focus();
   }};
   again.onclick = () => {{ run.stop = true; box.remove(); location.href = "/auth/login"; }};
   close.onclick = () => {{ run.stop = true; box.remove(); }};
-  // The browser waits for her passkey and then her Yes, so give it as long as the handoff lasts.
-  const until = Date.now() + 10 * 60000;
+  // The browser waits for her passkey and then her Yes, so keep asking for as long as the server
+  // keeps the handoff (15 minutes from the start). A server that's busy or restarting (5xx, 429) or
+  // a moment offline isn't an answer: wait a little longer each time (up to 20 seconds) and ask again.
+  const until = Date.now() + HANDOFF_MINUTES * 60000;
+  let wait = 1500;
+  const busy = () => {{ wait = Math.min(wait * 2, 20000); }};
   (async () => {{
     while (Date.now() < until && !run.stop) {{
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, Math.min(wait, Math.max(0, until - Date.now()))));
       if (run.stop) return;
       try {{
         const r = await fetch("/auth/handoff/" + id, {{ credentials: "same-origin", cache: "no-store", headers }});
         const j = await r.json().catch(() => ({{}}));
         if (r.ok && j.ok) {{ location.href = j.redirect || "/"; return; }}
-        if ((r.ok && j.pending) || r.status === 429) continue;
+        if (r.ok && j.pending) {{ wait = 1500; continue; }}
+        if (r.status === 429 || r.status >= 500) {{ busy(); continue; }}
         if (j.error === "cancelled") stopped("Sign-in cancelled", "No problem: \u201cNo\u201d was pressed in the browser, so nothing happened. If that was you and you meant Yes, try again.");
         else if (j.error === "not-allowed") stopped("Not set up for Kith", "That account isn't set up for Kith. Ask the grown-up who runs it.");
         else if (r.status === 410) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
         else stopped("Sign-in didn't finish", "Something went wrong on the way back. Try again in a moment.");
         return;
-      }} catch (e) {{ /* offline for a moment */ }}
+      }} catch (e) {{ busy(); /* offline for a moment */ }}
     }}
     if (!run.stop) stopped("That took a while", "The sign-in timed out. You can start again whenever you're ready.");
   }})();
@@ -280,6 +304,23 @@ mod tests {
         assert!(js.contains(r#"const code = "AB-12";"#));
         assert!(js.contains(r#"j.error === "cancelled""#) && js.contains("Try again"));
         assert!(old.contains("const code = null;"));
+    }
+
+    #[test]
+    fn busy_servers_and_dropped_connections_are_waited_out() {
+        let js = page_script(&Handoff { id: "a".repeat(43), secret: None, code: Some("1234".into()) });
+        assert!(js.contains("const HANDOFF_MINUTES = 15;"));
+        assert!(js.contains("if (r.status === 429 || r.status >= 500) { busy(); continue; }"), "{js}");
+        assert!(js.contains("catch (e) { busy();"));
+    }
+
+    #[test]
+    fn voiceover_can_read_the_overlay_and_its_code() {
+        let js = page_script(&Handoff { id: "a".repeat(43), secret: None, code: Some("1234".into()) });
+        assert!(js.contains(r#"box.setAttribute("role", "dialog")"#) && js.contains(r#"aria-labelledby", "kith-signin-title""#));
+        assert!(js.contains(r#""Your code is " + code.split("").join(" ")"#));
+        assert!(js.contains(r#"big.setAttribute("aria-hidden", "true")"#));
+        assert!(js.contains(r#"words.setAttribute("role", "status")"#) && js.contains("title.focus()"));
     }
 
     #[test]
