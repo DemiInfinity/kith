@@ -28,6 +28,7 @@ describe("skills the parent writes", () => {
     expect(clash.ok).toBe(false);
     expect(saveSkill(db, { ...EXAMPLES[0], command: "no spaces" }).ok).toBe(false);
     expect(saveSkill(db, { ...EXAMPLES[0], command: "" }).ok).toBe(true);
+    expect(saveSkill(db, { ...EXAMPLES[0], name: "Usage", command: "usage" }).ok).toBe(false);
   });
   it("always tells the model the safety rules come first", () => {
     const db = openDb(":memory:");

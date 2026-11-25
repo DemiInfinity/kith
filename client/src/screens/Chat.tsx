@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Me, type Message, type Mode, type ModeCtx, type Mood, type ReportInfo, type Turn } from "../api";
-import { dayLabel } from "../components/bits";
+import { dayLabel, EnergyCard } from "../components/bits";
+import type { AppState, Memory } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
@@ -19,6 +20,23 @@ interface Props {
 }
 
 const SESSION_GAP = 6 * 3_600_000;
+
+/** Built-in "/" commands. Info ones show a card in the chat (no energy used); the rest just do the thing. */
+export const BUILTIN: { cmd: string; name: string; desc: string; icon: IconName }[] = [
+  { cmd: "help", name: "Commands", desc: "Everything you can type after /", icon: "question" },
+  { cmd: "usage", name: "Usage", desc: "How much energy is left", icon: "battery" },
+  { cmd: "connectors", name: "Connectors", desc: "What’s connected, like MCP servers", icon: "sparkle" },
+  { cmd: "skills", name: "Skills", desc: "Skills and their commands", icon: "bulb" },
+  { cmd: "reload-skills", name: "Reload skills", desc: "Get the latest skills from your grown-up", icon: "newchat" },
+  { cmd: "memory", name: "Memory", desc: "What’s remembered about you", icon: "brain" },
+  { cmd: "schedule", name: "Scheduled", desc: "Reminders and things you asked for", icon: "calendar" },
+  { cmd: "desk", name: "Desk", desc: "Open the desk", icon: "desk" },
+  { cmd: "new", name: "New side chat", desc: "Start a side chat", icon: "newchat" },
+  { cmd: "call", name: "Call", desc: "Start a call", icon: "call" },
+  { cmd: "grownup", name: "Grown-up?", desc: "Message a grown-up or a helpline", icon: "grownup" },
+  { cmd: "settings", name: "Settings", desc: "Open settings", icon: "settings" },
+];
+type Card = { id: number; cmd: string; body: React.ReactNode };
 
 function sessionNoticeNeeded(messages: Message[]) {
   let seen = false;
@@ -41,8 +59,16 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   // "/" commands from the skills their grown-up wrote.
   const [cmds, setCmds] = useState<{ id: number; name: string; description: string; command: string | null }[]>([]);
   const [slashPick, setSlashPick] = useState(0);
-  useEffect(() => { api<{ skills: typeof cmds }>("/api/skills").then((r) => setCmds(r.skills.filter((k) => k.command))).catch(() => undefined); }, []);
-  const slashMatches = /^\/[a-z0-9-]*$/i.test(text) ? cmds.filter((k) => k.command!.startsWith(text.slice(1).toLowerCase())) : [];
+  const loadSkills = () => api<{ skills: typeof cmds }>("/api/skills").then((r) => { setCmds(r.skills.filter((k) => k.command)); return r.skills; });
+  useEffect(() => { void loadSkills().catch(() => undefined); }, []);
+  type Item = { key: string; cmd: string; name: string; desc: string; icon: IconName; skill: boolean };
+  const allCommands: Item[] = [
+    ...BUILTIN.map((b) => ({ key: `b-${b.cmd}`, cmd: b.cmd, name: b.name, desc: b.desc, icon: b.icon, skill: false })),
+    ...cmds.map((k) => ({ key: `s-${k.id}`, cmd: k.command!, name: k.name, desc: k.description, icon: "bulb" as IconName, skill: true })),
+  ];
+  const slashMatches = /^\/[a-z0-9-]*$/i.test(text) ? allCommands.filter((k) => k.cmd.startsWith(text.slice(1).toLowerCase())) : [];
+  const [cards, setCards] = useState<Card[]>([]);
+  useEffect(() => setCards([]), [thread]);
   useEffect(() => setSlashPick(0), [text]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -63,11 +89,56 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       }
     }).catch((e) => setErr((e as Error).message));
   }, [thread]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages, busy, cards]);
+
+  /** Runs a built-in command. Returns false if it isn't one. */
+  const runBuiltin = async (raw: string): Promise<boolean> => {
+    const m = /^\/([a-z0-9-]+)\s*$/i.exec(raw.trim());
+    if (!m) return false;
+    const cmd = m[1].toLowerCase();
+    if (!BUILTIN.some((b) => b.cmd === cmd)) return false;
+    setText("");
+    const card = (body: React.ReactNode) => setCards((c) => [...c, { id: Date.now(), cmd, body }]);
+    try {
+      if (cmd === "desk") go("/pip");
+      else if (cmd === "schedule") go("/pip/scheduled");
+      else if (cmd === "call") go("/talk");
+      else if (cmd === "settings") go("/settings");
+      else if (cmd === "grownup") openHelp();
+      else if (cmd === "new") { const t = await api<{ id: number }>("/api/threads", { body: {} }); onSplit(t.id); }
+      else if (cmd === "help") card(<div className="stack" style={{ gap: 4 }}>{allCommands.map((k) => <span key={k.key} className="row" style={{ gap: 8 }}><span className="pcmd">/{k.cmd}</span><span className="small">{k.desc}</span></span>)}</div>);
+      else if (cmd === "usage") {
+        const st = await api<AppState>("/api/state");
+        card(<><EnergyCard energy={st.energy} /><span className="small">{name}’s desk has {st.desk.percent}% of today’s energy left, separate from chat.</span></>);
+      } else if (cmd === "connectors") {
+        const r = await api<{ connectors: { id: string; name: string; level: string; kind: string }[] }>("/api/connectors");
+        card(r.connectors.length ? <div className="stack" style={{ gap: 6 }}>{r.connectors.map((c) => <span key={c.id} className="row" style={{ gap: 8 }}><b style={{ flex: 1 }}>{c.name}</b><span className={`clevel ${c.level}`}>{c.level === "act" ? "can act" : "look only"}</span></span>)}<button className="btn ghost small" onClick={() => go("/connectors")}>See what each one does</button></div>
+          : <span className="small">Nothing’s connected yet. {me.parentLabel} chooses connectors.</span>);
+      } else if (cmd === "reload-skills") {
+        const list = await loadSkills();
+        card(<span style={{ fontSize: 14 }}>{list.length ? <>Got the latest: <b>{list.length}</b> skill{list.length === 1 ? "" : "s"} on{list.some((k) => k.command) ? <>, with {list.filter((k) => k.command).map((k) => `/${k.command}`).join(", ")}</> : null}.</> : "No skills are on right now."}</span>);
+      } else if (cmd === "skills") {
+        const r = await api<{ skills: { id: number; name: string; description: string; command: string | null }[] }>("/api/skills");
+        card(r.skills.length ? <div className="stack" style={{ gap: 6 }}>{r.skills.map((k) => <span key={k.id} className="row" style={{ gap: 8 }}>{k.command ? <span className="pcmd">/{k.command}</span> : <Icon name="bulb" size={16} />}<span><b>{k.name}</b><span className="small"> · {k.description}</span></span></span>)}</div>
+          : <span className="small">No skills yet. {me.parentLabel} can add some.</span>);
+      } else if (cmd === "memory") {
+        const r = await api<{ memories: Memory[] }>("/api/memories");
+        card(<div className="stack" style={{ gap: 6 }}>{r.memories.length ? r.memories.slice(0, 12).map((mm) => <span key={mm.id} style={{ fontSize: 14 }}>{mm.icon} {mm.text}</span>) : <span className="small">Nothing yet.</span>}<button className="btn ghost small" onClick={() => go("/memory")}>See and delete memories</button></div>);
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    return true;
+  };
+  const pickCommand = (k: { cmd: string; skill: boolean }, run = false) => {
+    if (!k.skill && run) void runBuiltin(`/${k.cmd}`);
+    else setText(`/${k.cmd} `);
+  };
 
   const send = async (t = text) => {
     const body = t.trim();
     if (!body || busy) return;
+    if (await runBuiltin(body)) return;
     setText("");
     setErr("");
     setBusy(true);
@@ -143,6 +214,17 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
             </div>
           );
         })}
+        {cards.map((c) => {
+          const b = BUILTIN.find((x) => x.cmd === c.cmd);
+          return (
+            <div key={c.id} className="cmdcard" role="note">
+              <div className="spread"><span className="il" style={{ fontWeight: 900, fontSize: 13 }}>{b && <Icon name={b.icon} size={16} />}<span className="pcmd">/{c.cmd}</span>{b?.name}</span>
+                <button className="x" aria-label="Close" onClick={() => setCards((x) => x.filter((y) => y.id !== c.id))}><Icon name="close" size={14} /></button></div>
+              {c.body}
+              <span className="small" style={{ color: "var(--faint)" }}>Only you see this. {name} wasn’t asked, so no energy was used.</span>
+            </div>
+          );
+        })}
         {busy && <div className="msg pip"><div className="bubble" aria-label={`${name} is thinking`}><span className="typing"><i /><i /><i /></span></div></div>}
         {err && <div className="notice" style={{ borderColor: "var(--ember)" }}>{err}</div>}
         <div ref={end} />
@@ -165,9 +247,12 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       {slashMatches.length > 0 && (
         <div className="slashmenu" role="listbox" aria-label="Commands">
           {slashMatches.map((k, i) => (
-            <button key={k.id} role="option" aria-selected={i === slashPick} className={i === slashPick ? "on" : ""} onMouseDown={(e) => { e.preventDefault(); setText(`/${k.command} `); }}>
-              <span className="pcmd">/{k.command}</span><span><b>{k.name}</b><span className="small"> · {k.description}</span></span>
-            </button>
+            <div key={k.key} style={{ display: "contents" }}>
+              {(i === 0 || slashMatches[i - 1].skill !== k.skill) && <span className="slashhead">{k.skill ? `Skills from ${me.parentLabel}` : "Kith"}</span>}
+              <button role="option" aria-selected={i === slashPick} className={i === slashPick ? "on" : ""} onMouseDown={(e) => { e.preventDefault(); pickCommand(k); }}>
+                <span className="slashic"><Icon name={k.icon} size={16} /></span><span className="pcmd">/{k.cmd}</span><span className="slashtext"><b>{k.name}</b><span className="small"> · {k.desc}</span></span>
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -177,7 +262,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (slashMatches.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setSlashPick((p) => (p + (e.key === "ArrowDown" ? 1 : slashMatches.length - 1)) % slashMatches.length); return; }
-            if (slashMatches.length > 0 && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) { e.preventDefault(); setText(`/${slashMatches[slashPick]?.command ?? slashMatches[0].command} `); return; }
+            if (slashMatches.length > 0 && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) { e.preventDefault(); pickCommand(slashMatches[slashPick] ?? slashMatches[0], e.key === "Enter"); return; }
+            if (slashMatches.length > 0 && e.key === "Escape") { e.preventDefault(); setText(""); return; }
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
           }}
         />

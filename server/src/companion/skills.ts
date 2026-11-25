@@ -9,6 +9,8 @@ import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
 
 export const MAX_SKILLS = 30;
+/** Commands the app already uses (see the chat's "/" menu), so skills can't take them. */
+export const RESERVED = new Set(["help", "usage", "connectors", "skills", "reload-skills", "memory", "schedule", "desk", "new", "call", "grownup", "settings"]);
 
 export const SkillInput = z.object({
   name: z.string().trim().min(2).max(60),
@@ -34,6 +36,7 @@ export function saveSkill(db: DB, input: unknown, id?: number): { ok: true; skil
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "That skill isn't quite right." };
   const s = v.data;
   if (!id && (get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM skills")?.n ?? 0) >= MAX_SKILLS) return { ok: false, error: `There are already ${MAX_SKILLS} skills.` };
+  if (s.command && RESERVED.has(s.command)) return { ok: false, error: `/${s.command} is already a built-in command. Pick another.` };
   if (s.command) {
     const clash = get<{ id: number }>(db, "SELECT id FROM skills WHERE command = ? AND id != ?", s.command, id ?? -1);
     if (clash) return { ok: false, error: `/${s.command} is already used by another skill.` };

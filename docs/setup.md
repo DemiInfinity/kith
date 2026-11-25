@@ -242,5 +242,7 @@ In the parent view, **Skills** holds how-tos you write for the companion (how to
 your rules for game nights). The companion sees each skill's name and when to use it, and loads the full text (with
 its `use_skill` tool) only when it's relevant. Give a skill a command (like `quiz`) and your child can type `/quiz` in
 chat to use it straight away; typing `/` shows the list. Your safeguards always come first, whatever a skill says.
-Three examples are ready to start from. Your child can see the skills that are on under Settings › Connectors and
+Three examples are ready to start from. Built-in commands are always there too: `/help`, `/usage`, `/connectors`,
+`/skills`, `/reload-skills`, `/memory`, `/schedule`, `/desk`, `/new`, `/call`, `/grownup`, `/settings`. The info ones
+show a card in the chat without asking the companion, so they use no energy; skills can't reuse these names. Your child can see the skills that are on under Settings › Connectors and
 skills.
