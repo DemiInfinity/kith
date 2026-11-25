@@ -57,9 +57,9 @@ export function appRole(
 }
 
 /** The friendly words for the wrong app (the child's name comes from Kith's own settings). */
-export function wrongAppText(app: AppHint, child: string): string {
-  const who = child || "your child";
-  return app === "child" ? `This is ${child ? `${child}’s` : "the child’s"} Kith. Grown-ups use Kith Parent.` : `This is the grown-up’s app. ${who.charAt(0).toUpperCase() + who.slice(1)} uses Kith.`;
+/** No names here: the same words go on the sign-in page, in the handoff error and in the 403. */
+export function wrongAppText(app: AppHint): string {
+  return app === "child" ? "This is the kids’ Kith. Grown-ups use Kith Parent." : "This is the grown-ups’ app. Kids use Kith.";
 }
 
 export function firstName(claims: { given_name?: unknown; name?: unknown }): string {
@@ -275,7 +275,7 @@ export function registerAuth(app: FastifyInstance, db: DB) {
     // An app that says which one it is (X-Kith-App) only works with a session of its own role.
     const hint = req.headers["x-kith-app"];
     if (typeof hint === "string" && APP_HINT.test(hint) && user.role !== hint) {
-      return reply.code(403).send({ error: wrongAppText(hint as AppHint, childName(db)), code: "wrong-app", role: user.role });
+      return reply.code(403).send({ error: wrongAppText(hint as AppHint), code: "wrong-app", role: user.role });
     }
     req.user = user;
   });

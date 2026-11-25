@@ -32,6 +32,13 @@ describe("app hint", () => {
     expect(store["kith-app"]).toBeUndefined();
     expect(m.withApp("/auth/login")).toBe("/auth/login");
   });
+  it("the Mac apps say which one they are with window.__KITH_APP__", async () => {
+    fakeBrowser("", false);
+    vi.stubGlobal("__KITH_APP__", "parent");
+    expect((await fresh()).appHint()).toBe("parent");
+    vi.stubGlobal("__KITH_APP__", "admin");
+    expect((await fresh()).appHint()).toBeNull();
+  });
   it("ignores anything that isn't child or parent", async () => {
     fakeBrowser("?app=admin", true);
     expect((await fresh()).appHint()).toBeNull();
@@ -39,8 +46,8 @@ describe("app hint", () => {
   it("has friendly words for the wrong-app codes", async () => {
     fakeBrowser("", false);
     const m = await fresh();
-    expect(m.wrongAppWords("use-parent-app")).toContain("Kith Parent");
-    expect(m.wrongAppWords("use-child-app")).toContain("grown-up");
+    expect(m.wrongAppWords("use-parent-app")).toBe("This is the kids’ Kith. Grown-ups use Kith Parent.");
+    expect(m.wrongAppWords("use-child-app")).toBe("This is the grown-ups’ app. Kids use Kith.");
     expect(m.wrongAppWords("not-allowed")).toBeNull();
   });
 });

@@ -12,6 +12,10 @@ let cached: AppHint | null | undefined;
 export function appHint(): AppHint | null {
   if (cached !== undefined) return cached;
   cached = null;
+  // The Mac apps (Kith.app, Kith Parent.app) aren't display-mode standalone, so they say which
+  // one they are before the page runs. A hint only ever narrows who gets in, never grants access.
+  const native = (globalThis as { __KITH_APP__?: unknown }).__KITH_APP__;
+  if (native === "child" || native === "parent") { cached = native; return cached; }
   try {
     if (!isInstalledApp()) return cached;
     const fromUrl = new URLSearchParams(location.search).get("app");
@@ -28,9 +32,9 @@ export function withApp(url: string): string {
   return h ? `${url}${url.includes("?") ? "&" : "?"}app=${h}` : url;
 }
 
-/** What to say when someone signs in to the wrong app (before there's a session, so no names). */
+/** What to say when someone signs in to the wrong app (same words as the server’s 403). */
 export function wrongAppWords(code: string): string | null {
-  if (code === "use-parent-app") return "This app is for the child. Grown-ups use Kith Parent.";
-  if (code === "use-child-app") return "This is the grown-up’s app. The child uses Kith.";
+  if (code === "use-parent-app") return "This is the kids’ Kith. Grown-ups use Kith Parent.";
+  if (code === "use-child-app") return "This is the grown-ups’ app. Kids use Kith.";
   return null;
 }

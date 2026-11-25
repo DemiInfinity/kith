@@ -178,7 +178,7 @@ describe("signing in with Pocket ID", () => {
       const wrong = await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid }, headers: { "x-kith-app": "parent" } });
       expect(wrong.statusCode).toBe(403);
       expect(wrong.json()).toMatchObject({ code: "wrong-app", role: "child" });
-      expect(wrong.json().error).toContain("Kith");
+      expect(wrong.json().error).toBe("This is the grown-ups’ app. Kids use Kith.");
       expect((await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid }, headers: { "x-kith-app": "child" } })).json()).toEqual({ role: "child" });
       expect((await app.inject({ method: "GET", url: "/api/me", cookies: { kith_sid: sid } })).json()).toEqual({ role: "child" });
     });
