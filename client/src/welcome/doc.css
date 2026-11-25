@@ -72,3 +72,50 @@
   .doc-two { grid-template-columns: 1fr; }
   .step + .step::before { left: 45px; }
 }
+
+/* Kith Parent tour */
+.tour-head h1 { margin-bottom: 4px; }
+.tour-phones { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; margin-top: 36px; align-items: start; }
+.tour-phones figure img { border-radius: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.45), inset 0 0 0 1px var(--card-line); }
+.tour-toc { padding: 22px; border-radius: 20px; background: var(--card); box-shadow: inset 0 0 0 1px var(--card-line); }
+.tour-toc ol { margin: 0; padding-left: 1.4em; columns: 2; column-gap: 28px; }
+.tour-toc li { break-inside: avoid; padding: 2px 0; font-weight: 700; }
+.tour-toc li::marker { color: #f7a055; font-weight: 900; }
+.tour-toc a { color: var(--text-3); display: inline-block; min-height: 32px; padding: 4px 0; }
+.tour-toc a:hover { color: var(--text); }
+.tour-phones .kw-note { margin-top: 14px !important; }
+.tour { max-width: 1180px; margin: 0 auto; padding: 30px var(--pad) 90px; display: flex; flex-direction: column; gap: 70px; }
+.tour-item { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.35fr); gap: 48px; align-items: center; }
+.tour-item.flip { grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr); }
+.tour-item.flip .tour-text { order: 2; }
+.tour-item.tall { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.6fr); }
+.tour-item.tall .tour-pic { max-width: 340px; }
+.tour-text h2 { font-size: clamp(1.75rem, 3.2vw, 2.375rem); margin-top: 6px; }
+.tour-text p:not(.hand) { margin-top: 14px; font-size: 1.0625rem; line-height: 1.65; color: var(--text-2); }
+.tour-text b { color: var(--text); }
+.tour-text a { color: var(--lilac); text-decoration: underline; text-underline-offset: 3px; }
+.tour-text code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; padding: 1px 6px; border-radius: 6px; background: #2b1d29; }
+.tour-pic img { border-radius: 18px; box-shadow: 0 30px 60px rgba(0,0,0,0.45), inset 0 0 0 1px var(--card-line); }
+.tour-item.tall .tour-pic img { border-radius: 28px; }
+.tour-example { margin-bottom: 18px; background: #241823; padding: 22px; }
+.tour-ex-text { margin-top: 10px; font-size: 1.0625rem; line-height: 1.55; color: #ead6e4; }
+.macwin { border-radius: 14px; overflow: hidden; background: #0b070a; box-shadow: 0 40px 80px rgba(0,0,0,0.5), inset 0 0 0 1px var(--card-line); }
+.macwin-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #1c1219; }
+.macwin-bar span { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.macwin-bar span:nth-child(2) { background: #febc2e; }
+.macwin-bar span:nth-child(3) { background: #28c840; }
+.macwin-bar b { margin-left: 10px; font-size: 0.8125rem; color: var(--soft); }
+.macwin img { border-radius: 0 !important; box-shadow: none !important; }
+.never { padding: 36px 40px; background: linear-gradient(135deg, rgba(231,180,238,0.12), rgba(247,160,85,0.10)), var(--card); box-shadow: inset 0 0 0 2px #7a5a78; }
+.never h2 { margin-top: 6px; }
+.never > p:not(.hand) { margin-top: 18px; font-size: 1.0625rem; color: var(--text-2); }
+.never-list { margin-top: 22px !important; }
+@media (max-width: 899px) {
+  .tour-phones { grid-template-columns: 1fr; }
+  .tour-phones figure { max-width: 300px; }
+  .tour-toc ol { columns: 1; }
+  .tour { gap: 54px; }
+  .tour-item, .tour-item.tall, .tour-item.flip { grid-template-columns: 1fr; gap: 22px; }
+  .tour-item.flip .tour-text { order: 0; }
+  .never { padding: 26px 22px; }
+}

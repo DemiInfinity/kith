@@ -5,6 +5,7 @@ Allow: /welcome/
 Allow: /terms$
 Allow: /privacy$
 Allow: /setup$
+Allow: /parents$
 Allow: /assets/
 Allow: /favicon.ico
 Allow: /favicon.svg
@@ -17,6 +18,7 @@ Disallow: /welcome.html
 Disallow: /terms.html
 Disallow: /privacy.html
 Disallow: /setup.html
+Disallow: /parents.html
 Disallow: /talk
 Disallow: /study
 Disallow: /languages

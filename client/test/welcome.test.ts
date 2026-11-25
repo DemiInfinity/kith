@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -32,7 +32,7 @@ describe("the public welcome page (real HTML for search engines)", () => {
     expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
     for (const l of ["<header", "<nav", "<main", "<footer"]) expect(html).toContain(l);
     const imgs = [...html.matchAll(/<img [^>]+>/g)].map((m) => m[0]);
-    expect(imgs.length).toBe(8);
+    expect(imgs.length).toBe(10);
     for (const i of imgs) {
       expect(i).toMatch(/ alt="[^"]{10,}"/);
       expect(i).toMatch(/ width="\d+" height="\d+"/);
@@ -52,19 +52,19 @@ describe("what crawlers may see", () => {
     for (const p of ["/api/", "/auth/", "/signin", "/settings", "/talk", "/"]) expect(robots).toContain(`Disallow: ${p}\n`);
     expect(robots).toContain("Sitemap: https://ai.hearthstream.xyz/sitemap.xml");
   });
-  it("the sitemap has the home page and the three public pages", () => {
-    expect(sitemap.match(/<loc>/g)).toHaveLength(4);
-    for (const p of ["", "setup", "terms", "privacy"]) expect(sitemap).toContain(`<loc>https://ai.hearthstream.xyz/${p}</loc>`);
+  it("the sitemap has the home page and the four public pages", () => {
+    expect(sitemap.match(/<loc>/g)).toHaveLength(5);
+    for (const p of ["", "parents", "setup", "terms", "privacy"]) expect(sitemap).toContain(`<loc>https://ai.hearthstream.xyz/${p}</loc>`);
   });
   it("robots.txt allows the public pages", () => {
-    for (const p of ["/terms$", "/privacy$", "/setup$"]) expect(robots).toContain(`Allow: ${p}\n`);
+    for (const p of ["/terms$", "/privacy$", "/setup$", "/parents$"]) expect(robots).toContain(`Allow: ${p}\n`);
   });
 });
 
 describe("terms, privacy and the setup guide (real HTML too)", () => {
   const read = (f: string) => readFileSync(resolve(root, f), "utf8");
   const words = (h: string) => h.slice(h.indexOf("<main"), h.indexOf("</main>")).replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
-  for (const [file, path] of [["terms.html", "/terms"], ["privacy.html", "/privacy"], ["setup.html", "/setup"]] as const) {
+  for (const [file, path] of [["terms.html", "/terms"], ["privacy.html", "/privacy"], ["setup.html", "/setup"], ["parents.html", "/parents"]] as const) {
     it(`${file} has its own title, description and canonical, and one h1`, () => {
       const h = read(file);
       expect(h).toContain(`<link rel="canonical" href="https://ai.hearthstream.xyz${path}" />`);
@@ -105,5 +105,31 @@ describe("terms, privacy and the setup guide (real HTML too)", () => {
     expect(html).toContain('<a class="btn ghost" href="/setup">Read the setup guide</a>');
     expect(html).toContain('<li><a href="/setup">Setup guide</a></li>');
     expect(html).toContain("If you set up Kith, you run it");
+  });
+});
+
+describe("the Kith Parent tour", () => {
+  const h = readFileSync(resolve(root, "parents.html"), "utf8");
+  it("covers every part, each with a screenshot and words", () => {
+    const parts = ["overview", "reports", "summary", "budgets", "notifications", "safeguards", "skills", "connectors", "browser", "languages", "google", "sessions", "mac"];
+    for (const id of parts) expect(h).toContain(`id="${id}"`);
+    expect(h.match(/class="tour-item/g)).toHaveLength(parts.length);
+    const imgs = [...h.matchAll(/<img [^>]+>/g)].map((m) => m[0]);
+    for (const i of imgs) { expect(i).toMatch(/ alt="[^"]{20,}"/); expect(i).toMatch(/ width="\d+" height="\d+"/); }
+    // Every screenshot it uses exists, as WebP and JPG.
+    for (const m of h.matchAll(/\/welcome\/(parent-[a-z-]+)\.webp/g)) {
+      expect(existsSync(resolve(root, `public/welcome/${m[1]}.webp`))).toBe(true);
+      expect(existsSync(resolve(root, `public/welcome/${m[1]}.jpg`))).toBe(true);
+    }
+  });
+  it("shows an example report and ends with what you never see", () => {
+    expect(h).toContain('aria-label="An example report"');
+    expect(h).toContain('id="never-h">What you never see');
+    expect(h).toContain("Their everyday chats.");
+    expect(h).toContain("Their memories.");
+  });
+  it("is linked from the welcome page", () => {
+    expect(html).toContain('<a class="btn primary" href="/parents">See the full tour');
+    expect(html).toContain('<li><a href="/parents">For grown-ups</a></li>');
   });
 });

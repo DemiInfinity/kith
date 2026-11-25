@@ -2,7 +2,7 @@ import { Icon, IL, type IconName } from "../components/Icons";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Helpline, type Me, type Profile, type Transparency } from "../api";
 import { Avatar } from "../components/Avatar";
-import { dayLabel, Toggle, when } from "../components/bits";
+import { clock, dayLabel, Toggle, when } from "../components/bits";
 import { disablePush, enablePush, pushStatus } from "../lib/push";
 import { ParentSkills } from "./ParentSkills";
 import { usePoll } from "../lib/poll";
@@ -390,6 +390,47 @@ function ApiKeyCard({ onChanged, companion }: { onChanged: () => void; companion
   );
 }
 
+interface SignedIn { person: string; role: "child" | "parent"; name: string; sessions: number; lastSignIn: number }
+
+/** Who's signed in, and signing them out: one person, or everyone (this device stays signed in). */
+function SessionsCard({ child }: { child: string }) {
+  const [people, setPeople] = useState<SignedIn[] | null>(null);
+  const [gone, setGone] = useState(false);
+  const [msg, setMsg] = useState("");
+  const load = useCallback(() => api<{ people: SignedIn[] }>("/api/parent/sessions").then((r) => setPeople(r.people)).catch((e) => { if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) setGone(true); }), []);
+  useEffect(() => { void load(); }, [load]);
+  if (gone) return null; // an older server
+  const signOut = async (person?: SignedIn) => {
+    const who = person ? `${person.name || (person.role === "child" ? child : "this grown-up")} on every device` : "everyone, everywhere, except this device";
+    if (!confirm(`Sign out ${who}? They’ll need to sign in again.`)) return;
+    setMsg("");
+    try {
+      const r = await api<{ ended: number }>("/api/parent/sessions/sign-out", { body: person ? { person: person.person } : {} });
+      setMsg(r.ended ? `Signed out ${r.ended} ${r.ended === 1 ? "session" : "sessions"}.` : "Nobody else was signed in.");
+    } catch (e) { setMsg((e as Error).message); }
+    void load();
+  };
+  return (
+    <section className="card psec" id="set-sessions">
+      <h3 className="psec-h"><span className="psec-ic"><Icon name="people" size={18} /></span>Who’s signed in</h3>
+      <span className="small">Everyone with Kith open on a phone, computer or Mac. If a device is lost or shared, sign that person out; they’ll need your family’s sign-in to get back in. Grown-up sessions last 7 days.</span>
+      {!people ? <span className="small">Checking…</span> : people.length === 0 ? <span className="small">Nobody else is signed in.</span> : people.map((p) => (
+        <div key={p.person} className="memrow" style={{ padding: "10px 12px", gap: 10, flexWrap: "wrap" }}>
+          <span className="t" style={{ flex: 1, minWidth: 180 }}>
+            <b>{p.name || (p.role === "child" ? child : "Grown-up")}</b> <span className="small">· {p.role === "child" ? "Kith" : "Kith Parent"}</span><br />
+            <span className="small">{p.sessions} {p.sessions === 1 ? "device" : "devices"} · last signed in {dayLabel(p.lastSignIn).toLowerCase()} {when(p.lastSignIn)}</span>
+          </span>
+          <button type="button" className="btn ghost small" onClick={() => void signOut(p)}>Sign out</button>
+        </div>
+      ))}
+      <div className="row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className="btn ghost small" onClick={() => void signOut()}><IL i="close">Sign out everywhere</IL></button>
+        {msg && <span className="small" role="status">{msg}</span>}
+      </div>
+    </section>
+  );
+}
+
 const KIND_ICON: Record<string, IconName> = { "home-assistant": "home", kin: "calendar", mcp: "sparkle", jellyfin: "music", calculator: "note", dictionary: "stories", web: "compass", "google-drive": "cloud" };
 const ADDABLE: [Connection["kind"], string][] = [["mcp", "MCP server"], ["home-assistant", "Home Assistant"], ["kin", "Kin"], ["jellyfin", "Jellyfin"], ["web", "Allowed websites"]];
 const BUILT_IN = new Set(["room", "kin", "jellyfin", "calculator", "dictionary", "google", "web"]);
@@ -435,7 +476,7 @@ export function changedSettings<T extends object>(before: T, after: T): Partial<
   return out;
 }
 
-function SettingsForm({ initial, onSaved, onDirty, section = "settings", companion = "Pip", publicKey = "" }: { initial: Settings; onSaved: () => void; onDirty: (d: boolean) => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string }) {
+function SettingsForm({ initial, onSaved, onDirty, section = "settings", companion = "Pip", publicKey = "", childName = "your child" }: { initial: Settings; onSaved: () => void; onDirty: (d: boolean) => void; section?: "settings" | "connectors"; companion?: string; publicKey?: string; childName?: string }) {
   const [s, setS] = useState<Settings>(initial);
   const [base, setBase] = useState<Settings>(initial);
   const setWeb = (patch: Partial<BrowserSettings>) => setS((x) => ({ ...x, browser: { ...x.browser, ...patch } }));
@@ -509,7 +550,7 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
       {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-notify", "bell", "Notifications"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
+        {([["set-claude", "sparkle", "Claude"], ["set-notify", "bell", "Notifications"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"], ["set-sessions", "people", "Signed in"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
       </nav>}
@@ -685,6 +726,7 @@ function SettingsForm({ initial, onSaved, onDirty, section = "settings", compani
           </select></label>
       </section>
 
+      <SessionsCard child={childName} />
         </>}
         {section === "connectors" && <>
         <div className="pintro">
@@ -832,7 +874,7 @@ export function Parent({ me }: { me: Me }) {
         <div key={r.id} className="preport">
           <span className={`level ${r.level}`}>{LEVEL_WORDS[r.level] ?? r.level}</span>
           <span style={{ flex: 1, fontSize: "0.875rem" }}>{r.parentText}</span>
-          <span className="small" style={{ whiteSpace: "nowrap" }}>{dayLabel(r.ts)} {when(r.ts)} · {r.status}</span>
+          <span className="small preport-when">{dayLabel(r.ts)}, {clock(r.ts)} · {r.status}</span>
         </div>
       ))}
     </div>
@@ -936,7 +978,7 @@ export function Parent({ me }: { me: Me }) {
           )}
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <Suspense fallback={<span className="small">Opening the desk…</span>}><DeskComputer me={meChild} canEdit={false} /></Suspense>}
-          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} onDirty={onDirty} companion={comp.name} publicKey={me.push.ready ? me.push.publicKey : ""} />}
+          {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} onDirty={onDirty} companion={comp.name} childName={cname} publicKey={me.push.ready ? me.push.publicKey : ""} />}
           {tab === "help" && <ParentHelp companion={comp.name} child={cname} />}
           {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
           {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} onDirty={onDirty} />}
