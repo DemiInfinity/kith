@@ -5,7 +5,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
-import { browse, liveView } from "./browser.js";
+import { act, browse, liveView, release, takeOver, takenOver } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
@@ -64,7 +64,19 @@ const server = http.createServer(async (req, res) => {
         return send(res, 422, { error: (err as Error).message });
       }
     }
-    if (parts[0] === "browser" && parts[1] === "live" && req.method === "GET") return send(res, 200, liveView());
+    if (parts[0] === "browser" && parts[1] === "live" && req.method === "GET") return send(res, 200, { ...liveView(), takenOverBy: takenOver() });
+    if (parts[0] === "browser" && req.method === "POST") {
+      const b = await readJson(req);
+      try {
+        if (parts[1] === "takeover") {
+          return send(res, 200, await takeOver(String(b.who ?? "someone").slice(0, 20), { sites: (b.sites as string[]) ?? [], assetHosts: (b.assetHosts as string[]) ?? [] }, b.url as string | undefined));
+        }
+        if (parts[1] === "action") return send(res, 200, await act(b as never));
+        if (parts[1] === "release") { await release(); return send(res, 200, { ok: true }); }
+      } catch (err) {
+        return send(res, 422, { error: (err as Error).message });
+      }
+    }
     if (parts[0] === "items") {
       const id = parts[1];
       if (!id && req.method === "GET") return send(res, 200, store.list());

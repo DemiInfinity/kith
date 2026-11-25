@@ -19,7 +19,7 @@ import { createReport, deliverReport, listReports, type Reporter } from "./repor
 import { toolLog } from "./connections/connections.js";
 import { lowPowerShare, projectMonth, spendByKind, splits } from "./budget/budget.js";
 import { startOfDay, startOfMonth, startOfWeek } from "./budget/time.js";
-import { activitySince } from "./desk/activity.js";
+import { activitySince, logActivity } from "./desk/activity.js";
 import { companionFiles, safeguardsDoc } from "./companion/files.js";
 import { checkInputRules } from "./safety/rules.js";
 import { localDate } from "./budget/time.js";
@@ -174,6 +174,39 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const s = loadParentSettings(db).browser;
     return { enabled: s.enabled, sites: s.sites, live, visits: studio.browser.visits(Date.now() - 86_400_000) };
   });
+  // Take over the desk browser (child or parent). Same rules: safe list only, read-only, logged.
+  const who = (role: string) => (role === "parent" ? config.people.parentLabel : childName(db) || "you");
+  const logVisit = (url: string, title: string, role: string) => {
+    run(db, "INSERT INTO browse_log(ts, url, title, why, job_id, outcome) VALUES (?,?,?,?,NULL,'read')", Date.now(), url.slice(0, 500), title.slice(0, 200), `taken over by ${who(role)}`);
+    logActivity(db, "🧭", `${who(role)} browsed “${title || url}”`);
+  };
+  app.post("/api/desk/browser/takeover", { preHandler: either }, async (req, reply) => {
+    const b = loadParentSettings(db).browser;
+    if (!b.enabled) return reply.code(409).send({ error: "Browsing is switched off." });
+    try {
+      const l = await studio.desk.takeOver(who(req.user!.role), b.sites, b.assetHosts);
+      logVisit(l.url, l.title, req.user!.role);
+      return l;
+    } catch (err) {
+      return reply.code(422).send({ error: (err as Error).message });
+    }
+  });
+  app.post("/api/desk/browser/action", { preHandler: either, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const a = z.object({ type: z.enum(["go", "click", "scroll", "back"]), url: z.string().max(500).optional(), x: z.number().optional(), y: z.number().optional(), dy: z.number().optional() }).parse(req.body);
+    try {
+      const l = await studio.desk.act(a);
+      if (l.navigated) logVisit(l.url, l.title, req.user!.role);
+      return l;
+    } catch (err) {
+      return reply.code(422).send({ error: (err as Error).message });
+    }
+  });
+  app.post("/api/desk/browser/release", { preHandler: either }, async (req) => {
+    await studio.desk.release().catch(() => undefined);
+    logActivity(db, "🤝", `${who(req.user!.role)} gave the browser back to ${loadProfile(db).name}`);
+    return { ok: true };
+  });
+
   app.get("/api/desk/today", { preHandler: either }, async () => {
     const dayStart = startOfDay(Date.now(), config.timezone);
     const byModel = all<{ model: string; usd: number }>(db, "SELECT model, SUM(usd) AS usd FROM spend WHERE bucket = 'desk' AND ts >= ? GROUP BY model", dayStart);

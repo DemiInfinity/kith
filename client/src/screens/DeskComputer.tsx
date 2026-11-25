@@ -6,7 +6,7 @@ import { ItemViewer, MakeSheet } from "./Desk";
 
 interface BrowserView {
   enabled: boolean; sites: string[];
-  live: { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string } | null;
+  live: { busy: boolean; url: string; title: string; why: string; jobId: number | null; ts: number; frame: string; takenOverBy?: string | null; cursor?: { x: number; y: number } } | null;
   visits: { id: number; ts: number; url: string; title: string; why: string; job_id: number | null; outcome: string }[];
 }
 interface Today {
@@ -51,6 +51,24 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
   const [item, setItem] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const [watch, setWatch] = useState(false);
+  const [driving, setDriving] = useState(false);
+  const [urlText, setUrlText] = useState("");
+  const [browseErr, setBrowseErr] = useState("");
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  type Live = NonNullable<BrowserView["live"]>;
+  const applyLive = (l: Live) => setBr((b) => (b ? { ...b, live: { ...l } } : b));
+  const takeOver = async () => {
+    setBrowseErr("");
+    try { const l = await api<Live>("/api/desk/browser/takeover", { body: {} }); applyLive(l); setDriving(true); setUrlText(l.url); }
+    catch (e) { setBrowseErr((e as Error).message); }
+  };
+  const act = async (a: { type: "go" | "click" | "scroll" | "back"; url?: string; x?: number; y?: number; dy?: number }) => {
+    setBrowseErr("");
+    try { const l = await api<Live>("/api/desk/browser/action", { body: a }); applyLive(l); setUrlText(l.url); }
+    catch (e) { setBrowseErr((e as Error).message); }
+  };
+  const giveBack = async () => { await api("/api/desk/browser/release", { body: {} }).catch(() => undefined); setDriving(false); };
+  useEffect(() => () => { if (driving) void api("/api/desk/browser/release", { body: {} }).catch(() => undefined); }, [driving]);
   const [now, setNow] = useState(Date.now());
   const name = me.profile.name;
 
@@ -111,19 +129,68 @@ export function DeskComputer({ me, canEdit = true, go }: { me: Me; canEdit?: boo
     windowTitle = live?.title || `${name}’s browser`;
     body = (
       <div className="dbrowser">
-        <div className="durl"><span>🔒</span><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live?.url ? live.url.replace(/^https:\/\//, "") : "nothing open"}</span><span className="dtag" style={{ background: "#DFF5E7", color: "#1E7A45" }}>✓ Safe list</span></div>
+        {driving ? (
+          <form className="durl" onSubmit={(e) => { e.preventDefault(); void act({ type: "go", url: urlText.startsWith("http") ? urlText : `https://${urlText}` }); }}>
+            <button type="button" className="x" style={{ width: 28, height: 28 }} aria-label="Back" onClick={() => act({ type: "back" })}>‹</button>
+            <input aria-label="Address" value={urlText} onChange={(e) => setUrlText(e.target.value)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontWeight: 700, fontSize: 13, color: "#2a1d3a" }} />
+            <button type="submit" className="dtag" style={{ background: "#2A1D3A", color: "#fff", border: 0 }}>Go</button>
+          </form>
+        ) : (
+          <div className="durl"><span>🔒</span><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live?.url ? live.url.replace(/^https:\/\//, "") : "nothing open"}</span><span className="dtag" style={{ background: "#DFF5E7", color: "#1E7A45" }}>✓ Safe list</span></div>
+        )}
         <div className="dbrowse-grid">
-          <div className="dshot">
+          <div className="dshot" style={driving ? { cursor: "none", outline: "2px solid #D9A3E0" } : {}}>
             {!br?.enabled && <span style={{ color: "#7A5C76", fontSize: 13 }}>{me.parentLabel} has switched browsing off.</span>}
-            {br?.enabled && live?.frame && <img src={live.frame} alt={`What ${name} is reading: ${live.title}`} />}
+            {br?.enabled && live?.frame && (
+              <div className="screen169"
+                onMouseMove={(e) => {
+                  if (!driving) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setPointer({ x: ((e.clientX - r.left) / r.width) * 1280, y: ((e.clientY - r.top) / r.height) * 720 });
+                }}
+                onMouseLeave={() => setPointer(null)}
+                onClick={(e) => {
+                  if (!driving) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  void act({ type: "click", x: ((e.clientX - r.left) / r.width) * 1280, y: ((e.clientY - r.top) / r.height) * 720 });
+                }}>
+                <img src={live.frame} alt={`What’s open: ${live.title}`} />
+                {(() => {
+                  const c = (driving && pointer) || live.cursor;
+                  if (!c) return null;
+                  return (
+                    <svg className={`cursor ${driving && pointer ? "mine" : ""}`} viewBox="0 0 24 24" aria-hidden
+                      style={{ left: `${(c.x / 1280) * 100}%`, top: `${(c.y / 720) * 100}%` }}>
+                      <path d="M4 3l14 7-6 1.6L9.6 18 4 3Z" fill="#fff" stroke="#2A1D3A" strokeWidth="1.6" strokeLinejoin="round" />
+                    </svg>
+                  );
+                })()}
+              </div>
+            )}
             {br?.enabled && !live?.frame && <span style={{ color: "#7A5C76", fontSize: 13 }}>{name} only browses when it’s looking something up for you.</span>}
           </div>
           <div className="dwhy">
-            <b>Why {name} is here</b>
-            <span>{live?.why ? `You asked: “${live.why}”` : "—"}</span>
-            <b>This visit</b>
-            <span>{visitsForLive ? `${visitsForLive} page${visitsForLive > 1 ? "s" : ""}, all on the safe list.` : "—"} Reading only: no sign-ins, forms or downloads.</span>
-            <button className={`btn small ${watch ? "primary" : ""}`} style={!watch ? { background: "#2A1D3A", color: "#fff" } : {}} onClick={() => setWatch(!watch)}>👀 {watch ? "Watching live" : "Watch live"}</button>
+            {driving ? (
+              <>
+                <b>You’re driving</b>
+                <span>Tap a link on the page to follow it. Only safe-listed sites open; reading only.</span>
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="btn small ghost" style={{ background: "#fff", color: "#2a1d3a", borderColor: "#eadbe9" }} onClick={() => act({ type: "scroll", dy: -500 })}>▲</button>
+                  <button className="btn small ghost" style={{ background: "#fff", color: "#2a1d3a", borderColor: "#eadbe9" }} onClick={() => act({ type: "scroll", dy: 500 })}>▼</button>
+                </div>
+                <button className="btn small" style={{ background: "#2A1D3A", color: "#fff" }} onClick={giveBack}>Give it back to {name}</button>
+              </>
+            ) : (
+              <>
+                <b>{live?.takenOverBy ? `${live.takenOverBy} is driving` : `Why ${name} is here`}</b>
+                <span>{live?.why ? (live.why.startsWith("taken over") ? live.why : `You asked: “${live.why}”`) : "—"}</span>
+                <b>This visit</b>
+                <span>{visitsForLive ? `${visitsForLive} page${visitsForLive > 1 ? "s" : ""}, all on the safe list.` : "—"} Reading only: no sign-ins, forms or downloads.</span>
+                <button className={`btn small ${watch ? "primary" : ""}`} style={!watch ? { background: "#2A1D3A", color: "#fff" } : {}} onClick={() => setWatch(!watch)}>👀 {watch ? "Watching live" : "Watch live"}</button>
+                {br?.enabled && <button className="btn small ghost" style={{ background: "#fff", color: "#2a1d3a", borderColor: "#eadbe9" }} onClick={takeOver}>🕹️ Take over</button>}
+              </>
+            )}
+            {browseErr && <span style={{ color: "#A8402E", fontSize: 12.5 }}>{browseErr}</span>}
           </div>
         </div>
         <details className="dvisits"><summary>Every page today ({br?.visits.length ?? 0})</summary>

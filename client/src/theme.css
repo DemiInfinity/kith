@@ -335,9 +335,13 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .dtag { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; }
 .dbrowser { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
 .durl { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #f1e4ef; font-size: 13px; font-weight: 700; }
-.dbrowse-grid { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; }
-.dshot { min-height: 220px; border-radius: 8px; border: 1px solid #eadbe9; background: #fff; display: grid; place-items: center; overflow: hidden; padding: 6px; text-align: center; }
-.dshot img { width: 100%; height: auto; display: block; }
+.dbrowse-grid { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; align-items: start; }
+@media (min-width: 1250px) { .pscreen { aspect-ratio: 16 / 9; min-height: 0; } }
+.dshot { aspect-ratio: 16 / 9; border-radius: 8px; border: 1px solid #eadbe9; background: #fff; display: grid; place-items: center; overflow: hidden; text-align: center; }
+.screen169 { position: relative; width: 100%; aspect-ratio: 16 / 9; }
+.screen169 img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cursor { position: absolute; width: 22px; height: 22px; margin: -3px 0 0 -4px; pointer-events: none; transition: left 0.9s ease-in-out, top 0.9s ease-in-out; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+.cursor.mine { transition: none; }
 .dwhy { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #5a4a63; }
 .dwhy b { color: #2a1d3a; }
 .dvisits summary { font-size: 12.5px; font-weight: 800; cursor: pointer; }
@@ -455,3 +459,8 @@ table.money td.n, table.money th.n { text-align: right; font-variant-numeric: ta
 .ctxchip .x { width: 30px; height: 30px; }
 .roundbtn .navicon { display: block; }
 @media (max-width: 1099px) { .desktop-only { display: none !important; } }
+@media (min-width: 1250px) {
+  .pfolders { display: grid; grid-template-columns: repeat(2, 76px); align-content: start; gap: 6px; width: auto; }
+  .picon { padding: 6px 2px; }
+  .picon span:first-child { font-size: 24px; }
+}
