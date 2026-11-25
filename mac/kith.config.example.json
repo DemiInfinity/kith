@@ -1,4 +1,4 @@
 {
-  "server": "https://ai.example.com",
-  "signInHosts": ["auth.example.com"]
+  "server": "http://localhost:8787",
+  "signInHosts": []
 }

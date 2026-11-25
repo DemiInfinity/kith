@@ -20,7 +20,6 @@ app are the same in the Mac app, with nothing to rebuild. There's no second UI t
 - **⌘R reloads.** View › Reload goes through the start page, so if home can't be reached you get the friendly screen,
   not a blank window.
 - **A start page** (`mac/launcher/`, bundled in the app):
-  - On first launch, if no server is set, it asks for the address.
   - On every launch and reload it checks the server answers before showing it.
   - If home can't be reached it says so, with "Try again". It also tries again by itself every 15 seconds and when the
     Mac comes back online.
@@ -45,7 +44,9 @@ server address.
 
 ## Setting the server address
 
-Kith is open source, so the address isn't in the code. Use either or both of these:
+By default the app uses a Kith server on this Mac, `http://localhost:8787` (what `docker compose up` serves). To use
+another server, for example your home server over https, change it in either of these ways. No code changes are
+needed:
 
 - **At build time:** copy `mac/kith.config.example.json` to `mac/kith.config.json` and fill it in. The file is
   git-ignored. The app uses it as its default.
@@ -54,13 +55,18 @@ Kith is open source, so the address isn't in the code. Use either or both of the
   { "server": "https://ai.example.com", "signInHosts": ["auth.example.com"] }
   ```
 
+  The example file holds the localhost default.
+
   `signInHosts` is optional. It lists sign-in hosts that may always load in the window. Without it, sign-in still works:
   the provider is allowed while a sign-in is in progress.
-- **In the app:** on first launch, or from Kith › Change Server…. This is saved in
+- **In the app:** from Kith › Change Server…. This is saved in
   `~/Library/Application Support/app.kith.mac/config.json` and wins over the built-in default.
 
 The server must be `https://`. Plain `http://` is allowed only for this Mac (`localhost`) or the local network, which is
 handy for development, e.g. `http://localhost:8787`.
+
+Sign-in follows the server. A local dev server with `KITH_DEV_LOGIN=true` shows its "Try as…" buttons, and a server
+with Pocket ID sends you to Pocket ID inside the window. The app never turns dev sign-in on itself.
 
 ## Build
 

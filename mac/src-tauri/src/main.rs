@@ -21,6 +21,9 @@ use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
 const MAIN: &str = "main";
+/// Used when neither a saved address nor a built-in one is set: a Kith server on this Mac
+/// (`docker compose up` serves it on port 8787).
+const DEFAULT_SERVER: &str = "http://localhost:8787";
 /// How long sign-in may wander off to the provider before we stop treating other hosts as part of it.
 const SIGNIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 
@@ -57,7 +60,7 @@ fn load_config(app: &AppHandle) -> Config {
         .and_then(|s| serde_json::from_str(s).ok())
         .or_else(|| baked.as_deref().and_then(|s| serde_json::from_str(s).ok()))
         .unwrap_or_default();
-    cfg.server = cfg.server.as_deref().and_then(normalise_server);
+    cfg.server = cfg.server.as_deref().and_then(normalise_server).or_else(|| normalise_server(DEFAULT_SERVER));
     cfg
 }
 
