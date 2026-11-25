@@ -37,6 +37,8 @@ import { writeHistory } from "./history.js";
 import { getSubject } from "../study/study.js";
 import { logActivity } from "../desk/activity.js";
 import { get as dbGet } from "../db.js";
+import { boardTools } from "./boardTools.js";
+import { homeTools } from "./homeTools.js";
 export type { Mode } from "./modes.js";
 export type Mood = "happy" | "thinking" | "sleepy" | "resting" | "concerned";
 
@@ -256,6 +258,8 @@ async function generateReply(
   const outsideTools = [...(await connectionTools(db, settings.connections)), ...nativeTools(db)].map((t) => heldTool(t, fx));
   const tools: ToolDef[] = [
     ...builtinTools(db, deps.studio, fx, llm, safety).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
+    ...boardTools(db, fx),
+    ...homeTools(db, fx),
     ...outsideTools,
     ...googleTools(db, deps.studio.storage?.google?.ready() ? deps.studio.storage.google.drive : null, fx as { confirms: Pending[]; staged: Staged[]; untrusted: string[] }, { coursework, safety }),
   ];

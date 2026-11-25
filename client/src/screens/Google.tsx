@@ -137,14 +137,29 @@ export async function pickGoogleFile(types = ["application/vnd.google-apps.docum
   await new Promise<void>((r) => window.gapi!.load("picker", () => r()));
   const P = window.google!.picker;
   return new Promise((resolve) => {
+    // Kith's own Close button over Google's window: if the Picker shows an error or stays blank,
+    // it has no way out of its own.
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "picker-close";
+    close.textContent = "Close";
+    let picker: { setVisible(v: boolean): void; dispose(): void } | null = null;
+    const done = (v: { id: string; name: string; mimeType: string } | null) => {
+      close.remove();
+      try { picker?.setVisible(false); picker?.dispose(); } catch { /* already gone */ }
+      resolve(v);
+    };
+    close.onclick = () => done(null);
     const view = new P.DocsView(P.ViewId.DOCS).setMimeTypes(types.join(","));
-    new P.PickerBuilder()
-      .addView(view).setOAuthToken(cfg.token).setDeveloperKey(cfg.apiKey).setAppId(cfg.appId)
+    picker = new P.PickerBuilder()
+      .addView(view).setOAuthToken(cfg.token).setDeveloperKey(cfg.apiKey).setAppId(cfg.appId).setOrigin(location.origin)
       .setCallback((d: { action: string; docs?: { id: string; name: string; mimeType: string }[] }) => {
-        if (d.action === P.Action.PICKED && d.docs?.[0]) resolve({ id: d.docs[0].id, name: d.docs[0].name, mimeType: d.docs[0].mimeType });
-        if (d.action === P.Action.CANCEL) resolve(null);
+        if (d.action === P.Action.PICKED && d.docs?.[0]) done({ id: d.docs[0].id, name: d.docs[0].name, mimeType: d.docs[0].mimeType });
+        if (d.action === P.Action.CANCEL) done(null);
       })
-      .build().setVisible(true);
+      .build();
+    picker!.setVisible(true);
+    document.body.appendChild(close);
   });
 }
 

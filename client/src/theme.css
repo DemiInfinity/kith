@@ -1077,3 +1077,7 @@ dialog.sheet h3:focus { outline: none; }
 .cc-info b { font-family: var(--serif); font-size: 1.25rem; font-weight: 600; }
 .cc-info span { font-size: 0.8125rem; font-weight: 800; color: var(--muted); }
 .cc-info .btn { align-self: flex-start; margin-top: 4px; }
+
+/* Kith's own way out of the Google Picker (Google's window can't always be closed). */
+.picker-close { position: fixed; top: calc(10px + var(--safe-top)); right: 14px; z-index: 2147483647; min-height: 40px; padding: 0 18px;
+  border: 0; border-radius: 999px; background: var(--lilac); color: var(--ink); font-weight: 900; font-size: 0.95rem; box-shadow: 0 4px 18px rgba(0,0,0,0.35); }

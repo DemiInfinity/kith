@@ -102,6 +102,8 @@ export const config = {
       token: env.KITH_HA_TOKEN ?? "",
       service: env.KITH_HA_SERVICE ?? "script.ai_board_post",
       handle: env.KITH_HA_HANDLE ?? "kith",
+      /** Home Assistant entities the companion may check and control for the child (none: no home tools). */
+      devices: list(env.KITH_HA_DEVICES),
       kinds: {
         now: env.KITH_HA_KIND_NOW ?? "child_now",
         today: env.KITH_HA_KIND_TODAY ?? "child_today",
