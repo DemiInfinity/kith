@@ -4,6 +4,7 @@ import { api, type Helpline, type Me, type Profile, type Transparency } from "..
 import { Avatar } from "../components/Avatar";
 import { dayLabel, Toggle, when } from "../components/bits";
 import { DeskComputer } from "./DeskComputer";
+import { ParentSkills } from "./ParentSkills";
 
 interface Budgets { weeklyUsd: number; deskSharePercent: number; windowUsd: number; windowHours: number; rolloverCapUsd: number; hardStopUsd: number; lowPowerAtPercent: number; weekResetDay: number }
 interface Connection { id: string; kind: "home-assistant" | "kin" | "jellyfin" | "calculator" | "dictionary" | "web" | "mcp" | "google-drive"; name: string; enabled: boolean; level: "look" | "act"; url: string; tokenEnv: string; allowedTools: string[]; entities: string[]; sites: string[]; account: string }
@@ -273,8 +274,8 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   );
 }
 
-type PTab = "overview" | "reports" | "desk" | "connectors" | "settings";
-const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["connectors", "sparkle", "Connectors"], ["settings", "settings", "Settings"]];
+type PTab = "overview" | "reports" | "desk" | "connectors" | "skills" | "settings";
+const PNAV: [PTab, IconName, string][] = [["overview", "home", "Overview"], ["reports", "bell", "Reports"], ["desk", "desk", "Desk"], ["connectors", "sparkle", "Connectors"], ["skills", "bulb", "Skills"], ["settings", "settings", "Settings"]];
 
 function Tile({ icon, label, value, cap, sub }: { icon: IconName; label: string; value: number; cap: number; sub: React.ReactNode }) {
   const pct = cap > 0 ? Math.min(100, (value / cap) * 100) : 0;
@@ -426,6 +427,7 @@ export function Parent({ me }: { me: Me }) {
           {tab === "reports" && <div className="pcols">{reports}{summaries}</div>}
           {tab === "desk" && <DeskComputer me={meChild} canEdit={false} />}
           {tab === "settings" && o && <SettingsForm key="settings" initial={o.settings} onSaved={load} />}
+          {tab === "skills" && <ParentSkills companion={comp.name} childName={cname} />}
           {tab === "connectors" && o && <SettingsForm key="connectors" section="connectors" companion={comp.name} initial={o.settings} onSaved={load} />}
         </div>
       </div>

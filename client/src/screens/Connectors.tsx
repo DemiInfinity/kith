@@ -19,12 +19,14 @@ const WHAT: Record<string, (name: string, act: boolean) => string> = {
 /** What the companion is connected to: only what the grown-up switched on, and what each one lets it do. */
 export function Connectors({ me }: { me: Me }) {
   const [list, setList] = useState<Connector[] | null>(null);
+  const [skills, setSkills] = useState<{ id: number; name: string; description: string; command: string | null }[]>([]);
+  useEffect(() => { api<{ skills: typeof skills }>("/api/skills").then((r) => setSkills(r.skills)).catch(() => undefined); }, []);
   const name = me.profile.name;
   useEffect(() => { api<{ connectors: Connector[] }>("/api/connectors").then((r) => setList(r.connectors)).catch(() => setList([])); }, []);
   return (
     <div className="screen narrow dgrid">
       <span className="hand">what {name} can use</span>
-      <h2 className="screen-title">Connectors</h2>
+      <h2 className="screen-title">Connectors and skills</h2>
       <span className="small">{me.parentLabel} chooses these. Each one is either <b>look only</b> or <b>can act</b>, and {me.parentLabel} can see every time {name} uses one. {name} never spends money, messages anyone or posts online, whatever is connected.</span>
       {list === null && <span className="small">…</span>}
       {list?.length === 0 && <div className="card full"><b>Nothing connected yet</b><span className="small">{name} just chats, helps and makes things on its desk for now. Ask {me.parentLabel} if there’s something you’d like {name} to be able to use.</span></div>}
@@ -39,6 +41,20 @@ export function Connectors({ me }: { me: Me }) {
           {c.tools.length > 0 && <div className="chips">{c.tools.map((t) => <span key={t} className="chip" style={{ minHeight: 28, fontSize: 12 }}>{t.replace(/_/g, " ")}</span>)}</div>}
         </div>
       ))}
+      {skills.length > 0 && <>
+        <b style={{ marginTop: 8 }}>Skills</b>
+        <span className="small">Ways of helping that {me.parentLabel} wrote for {name}. Type a command in chat (like <b>/{skills.find((k) => k.command)?.command ?? "quiz"}</b>) to use one straight away.</span>
+        {skills.map((k) => (
+          <div key={k.id} className="card ccon">
+            <div className="row" style={{ gap: 12 }}>
+              <span className="psec-ic"><Icon name="bulb" size={18} /></span>
+              <b style={{ flex: 1, fontFamily: "var(--serif)", fontSize: 18 }}>{k.name}</b>
+              {k.command && <span className="pcmd">/{k.command}</span>}
+            </div>
+            <span style={{ fontSize: 14, color: "var(--text-3)" }}>{k.description}</span>
+          </div>
+        ))}
+      </>}
     </div>
   );
 }

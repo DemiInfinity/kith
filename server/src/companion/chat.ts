@@ -27,6 +27,7 @@ import { localParts } from "../budget/time.js";
 import { modeNote, prefersLowPower, type Mode, type ModeCtx } from "./modes.js";
 import { conversationContext } from "./context.js";
 import { getThread, MAIN_THREAD, threadNote, touchThread } from "./threads.js";
+import { enabledSkills, skillForCommand, skillsNote, skillText } from "./skills.js";
 import { writeHistory } from "./history.js";
 import { getSubject } from "../study/study.js";
 import { logActivity } from "../desk/activity.js";
@@ -178,6 +179,20 @@ async function generateReply(
     ...builtinTools(db, deps.studio, a.effects).filter((t) => !coursework || !["start_desk_project", "change_desk_item"].includes(t.name)),
     ...(await connectionTools(db, settings.connections)),
   ];
+  // Skills the parent wrote: the list is in the prompt; the full text loads only when it's used.
+  const skills = enabledSkills(db);
+  if (skills.length) {
+    tools.push({
+      name: "use_skill", connection: "skills", level: "look",
+      description: "Load one of the skills listed in your instructions (written by their grown-up) when it fits what they want. Returns how to do it.",
+      input_schema: { type: "object", additionalProperties: false, properties: { name: { type: "string", enum: skills.map((k) => k.name) } }, required: ["name"] },
+      run: async (input) => {
+        const k = skills.find((x) => x.name === (input as { name?: string }).name);
+        return k ? skillText(k, parent) : "There's no skill with that name.";
+      },
+    });
+  }
+  const commanded = skillForCommand(db, a.clean);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
   // Stable first and cached: the rules and personality, then memories and the rolling summary
@@ -205,6 +220,7 @@ async function generateReply(
         model === config.anthropic.lowModel ? "You're on Low power right now: keep replies simple and short." : "",
         modeNote(db, a.mode, a.ctx),
         threadNote(db, a.thread),
+        skillsNote(db),
         "Older conversations are archived. Your summary covers the gist; only if they ask you to remember something specific from before that isn't in it, use recall_history to look it up (don't use it otherwise).",
       ].filter(Boolean).join("\n\n"),
     },
@@ -219,6 +235,7 @@ async function generateReply(
   messages.push({ role: "user", content: a.clean });
 
   const notes: string[] = [];
+  if (commanded) notes.push(`They typed /${commanded.command}, so use this skill now.\n\n${skillText(commanded, parent)}`);
   if (a.verdict.steer) notes.push(`Safety guidance for this reply: ${a.verdict.steer}`);
   if (a.switchedToLow && a.energy.fullBackAt) {
     notes.push(`You've just switched to Low power. Mention it briefly and cheerfully (e.g. "I'm in low-power mode until ${whenText(a.energy.fullBackAt).replace(/^at /, "")}"), no apology, then carry on.`);

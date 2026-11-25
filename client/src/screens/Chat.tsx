@@ -38,6 +38,12 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [made, setMade] = useState<Record<number, Turn["effects"]>>({});
   const [text, setText] = useState("");
+  // "/" commands from the skills their grown-up wrote.
+  const [cmds, setCmds] = useState<{ id: number; name: string; description: string; command: string | null }[]>([]);
+  const [slashPick, setSlashPick] = useState(0);
+  useEffect(() => { api<{ skills: typeof cmds }>("/api/skills").then((r) => setCmds(r.skills.filter((k) => k.command))).catch(() => undefined); }, []);
+  const slashMatches = /^\/[a-z0-9-]*$/i.test(text) ? cmds.filter((k) => k.command!.startsWith(text.slice(1).toLowerCase())) : [];
+  useEffect(() => setSlashPick(0), [text]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState(false);
@@ -156,11 +162,24 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
           {quick.map(([ic, t]) => <button key={t} onClick={() => send(t)}><Icon name={ic as IconName} size={15} style={{ verticalAlign: -3, marginRight: 4 }} />{t}</button>)}
         </div>
       )}
+      {slashMatches.length > 0 && (
+        <div className="slashmenu" role="listbox" aria-label="Commands">
+          {slashMatches.map((k, i) => (
+            <button key={k.id} role="option" aria-selected={i === slashPick} className={i === slashPick ? "on" : ""} onMouseDown={(e) => { e.preventDefault(); setText(`/${k.command} `); }}>
+              <span className="pcmd">/{k.command}</span><span><b>{k.name}</b><span className="small"> · {k.description}</span></span>
+            </button>
+          ))}
+        </div>
+      )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <textarea
           aria-label={`Message ${name}`} placeholder={`Message ${name}…`} value={text} rows={1} maxLength={4000}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+          onKeyDown={(e) => {
+            if (slashMatches.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setSlashPick((p) => (p + (e.key === "ArrowDown" ? 1 : slashMatches.length - 1)) % slashMatches.length); return; }
+            if (slashMatches.length > 0 && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) { e.preventDefault(); setText(`/${slashMatches[slashPick]?.command ?? slashMatches[0].command} `); return; }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
+          }}
         />
         <button type="button" className="roundbtn" aria-label="Talk instead" onClick={() => go("/talk")}><Icon name="mic" size={22} /></button>
         <button type="submit" className="roundbtn send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" size={22} /></button>

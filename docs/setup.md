@@ -235,3 +235,12 @@ docker compose logs -f kith
   - `desk-data`: everything on the desk.
   - Back up both.
 - **Upgrades:** `git pull && docker compose up -d --build`.
+
+## Skills and /commands
+
+In the parent view, **Skills** holds how-tos you write for the companion (how to help with maths, how to run a quiz,
+your rules for game nights). The companion sees each skill's name and when to use it, and loads the full text (with
+its `use_skill` tool) only when it's relevant. Give a skill a command (like `quiz`) and your child can type `/quiz` in
+chat to use it straight away; typing `/` shows the list. Your safeguards always come first, whatever a skill says.
+Three examples are ready to start from. Your child can see the skills that are on under Settings › Connectors and
+skills.

@@ -1,3 +1,4 @@
+import { deleteSkill, enabledSkills, EXAMPLES, listSkills, saveSkill } from "./companion/skills.js";
 import { canStoreKeys, checkKey, currentKey, keyStatus, looksLikeKey, removeKey, saveKey } from "./apikey.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -217,6 +218,23 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const a = z.object({ x: z.number(), y: z.number() }).parse(req.body);
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
+  });
+  // Skills: the parent writes them; the child sees the ones that are on (and their /commands).
+  app.get("/api/skills", { preHandler: either }, async () => ({
+    skills: enabledSkills(db).map((k) => ({ id: k.id, name: k.name, description: k.description, command: k.command })),
+  }));
+  app.get("/api/parent/skills", { preHandler: parent }, async () => ({ skills: listSkills(db), examples: EXAMPLES }));
+  app.post("/api/parent/skills", { preHandler: parent }, async (req, reply) => {
+    const r = saveSkill(db, req.body);
+    return r.ok ? r.skill : reply.code(400).send({ error: r.error });
+  });
+  app.put("/api/parent/skills/:id", { preHandler: parent }, async (req, reply) => {
+    const r = saveSkill(db, req.body, Number((req.params as { id: string }).id));
+    return r.ok ? r.skill : reply.code(400).send({ error: r.error });
+  });
+  app.delete("/api/parent/skills/:id", { preHandler: parent }, async (req) => {
+    deleteSkill(db, Number((req.params as { id: string }).id));
+    return { ok: true };
   });
   // The connectors the parent switched on, for the child to see (names and what Pip can do: no
   // addresses, tokens or settings).

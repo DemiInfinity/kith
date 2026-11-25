@@ -203,7 +203,7 @@ export function Settings({ me, go, state }: { me: Me; go: (to: string) => void; 
     ["/notifications", "bell", "Notifications", "Turn on, test, and choose what reaches your phone"],
     ["/memory", "brain", `What ${name} remembers`, "See and delete memories; check-ins"],
     ["/shared", "eye", `What ${me.parentLabel} sees`, "Nothing secret here"],
-    ["/connectors", "sparkle", "Connectors", `What ${me.parentLabel} has connected ${name} to`],
+    ["/connectors", "sparkle", "Connectors and skills", `What ${me.parentLabel} has connected ${name} to, and its /commands`],
     ["/google", "cloud", "Google Drive", "Save what you make to your own Drive"],
   ];
   return (

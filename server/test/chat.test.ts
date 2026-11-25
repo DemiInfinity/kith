@@ -48,6 +48,18 @@ const tick = () => new Promise((r) => setImmediate(r));
 const chatCalls = (llm: ScriptedLLM) => llm.calls.filter((c) => c.kind === "chat" || c.kind === "talk");
 
 describe("a turn of conversation", () => {
+  it("lists the parent's skills, offers use_skill, and follows a /command straight away", async () => {
+    const llm = new ScriptedLLM({ replies: ["Question 1: what year did the Tudors begin?"] });
+    const d = deps(llm);
+    const { EXAMPLES, saveSkill } = await import("../src/companion/skills.js");
+    saveSkill(d.db, EXAMPLES[1]);
+    await takeTurn(d, { text: "/quiz the Tudors", mode: "chat" });
+    const p = chatCalls(llm)[0].params as unknown as { system: { text: string }[]; tools: { name: string }[]; messages: { role: string; content: unknown }[] };
+    expect(p.system.map((b) => b.text).join("\n")).toContain("Quick quiz (/quiz)");
+    expect(p.tools.map((t) => t.name)).toContain("use_skill");
+    expect(JSON.stringify(p.messages)).toContain("They typed /quiz, so use this skill now");
+  });
+
   it("replies and stores both messages", async () => {
     const llm = new ScriptedLLM({ replies: ["Course! What's the first one?"] });
     const t = await takeTurn(deps(llm), { text: "can you help with my fractions homework", mode: "chat" });
