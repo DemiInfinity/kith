@@ -9,7 +9,7 @@ export type IconName = "chat" | "study" | "create" | "settings" | "grownup" | "c
   | "shield" | "bulb" | "question" | "brush" | "landmark" | "map" | "mask" | "trash" | "plus" | "arrow" | "back" | "play"
   | "speaker" | "joystick" | "eye" | "cards" | "timer" | "note" | "siren" | "phone" | "bell" | "brain" | "cloud" | "idcard"
   | "calendar" | "heart" | "pencil" | "compass" | "folder" | "journal" | "cap" | "gamepad" | "people" | "sparkle" | "laptop"
-  | "music" | "breath" | "chat2" | "star" | "home" | "expand" | "shrink";
+  | "music" | "breath" | "chat2" | "star" | "home" | "expand" | "shrink" | "globe";
 
 const P: Record<IconName, (on: boolean) => ReactNode> = {
   // a speech bubble with three dots
@@ -165,6 +165,8 @@ const P: Record<IconName, (on: boolean) => ReactNode> = {
   calendar: () => <><rect x="4" y="5.5" width="16" height="14" rx="2" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4M8.5 14h.01M12 14h.01M15.5 14h.01" /></>,
   heart: () => <path d="M12 19.5c-5-3.6-8-6.4-8-10a4 4 0 0 1 8-1.7 4 4 0 0 1 8 1.7c0 3.6-3 6.4-8 10Z" fill="currentColor" fillOpacity={0.15} />,
   pencil: () => <><path d="M15.5 4.5l4 4L9 19H5v-4L15.5 4.5Z" /><path d="M13.5 6.5l4 4" /></>,
+  // a globe with a speech bubble tail: languages
+  globe: (on) => <><circle cx="11" cy="11" r="7.5" fill={on ? "currentColor" : "none"} fillOpacity={on ? 0.18 : 0} /><path d="M3.5 11h15M11 3.5c2.2 2.2 3 4.7 3 7.5s-.8 5.3-3 7.5M11 3.5c-2.2 2.2-3 4.7-3 7.5s.8 5.3 3 7.5M16.5 16.5l3.5 3.5" /></>,
   compass: () => <><circle cx="12" cy="12" r="8.5" /><path d="M15.5 8.5l-2 5-5 2 2-5 5-2Z" fill="currentColor" fillOpacity={0.2} /></>,
   folder: () => <path d="M3.5 7c0-.8.7-1.5 1.5-1.5h4.3l2 2H19c.8 0 1.5.7 1.5 1.5v8.5c0 .8-.7 1.5-1.5 1.5H5c-.8 0-1.5-.7-1.5-1.5V7Z" />,
   journal: () => <><path d="M6 4h11a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 17 20H6V4Z" /><path d="M9 4v16M11.5 8.5h4.5M11.5 11.5h4.5" /></>,

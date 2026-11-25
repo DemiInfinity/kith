@@ -223,7 +223,13 @@ export function Study({ me, onTurn, onMood, openHelp, go }: { me: Me; onTurn: (t
       ))}
     </div>
   );
-  const head = <div><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>;
+  const head = (
+    <div className="spread" style={{ alignItems: "flex-end" }}>
+      <div><span className="hand">revision, your way</span><h2 className="screen-title" style={{ marginTop: 0 }}>Study</h2></div>
+      {/* On a phone the tab bar has no room for Languages, so it lives here too. */}
+      <button className="chip" onClick={() => go("/languages")}><IL i="globe">Languages</IL></button>
+    </div>
+  );
 
   const askInChat = () => {
     const label = `Studying${subj ? ` ${subj.subject.name}` : ""}${isCoursework ? " · coursework" : ""}`;

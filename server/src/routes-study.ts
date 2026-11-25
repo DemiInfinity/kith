@@ -18,6 +18,10 @@ import {
   accepted, addPassage, decide, deleteStory, getStory, listStories, passages, saveStory, storyMarkdown,
 } from "./study/story.js";
 import { markdownToHtml, MIME } from "./storage/google.js";
+import {
+  addLangCards, dueLangCards, gradeLangCard, KANA_RE, kanaProgress, LANG_NAME, langCardStats, LANGS, languageSummary, loadLangProfiles,
+  markKana, practiceWeek, saveLangProfile, STARTERS, topicFor,
+} from "./study/languages.js";
 import type { Storage } from "./storage/storage.js";
 
 const child = requireRole("child");
@@ -28,7 +32,7 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
   const today = () => localDate(Date.now(), config.timezone);
 
   /** Small-model JSON with the output safety check on the visible text. */
-  async function askJson<T>(reply: FastifyReply, opts: { kind: "study" | "story" | "art"; full?: boolean; system: string; prompt: string; schema: Record<string, unknown>; parse: (v: unknown) => T; visible: (v: T) => string }) {
+  async function askJson<T>(reply: FastifyReply, opts: { kind: "study" | "story" | "art" | "language"; full?: boolean; system: string; prompt: string; schema: Record<string, unknown>; parse: (v: unknown) => T; visible: (v: T) => string }) {
     const e = energyNow(db);
     if (e.mode === "resting") return reply.code(409).send({ error: "I'm resting until the energy tops up. “Grown-up?” always works." });
     try {
@@ -141,6 +145,62 @@ export function registerStudy(app: FastifyInstance, d: { db: DB; llm: LLM; safet
 
   // The coursework help log is the child's, to show their teacher.
   app.get("/api/study/help-log", { preHandler: child }, async () => ({ entries: helpLog(db) }));
+
+  // ── Languages ──────────────────────────────────────────────────────────────────────────
+  const langOf = (req: { params: unknown }) => z.enum(LANGS).parse((req.params as { lang: string }).lang);
+  const languagesView = () => {
+    const profiles = loadLangProfiles(db);
+    return {
+      languages: LANGS.map((lang) => ({
+        lang, name: LANG_NAME[lang], profile: profiles[lang], cards: langCardStats(db, lang), week: practiceWeek(db, lang),
+        topic: topicFor(lang, profiles[lang], today()),
+      })),
+      kana: kanaProgress(db),
+      summary: languageSummary(db),
+    };
+  };
+  app.get("/api/languages", { preHandler: child }, async () => languagesView());
+  app.put("/api/languages/:lang", { preHandler: either }, async (req) => saveLangProfile(db, langOf(req), req.body));
+  app.get("/api/languages/:lang/cards/due", { preHandler: child }, async (req) => ({ cards: dueLangCards(db, langOf(req)) }));
+  const LangCardsBody = z.object({ topic: z.string().max(80).default(""), cards: z.array(z.object({ front: z.string().max(200), back: z.string().max(300), reading: z.string().max(120).optional() })).min(1).max(60) });
+  app.post("/api/languages/:lang/cards", { preHandler: child }, async (req, reply) => {
+    const b = LangCardsBody.parse(req.body);
+    // Phrases saved from chat are the companion's words, but check them anyway: they become study material.
+    const text = b.cards.map((c) => `${c.front} ${c.back}`).join("\n");
+    const cats = [...checkInputRules(text).categories, ...checkOutputRules(text)];
+    if (cats.some((c) => ["sexual", "romance", "grown_up_content"].includes(c))) return reply.code(422).send({ error: "That one can't go on a card." });
+    return { added: addLangCards(db, langOf(req), b.topic, b.cards) };
+  });
+  app.post("/api/languages/:lang/starter", { preHandler: child }, async (req) => {
+    const lang = langOf(req);
+    return { added: addLangCards(db, lang, "Starter words", STARTERS[lang]) };
+  });
+  app.post("/api/languages/cards/:id/review", { preHandler: child }, async (req, reply) => {
+    const { grade } = z.object({ grade: z.enum(["again", "hard", "good", "easy"]) }).parse(req.body);
+    return gradeLangCard(db, Number((req.params as { id: string }).id), grade as Grade) ?? reply.code(404).send({ error: "not found" });
+  });
+  app.post("/api/languages/:lang/cards/generate", { preHandler: child, config: { rateLimit: { max: 6, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const lang = langOf(req);
+    const b = z.object({ topic: z.string().trim().min(2).max(120), count: z.number().int().min(4).max(20).default(10) }).parse(req.body);
+    if (!(await okInput(reply, b.topic))) return;
+    const p = loadLangProfiles(db)[lang];
+    const out = await askJson(reply, {
+      kind: "language",
+      system: `You write ${LANG_NAME[lang]} vocabulary flashcards for a teenage learner at CEFR ${p.level}${lang === "es" ? ` (${p.variety === "spain" ? "Spain" : "Latin American"} Spanish)` : ""}. Front: the ${LANG_NAME[lang]} word or short phrase${lang === "ja" ? " (kana, or simple kanji)" : ""}. Back: the English meaning.${lang === "ja" ? " Reading: the whole front in hiragana." : " Reading: leave empty."} Common, useful, age-appropriate words only.`,
+      prompt: `Make ${b.count} cards on: ${b.topic}`,
+      schema: { type: "object", additionalProperties: false, required: ["cards"], properties: { cards: { type: "array", items: { type: "object", additionalProperties: false, required: ["front", "back", "reading"], properties: { front: { type: "string" }, back: { type: "string" }, reading: { type: "string" } } } } } },
+      parse: (v) => z.object({ cards: z.array(z.object({ front: z.string(), back: z.string(), reading: z.string() })) }).parse(v),
+      visible: (v) => v.cards.map((c) => `${c.front} ${c.back}`).join("\n"),
+    });
+    if (!out || reply.sent) return;
+    return { added: addLangCards(db, lang, b.topic, out.cards) };
+  });
+  app.post("/api/languages/kana", { preHandler: child }, async (req, reply) => {
+    const b = z.object({ kana: z.string().regex(KANA_RE), correct: z.boolean() }).parse(req.body);
+    try { return markKana(db, b.kana, b.correct); } catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
+  });
+  // The parent sees levels, counts and topics: never the practice chats.
+  app.get("/api/parent/languages", { preHandler: requireRole("parent") }, async () => ({ summary: languageSummary(db), profiles: loadLangProfiles(db) }));
 
   // ── Art ────────────────────────────────────────────────────────────────────────────────
   app.get("/api/art", { preHandler: child }, async () => ({

@@ -57,6 +57,41 @@ function VoiceCheck({ v }: { v: VoiceS }) {
 
 interface TestMsg { role: "parent" | "companion"; text: string; meta?: string }
 
+interface LangSummary { lang: "es" | "ja"; name: string; level: string; goal: string; words: number; cards: number; week: { days: number; chats: number; reviews: number; kana: number; topics: string[] }; hiragana?: number; katakana?: number }
+type LangLevel = "A1" | "A2" | "B1";
+
+/** Languages at the topic level: levels, words learned and what they chatted about, never the chats. */
+function ParentLanguages({ child, companion }: { child: string; companion: string }) {
+  const [v, setV] = useState<{ summary: LangSummary[]; profiles: Record<"es" | "ja", { enabled: boolean; level: LangLevel }> } | null>(null);
+  const load = useCallback(() => api<NonNullable<typeof v>>("/api/parent/languages").then(setV).catch(() => undefined), []);
+  useEffect(() => { void load(); }, [load]);
+  if (!v) return null;
+  const setLang = async (lang: "es" | "ja", patch: object) => { await api(`/api/languages/${lang}`, { method: "PUT", body: patch }); void load(); };
+  const title = { es: "Español", ja: "日本語" } as const;
+  return (
+    <section className="card psec">
+      <div className="spread"><h3 className="psec-h"><span className="psec-ic"><Icon name="globe" size={18} /></span>Languages this week</h3><span className="small">{child || "Your child"} sees the same summary</span></div>
+      {(["es", "ja"] as const).map((lang) => {
+        const s = v.summary.find((x) => x.lang === lang);
+        const p = v.profiles[lang];
+        return (
+          <div key={lang} className="memrow" style={{ alignItems: "flex-start", padding: "10px 12px", flexWrap: "wrap", gap: 10 }}>
+            <span className="t" style={{ flex: 1, minWidth: 200 }}>
+              <b>{title[lang]}</b> {s ? <>· {s.words} words learned{s.hiragana !== undefined ? ` · ${s.hiragana} of 46 hiragana` : ""}</> : <span className="small">· switched off</span>}<br />
+              {s && <span className="small">{s.week.days} {s.week.days === 1 ? "day" : "days"} of practice · {s.week.chats} practice chats with {companion}{s.week.topics.length ? ` · topics: ${s.week.topics.join(", ")}` : ""}</span>}
+            </span>
+            <select className="select" style={{ width: 92 }} aria-label={`${title[lang]} level`} value={p.level} onChange={(e) => void setLang(lang, { level: e.target.value })}>
+              <option>A1</option><option>A2</option><option>B1</option>
+            </select>
+            <Toggle label="On" checked={p.enabled} onChange={(on) => void setLang(lang, { enabled: on })} />
+          </div>
+        );
+      })}
+      <span className="small">You see levels, counts and topics. The practice chats themselves stay private, like the rest of Kith, and the usual safety reports still reach you in English.</span>
+    </section>
+  );
+}
+
 /** A short private test chat: proves the companion really answers, through the same safety check. */
 function TestChat({ name, ready, onNeedKey }: { name: string; ready: boolean; onNeedKey: () => void }) {
   const [msgs, setMsgs] = useState<TestMsg[]>([]);
@@ -639,6 +674,7 @@ export function Parent({ me }: { me: Me }) {
                 </div>
               </div>
               <TestChat name={comp.name} ready={o.status.apiReady} onNeedKey={() => { setTab("settings"); setTimeout(() => document.getElementById("set-claude")?.scrollIntoView({ behavior: "smooth" }), 80); }} />
+              <ParentLanguages child={cname} companion={comp.name} />
               {disk && (
                 <div className="card pstorage">
                   <span className="ptile-h"><span className="psec-ic"><Icon name="folder" size={16} /></span>Storage</span>

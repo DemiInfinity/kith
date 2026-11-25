@@ -12,6 +12,7 @@ import { childName, requireRole } from "./auth.js";
 import { createThread, listThreads, MAIN_THREAD, updateThread } from "./companion/threads.js";
 import { listHistory, readHistory } from "./companion/history.js";
 import { MODES } from "./companion/modes.js";
+import { LANGS, logPractice } from "./study/languages.js";
 import { getSubject, logHelp } from "./study/study.js";
 import { CompanionProfile, OFFERED_LOOKS, loadParentSettings, loadProfile, ParentSettings, saveParentSettings, saveProfile } from "./settings.js";
 import { energyNow, recentMessages, takeTurn, type Deps } from "./companion/chat.js";
@@ -130,7 +131,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
   const ChatBody = z.object({
     text: z.string().trim().min(1).max(4000),
     mode: z.enum(MODES).default("chat"),
-    ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional() }).default({}),
+    ctx: z.object({ subjectId: z.number().int().optional(), coursework: z.boolean().optional(), storyId: z.number().int().optional(), lang: z.enum(LANGS).optional(), topic: z.string().max(120).optional() }).default({}),
     thread: z.number().int().optional(),
     // A document shared from the Mac app (its text only).
     file: z.object({ name: z.string().max(200), text: z.string().min(1).max(12_000) }).optional(),
@@ -143,6 +144,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     if ((body.mode === "study" || body.mode === "art") && (body.ctx.coursework || subject?.subject.coursework)) {
       logHelp(db, subject?.subject.name ?? (body.mode === "art" ? "Art" : "Coursework"), turn.child.text, "Tutor help only: explanations, questions and feedback (no work produced).");
     }
+    // Language practice counts towards "days this week" (the topic only, never the chat).
+    if (body.mode === "language" && body.ctx.lang) logPractice(db, body.ctx.lang, "chat", body.ctx.topic ?? "");
     return { ...turn, energy: childEnergy(turn.energy) };
   });
 

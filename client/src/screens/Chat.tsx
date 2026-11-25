@@ -4,6 +4,7 @@ import { dayLabel, EnergyCard } from "../components/bits";
 import type { AppState, Memory } from "../api";
 import { Icon, type IconName } from "../components/Icons";
 import { isMacApp, pickDocument, type SharedFile } from "../lib/native";
+import { hasKana, parseLesson, say } from "../lib/kana";
 
 /** What the chat is about right now (set by "Ask Pip" buttons in Study, Art, the OC workshop…). */
 export interface ChatContext { mode: Mode; ctx: ModeCtx; label: string }
@@ -31,6 +32,8 @@ export const BUILTIN: { cmd: string; name: string; desc: string; icon: IconName 
   { cmd: "reload-skills", name: "Reload skills", desc: "Get the latest skills from your grown-up", icon: "newchat" },
   { cmd: "memory", name: "Memory", desc: "What’s remembered about you", icon: "brain" },
   { cmd: "schedule", name: "Scheduled", desc: "Reminders and things you asked for", icon: "calendar" },
+  { cmd: "es", name: "Español", desc: "Practise Spanish with me", icon: "globe" },
+  { cmd: "ja", name: "日本語", desc: "Practise Japanese with me", icon: "globe" },
   { cmd: "desk", name: "Desk", desc: "Open the desk", icon: "desk" },
   { cmd: "new", name: "New side chat", desc: "Start a side chat", icon: "newchat" },
   { cmd: "call", name: "Call", desc: "Start a call", icon: "call" },
@@ -50,6 +53,8 @@ const QUICK: Record<string, string[][]> = {
   chat: [["study", "Can you help with my homework?"], ["chat2", "Can I talk something through?"], ["sparkle", "Write me a story"], ["cards", "Make me some flashcards"]],
   study: [["brain", "Quiz me on what I revised today"], ["question", "Explain this simply"], ["note", "How do I answer an 'evaluate' question?"], ["breath", "I'm stressed about exams"]],
   art: [["bulb", "Give me a drawing prompt"], ["brush", "How do I shade skin tones?"], ["landmark", "Who should I look at for bold colour?"], ["chat2", "Here's what I drew today…"]],
+  es: [["chat2", "¡Hola! ¿Qué tal?"], ["question", "¿Cómo se dice “dragon”?"], ["cards", "Quiz me on my words"], ["note", "Can you explain the past tense?"]],
+  ja: [["chat2", "こんにちは！"], ["question", "How do I say “I like drawing”?"], ["cards", "Quiz me on hiragana"], ["note", "Let’s practise ordering ramen"]],
   oc: [["sparkle", "Help me make a new OC"], ["art", "Make a palette for my OC"], ["map", "Let's build their world"], ["mask", "Let's play a scene"]],
 };
 
@@ -91,6 +96,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   const end = useRef<HTMLDivElement>(null);
   const name = me.profile.name;
   const mode: Mode = context?.mode ?? "chat";
+  // Language practice: English hints shown, or one tap away (her choice, remembered on this device).
+  const [hints, setHints] = useState(() => { try { return localStorage.getItem("kith-hints") !== "0"; } catch { return true; } });
+  const setHintsSaved = (v: boolean) => { setHints(v); try { localStorage.setItem("kith-hints", v ? "1" : "0"); } catch { /* fine */ } };
 
   useEffect(() => {
     setMessages(null);
@@ -123,7 +131,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
     setText("");
     const card = (body: React.ReactNode) => setCards([{ id: Date.now(), cmd, body }]);
     try {
-      if (cmd === "desk") go("/pip");
+      if (cmd === "es" || cmd === "ja") go(`/?mode=language&lang=${cmd}&label=${encodeURIComponent(cmd === "es" ? "Español" : "日本語")}`);
+      else if (cmd === "desk") go("/pip");
       else if (cmd === "schedule") go("/pip/scheduled");
       else if (cmd === "call") go("/talk");
       else if (cmd === "settings") go("/settings");
@@ -198,7 +207,8 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
   };
 
   const shown = messages ?? [];
-  const quick = QUICK[mode] ?? QUICK.chat;
+  const lang = context?.mode === "language" ? context.ctx.lang : undefined;
+  const quick = (lang ? QUICK[lang] : QUICK[mode]) ?? QUICK.chat;
 
   return (
     <>
@@ -217,7 +227,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
             <div key={m.id} style={{ display: "contents" }}>
               {newDay && <span className="daymark">{dayLabel(m.ts)}</span>}
               <div className={`msg ${m.role === "child" ? "me" : "pip"}`}>
-                <div className="bubble" onClick={() => m.id > 0 && setPicked(picked === m.id ? null : m.id)}>{m.text}</div>
+                <div className="bubble" onClick={() => m.id > 0 && setPicked(picked === m.id ? null : m.id)}>
+                  {m.mode === "language" && m.role === "companion" ? <Lesson text={m.text} hints={hints} lang={lang} /> : m.text}
+                </div>
               </div>
               {picked === m.id && (
                 <div className={`msgactions ${m.role === "child" ? "me" : ""}`}>
@@ -246,8 +258,9 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       </div>
       {context && (
         <div className="ctxchip">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={context.mode === "study" ? "study" : context.mode === "art" ? "art" : "oc"} size={15} />{context.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "")}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name={context.mode === "study" ? "study" : context.mode === "art" ? "art" : context.mode === "language" ? "globe" : "oc"} size={15} />{context.label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "")}</span>
           {context.ctx.coursework && <span className="small" style={{ color: "var(--ember)" }}>tutor only</span>}
+          {context.mode === "language" && <button className={`chip ${hints ? "on" : ""}`} style={{ minHeight: 28, padding: "0 10px" }} aria-pressed={hints} onClick={() => setHintsSaved(!hints)}>English hints</button>}
           <button className="x" aria-label="Back to everyday chat" onClick={onClearContext}><Icon name="close" size={16} /></button>
         </div>
       )}
@@ -308,5 +321,43 @@ export function Chat({ me, thread, context, onClearContext, onSplit, onTurn, onM
       </form>
       </div>
     </>
+  );
+}
+
+/** A practice-chat reply: hints she can show or tap, gentle corrections, and phrases to save as cards. */
+function Lesson({ text, hints, lang }: { text: string; hints: boolean; lang?: "es" | "ja" }) {
+  const pieces = parseLesson(text);
+  const [open, setOpen] = useState<Record<number, boolean>>({});
+  const [saved, setSaved] = useState<Record<number, string>>({});
+  const plain = pieces.filter((p) => p.t === "text").map((p) => (p as { text: string }).text).join(" ");
+  const speakLang = lang ?? (hasKana(plain) ? "ja" : "es");
+  const save = async (i: number, p: { front: string; back: string; reading: string }) => {
+    const l = lang ?? (hasKana(p.front) ? "ja" : "es");
+    try {
+      const r = await api<{ added: number }>(`/api/languages/${l}/cards`, { body: { topic: "From chat", cards: [{ front: p.front, back: p.back, reading: p.reading || undefined }] } });
+      setSaved((s) => ({ ...s, [i]: r.added ? "Saved as a card" : "Already a card" }));
+    } catch (e) { setSaved((s) => ({ ...s, [i]: (e as Error).message })); }
+  };
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  return (
+    <span className="lesson" lang={speakLang}>
+      {pieces.map((p, i) => {
+        if (p.t === "text") return <span key={i}>{p.text}</span>;
+        if (p.t === "hint") return hints || open[i]
+          ? <span key={i} className="hint" lang="en">{p.text}</span>
+          : <button key={i} className="hinttap" lang="en" onClick={(e) => { stop(e); setOpen((o) => ({ ...o, [i]: true })); }} aria-label="Show the English hint">EN</button>;
+        if (p.t === "fix") return (
+          <span key={i} className="fixnote" lang="en">
+            <b>One tweak:</b> <s lang={speakLang}>{p.wrote}</s> → <b lang={speakLang}>{p.better}</b>{p.why ? <span className="small"> · {p.why}</span> : null}
+          </span>
+        );
+        return (
+          <button key={i} className="savechip" disabled={!!saved[i]} onClick={(e) => { stop(e); void save(i, p); }}>
+            {saved[i] ? `✓ ${p.front} · ${saved[i]}` : <>+ <span lang={speakLang}>{p.front}</span> <span className="small" lang="en">({p.back})</span></>}
+          </button>
+        );
+      })}
+      <button className="hinttap speak" onClick={(e) => { stop(e); say(plain, speakLang); }} aria-label="Hear it"><Icon name="speaker" size={14} /></button>
+    </span>
   );
 }

@@ -6,7 +6,7 @@ import { localParts, nextWeekStart, startOfDay, startOfMonth, startOfWeek, zoned
 
 export type Bucket = "chat" | "desk";
 export type SpendKind =
-  | "chat" | "talk" | "safety" | "memory" | "summary" | "journal" | "checkin" | "artifact" | "oc" | "study" | "story" | "art" | "browse" | "heartbeat";
+  | "chat" | "talk" | "safety" | "memory" | "summary" | "journal" | "checkin" | "artifact" | "oc" | "study" | "story" | "art" | "language" | "browse" | "heartbeat";
 export interface SpendRow { ts: number; usd: number; bucket: Bucket }
 
 /** "full" uses the bigger model, "low" the small one, "resting" means no model calls (only at the hard stop). */

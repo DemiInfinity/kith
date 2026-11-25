@@ -8,6 +8,7 @@ import { doingText, HelpSheet, useRoute } from "./components/bits";
 import { Icon, type IconName } from "./components/Icons";
 import { Meet } from "./screens/Meet";
 import { Chat, type ChatContext } from "./screens/Chat";
+import { Languages } from "./screens/Languages";
 import { SideChats, type ThreadRow } from "./screens/SideChats";
 import { Talk } from "./screens/Talk";
 import { Personality } from "./screens/Personality";
@@ -127,6 +128,7 @@ function SignIn() {
 const NAV: { to: string; icon: IconName; label: string; sub?: boolean }[] = [
   { to: "/", icon: "chat", label: "Chat" },
   { to: "/study", icon: "study", label: "Study" },
+  { to: "/languages", icon: "globe", label: "Languages" },
   { to: "/create", icon: "create", label: "Create" },
   { to: "/stories", icon: "stories", label: "Stories with a friend", sub: true },
   { to: "/art", icon: "art", label: "Art", sub: true },
@@ -202,7 +204,10 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   }, [thread]);
   // "Ask Pip" from Study, Art or the OC workshop opens the main chat with a context chip.
   const q = new URLSearchParams(location.search);
-  const chatContext: ChatContext | null = q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
+  const qLang = q.get("lang");
+  const chatContext: ChatContext | null = q.get("mode") === "language" && (qLang === "es" || qLang === "ja")
+    ? { mode: "language", ctx: { lang: qLang, topic: q.get("topic")?.slice(0, 120) || undefined }, label: q.get("label") || (qLang === "es" ? "Español" : "日本語") }
+    : q.get("mode") && ["study", "art", "oc"].includes(q.get("mode")!)
     ? {
         mode: q.get("mode") as ChatContext["mode"],
         ctx: { subjectId: Number(q.get("subject")) || undefined, coursework: q.get("coursework") === "1" || undefined },
@@ -238,6 +243,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/study") screen = <Study me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/art") screen = <Art me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/stories") screen = <Stories me={me} />;
+  else if (path === "/languages") screen = <Languages me={me} go={go} />;
   else if (path === "/create") screen = <CreateMenu me={me} go={go} />;
   else if (path === "/lab") screen = <AvatarLab />;
   else if (path === "/help") screen = <KidHelp me={me} go={go} />;
@@ -309,7 +315,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         {screen}
         <nav className="tabbar" aria-label="Sections" hidden={path === "/talk"}>
           {TABS.map((t) => {
-            const on = t.to === path || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
+            const on = t.to === path || (t.to === "/study" && path === "/languages") || (t.to === "/create" && ["/stories", "/art", "/oc"].includes(path)) || (t.to === "/settings" && SETTINGS_PAGES.includes(path));
             return <button key={t.to} className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => go(t.to)}><Icon name={t.icon} on={on} /><span>{t.label}</span></button>;
           })}
           <button className="sos" onClick={openHelp}><Icon name="grownup" /><span>Grown-up?</span></button>

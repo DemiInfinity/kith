@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS cards (
   ease REAL NOT NULL DEFAULT 2.5, interval_days REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL DEFAULT 0,
   due INTEGER NOT NULL, created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS kana_progress (
+  kana TEXT PRIMARY KEY, streak INTEGER NOT NULL DEFAULT 0, right INTEGER NOT NULL DEFAULT 0, seen INTEGER NOT NULL DEFAULT 0,
+  learned INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS lang_practice (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, lang TEXT NOT NULL, kind TEXT NOT NULL, topic TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS lang_practice_ts ON lang_practice(lang, ts);
 CREATE TABLE IF NOT EXISTS help_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, subject TEXT NOT NULL, asked TEXT NOT NULL, help TEXT NOT NULL
 );
@@ -151,6 +157,10 @@ function migrate(db: DB) {
   const st = (db.prepare("PRAGMA table_info(oidc_state)").all() as { name: string }[]).map((c) => c.name);
   if (!st.includes("handoff")) db.exec("ALTER TABLE oidc_state ADD COLUMN handoff TEXT");
   if (!st.includes("app")) db.exec("ALTER TABLE oidc_state ADD COLUMN app TEXT");
+  // Language flashcards share the cards table: a language and a reading (kana for Japanese).
+  const cc = (db.prepare("PRAGMA table_info(cards)").all() as { name: string }[]).map((c) => c.name);
+  if (!cc.includes("lang")) db.exec("ALTER TABLE cards ADD COLUMN lang TEXT");
+  if (!cc.includes("reading")) db.exec("ALTER TABLE cards ADD COLUMN reading TEXT NOT NULL DEFAULT ''");
   const cols = (db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("thread_id")) db.exec("ALTER TABLE messages ADD COLUMN thread_id INTEGER NOT NULL DEFAULT 1");
   db.exec("CREATE INDEX IF NOT EXISTS messages_thread ON messages(thread_id, id)");

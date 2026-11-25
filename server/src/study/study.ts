@@ -155,8 +155,8 @@ export function addCards(db: DB, subjectId: number | null, topic: string, cards:
 }
 export function dueCards(db: DB, subjectId: number | null, limit = 20): Card[] {
   return subjectId
-    ? all<Card>(db, "SELECT * FROM cards WHERE subject_id = ? AND due <= ? ORDER BY due LIMIT ?", subjectId, Date.now(), limit)
-    : all<Card>(db, "SELECT * FROM cards WHERE due <= ? ORDER BY due LIMIT ?", Date.now(), limit);
+    ? all<Card>(db, "SELECT * FROM cards WHERE subject_id = ? AND lang IS NULL AND due <= ? ORDER BY due LIMIT ?", subjectId, Date.now(), limit)
+    : all<Card>(db, "SELECT * FROM cards WHERE lang IS NULL AND due <= ? ORDER BY due LIMIT ?", Date.now(), limit);
 }
 export function gradeCard(db: DB, id: number, grade: Grade) {
   const c = get<Card>(db, "SELECT * FROM cards WHERE id = ?", id);
@@ -166,7 +166,7 @@ export function gradeCard(db: DB, id: number, grade: Grade) {
   return { ...c, ...n };
 }
 export function cardStats(db: DB) {
-  return all<{ subject_id: number | null; total: number; due: number }>(db, "SELECT subject_id, COUNT(*) AS total, SUM(CASE WHEN due <= ? THEN 1 ELSE 0 END) AS due FROM cards GROUP BY subject_id", Date.now());
+  return all<{ subject_id: number | null; total: number; due: number }>(db, "SELECT subject_id, COUNT(*) AS total, SUM(CASE WHEN due <= ? THEN 1 ELSE 0 END) AS due FROM cards WHERE lang IS NULL GROUP BY subject_id", Date.now());
 }
 
 // ── Coursework help log (to show a teacher) ─────────────────────────────────────────────────
