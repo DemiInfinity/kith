@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, type AppState, type Me, type PipChange, type Profile } from "../api";
 import { ChangeCard } from "../components/ChangeCard";
 import { Avatar, LookIcon } from "../components/Avatar";
+import { usePipPicture } from "../components/CompanionPic";
+import { Pip3D, prefersStill } from "../pip3d/Stage";
+import { normaliseLook, type Look as Look3D } from "../pip3d/look";
 import { Toggle } from "../components/bits";
 import { playWithMouth } from "../lib/audio";
 import { isChildMacApp, MAC_VOICES, macVoiceOffered, prepareMacVoice, saveMacVoice, savedMacVoice, speakOnMac, useMacVoice, voiceProgressText } from "../lib/macVoice";
@@ -20,7 +23,16 @@ export function sampleLine(p: Profile): string {
 }
 
 /** Make it yours: name, look, traits, how it talks, voice and what it helps with. */
-export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => void }) {
+export function Personality({ me, onSaved, go }: { me: Me; onSaved: (p: Profile) => void; go?: (to: string) => void }) {
+  // Her saved 3D look (My Pip): shown here instead of the old flat avatar once there is one.
+  const pic = usePipPicture();
+  const [look3d, setLook3d] = useState<Look3D | null>(null);
+  useEffect(() => {
+    if (pic === null) { setLook3d(null); return; }
+    let gone = false;
+    api<{ look: unknown }>("/api/pip/look").then((r) => { if (!gone) setLook3d(r.look ? normaliseLook(r.look) : null); }).catch(() => undefined);
+    return () => { gone = true; };
+  }, [pic]);
   const [p, setP] = useState<Profile>(me.profile);
   const [saving, setSaving] = useState<"" | "saving" | "saved" | "error">("");
   const [mouth, setMouth] = useState(0);
@@ -106,7 +118,16 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
       <span className="hand sub">make {p.name || "me"}, {p.name || "me"}</span>
 
       <div className="card" style={{ alignItems: "center", gap: 10 }}>
-        <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />
+        {/* Her saved 3D look from My Pip, always (the old flat avatar only until she's made one). */}
+        {look3d ? (
+          <div className="ed-pip">
+            <Pip3D look={{ ...look3d, activity: pose === "laptop" ? "writing" : pose === "sleepy" ? "none" : "none" }} still={prefersStill()} framing="portrait"
+              mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : pose === "talking" ? "excited" : "happy"} label={`${p.name || "Pip"} in 3D`}
+              fallback={<Avatar look={p.look} size={130} variant="ring" />} />
+          </div>
+        ) : (
+          <Avatar look={p.look} size={130} variant="ring" mouth={mouth} laptop={pose === "laptop"} mood={pose === "thinking" ? "thinking" : pose === "sleepy" ? "sleepy" : "happy"} talking={pose === "talking" && !mouth} />
+        )}
         <div className="chips" style={{ justifyContent: "center" }}>
           {([["around", "eye", "Looking around"], ["talking", "chat2", "Talking"], ["laptop", "laptop", "At its laptop"], ["thinking", "bulb", "Thinking"], ["sleepy", "moon", "Low power"]] as const).map(([k, ic, l]) => (
             <button key={k} className={`chip ${pose === k ? "on" : ""}`} style={{ minHeight: 34, fontSize: "0.8125rem" }} onClick={() => setPose(k)}><IL i={ic}>{l}</IL></button>
@@ -117,7 +138,9 @@ export function Personality({ me, onSaved }: { me: Me; onSaved: (p: Profile) => 
         <span className="small">tap to rename</span>
       </div>
 
-      {me.looks.length > 1 ? (
+      {look3d ? (
+        <button className="btn ghost small" style={{ alignSelf: "center" }} onClick={() => go?.("/my-pip")}>Change {p.name || "Pip"}’s look in My {p.name || "Pip"}</button>
+      ) : me.looks.length > 1 ? (
         <>
           <b>Pick a look</b>
           <div className="looks" role="radiogroup" aria-label="Look">

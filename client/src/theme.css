@@ -315,6 +315,9 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875r
 .minicall.live .mc-card { border-color: var(--lilac); }
 .mc-pip { flex: 1; min-height: 0; position: relative; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; border-radius: 20px 20px 0 0; }
 .mc-pip .p3d { position: absolute; inset: 0; }
+/* Edit Pip: her saved 3D look in a round frame, like the old avatar. */
+.ed-pip { position: relative; width: 190px; height: 190px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--lilac);
+  background: radial-gradient(circle at 50% 42%, rgba(231,180,238,.30), rgba(231,180,238,0) 70%), #211520; }
 .mc-pip .p3d canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
 .mc-still { width: 100%; height: 100%; object-fit: cover; }
 .mc-status { padding: 4px 8px 0; font-size: 0.6875rem; font-weight: 800; color: var(--lilac-soft); text-align: center; line-height: 1.25; min-height: 2.5em; display: flex; align-items: center; justify-content: center; }

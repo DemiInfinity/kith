@@ -324,7 +324,7 @@ function ChildApp({ me: initialMe }: { me: Me }) {
   else if (path === "/oc") screen = <OC me={me} onTurn={onTurn} onMood={setMood} openHelp={openHelp} go={go} />;
   else if (path === "/my-pip") screen = <MyPip me={me} onSaved={onSaved} />;
   else if (path === "/memory") screen = <Remembers me={me} onSaved={onSaved} />;
-  else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} />;
+  else if (path === "/me") screen = <Personality me={me} onSaved={onSaved} go={go} />;
   else if (path === "/shared") screen = <Shared me={me} />;
   else if (path === "/settings" || path === "/you") screen = <Settings me={me} go={go} state={state} />;
   else if (path === "/google") screen = <Google me={me} />;
@@ -385,8 +385,9 @@ function ChildApp({ me: initialMe }: { me: Me }) {
         </div>
       </nav>
       {dock && path === "/" && <SideChats me={me} open docked current={thread} onClose={() => setDock(false)} onPick={pickThread} />}
-      {/* Only the chat leaves room under the header for Pip's hanging picture; other pages start right under it. */}
-      <div className={`main ${path === "/" ? "hang-m hang-d" : ""}`}>
+      {/* Room under the header for Pip's hanging picture: on a computer only in chat (other pages start right
+          under it); on a phone wherever the picture shows, so it never covers a page's title. */}
+      <div className={`main ${path === "/" ? "hang-d" : ""} ${path !== "/talk" && !onProfile && !makerPage ? "hang-m" : ""}`}>
         {path !== "/talk" && !onProfile && (
           <header className="topbar deskbar desktop-only">
             <span className="tb-left">{path === "/" && !dock && <button className="iconbtn" onClick={() => setDock(true)} aria-label="Show side chats"><Icon name="sidechats" size={22} on={thread !== 1} /></button>}</span>
