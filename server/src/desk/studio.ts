@@ -4,6 +4,7 @@
 // result goes through the same safety check as chat, and the desk itself refuses anything that
 // tries to reach the network or storage. Interactive things then run in a locked sandbox.
 
+import { diskBlock, type DiskUsage } from "../disk.js";
 import { z } from "zod";
 import type { DB } from "../db.js";
 import { all, get, run } from "../db.js";
@@ -94,6 +95,8 @@ export class Studio {
     this.browser = new Browser(db, desk, safety);
   }
   readonly browser: Browser;
+  /** The latest disk measurement (refreshed by the scheduler); new desk work waits when over budget. */
+  disk: DiskUsage | null = null;
 
   jobs(limit = 20): Job[] {
     return all<Job>(this.db, "SELECT id, ts, kind, title, status, progress, file_id, error, updated FROM desk_jobs ORDER BY ts DESC LIMIT ?", limit);
@@ -109,6 +112,8 @@ export class Studio {
     const energy = this.deskEnergy();
     if (!energy.canWork) return { ok: false, error: "The desk's energy for today is used up. It tops up tomorrow." };
     if (req.kind !== "edit" && !KINDS[req.kind]) return { ok: false, error: `I can't make a "${req.kind}" yet.` };
+    const full = diskBlock(this.disk);
+    if (full) return { ok: false, error: full };
     const busy = get<{ n: number }>(this.db, "SELECT COUNT(*) AS n FROM desk_jobs WHERE status IN ('queued','working')")?.n ?? 0;
     if (busy >= 5) return { ok: false, error: "My desk is full right now. Let me finish what I'm making first." };
     const ts = Date.now();

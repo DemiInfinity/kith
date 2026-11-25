@@ -104,6 +104,24 @@ export const ParentSettings = z.object({
   // The parent's own version of the built-in safeguards (empty = use the built-in ones). The code-level
   // safety checks, reporting and Grown-up? run whatever this says.
   safeguardsDoc: z.string().max(12000).default(""),
+  // Voice: blank values use the server's .env (KITH_STT_HOST, KITH_VOICES…). Point at another
+  // Wyoming server here to share one that's already running, e.g. on a second machine.
+  voice: z.object({
+    sttHost: z.string().max(120).default(""),
+    sttPort: z.number().int().min(0).max(65535).default(0),
+    ttsHost: z.string().max(120).default(""),
+    ttsPort: z.number().int().min(0).max(65535).default(0),
+    // The Whisper model to ask for (tiny, base, small…). The bundled Whisper container loads one model
+    // at start (KITH_WHISPER_MODEL); a shared server may offer more.
+    whisperModel: z.string().max(60).default(""),
+    voices: z.array(z.object({ label: z.string().trim().min(1).max(20), voice: z.string().trim().regex(/^[A-Za-z0-9_-]{3,80}$/) })).max(6).default([]),
+  }).default({ sttHost: "", sttPort: 0, ttsHost: "", ttsPort: 0, whisperModel: "", voices: [] }),
+  // Disk: a total budget, a cap on the desk's files, and how long trash is kept.
+  disk: z.object({
+    totalGb: z.number().min(1).max(2000).default(15),
+    deskGb: z.number().min(0.5).max(1000).default(5),
+    keepDays: z.number().int().min(1).max(90).default(7),
+  }).default({ totalGb: 15, deskGb: 5, keepDays: 7 }),
   // The heartbeat always runs, every 30 minutes, and can't be switched off. The parent can edit what
   // it keeps an eye on.
   heartbeat: z.object({

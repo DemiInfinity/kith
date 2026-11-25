@@ -267,3 +267,95 @@ says, the separate safety check, reporting (child told first) and Grown-up? keep
 The first time your child signs in, a short wizard sets up their companion (name, personality, voice, what it helps
 with, notifications, and how staying safe works). Both sides have a help centre: Settings › Help for your child, and
 Help in the parent view.
+
+## Light and full
+
+Kith runs on a small machine (for example a Late 2014 Mac mini: 4 threads, 8 GB RAM) in its **light** profile, which
+is the default. Moving to a bigger machine later is only a change of settings in `.env`; nothing else changes.
+
+| Setting (`.env`) | Light (default) | Full (a bigger machine) |
+|---|---|---|
+| `KITH_MEM_APP` / `KITH_NODE_HEAP_MB` | `512m` / `384` | `1g` / `768` |
+| `KITH_MEM_EGRESS` | `128m` | `128m` |
+| `KITH_MEM_DESK` / `KITH_DESK_SHM` | `768m` / `256m` | `1536m` / `512m` |
+| `KITH_MEM_WHISPER` | `1536m` | `3g` |
+| `KITH_MEM_PIPER` | `512m` | `1g` |
+| `KITH_WHISPER_MODEL` | `tiny-int8` | `base-int8` or `small-int8` |
+| `KITH_DESK_BROWSER_IDLE_MINUTES` | `2` | `5` |
+
+Measured in the light profile with the tiny model: about 0.35 GB for all five containers when idle, about 0.6 GB
+during a call (Whisper about 170 MB, Piper about 165 MB), and about 0.2 GB more while the desk's browser is running.
+The limits above are ceilings with headroom, not what's used. After changing any of them, run
+`docker compose --profile voice up -d` (no rebuild needed).
+
+**What only runs when it's needed**
+
+- **The desk's browser (Chromium)** starts when a desk job looks something up, or when someone takes over, and stops
+  after `KITH_DESK_BROWSER_IDLE_MINUTES` of quiet. Its caches are cleared each time it stops (cookies and site data
+  stay). The desk screen in the app also sleeps after two minutes.
+- **Voice** (Whisper and Piper) keeps its model in memory while its container runs. Kith doesn't start and stop
+  containers itself, because that would mean giving it control of Docker, which is effectively root on the server.
+  On a small machine you have three good options:
+  1. Keep the light model (`tiny-int8`) and the memory limits above.
+  2. Leave the voice containers off (start Kith without `--profile voice`). Calls then won't work, and everything else
+     does.
+  3. Use a Wyoming server that's already running elsewhere (another machine, or Home Assistant's). Set it in the parent
+     view › Settings › Voice, or with `KITH_STT_HOST` / `KITH_TTS_HOST` in `.env`.
+
+**Voice settings in the parent view.** Settings › Voice chooses the listening model and the voices your child can pick,
+and can point at another Wyoming server. "Check the voice servers" asks both what they have. Piper fetches new voices
+as needed. The bundled Whisper container loads one model when it starts, so to change it set `KITH_WHISPER_MODEL` and
+restart that container; the check tells you if they don't match.
+
+## Disk budget
+
+Settings › Storage sets a total budget for Kith (15 GB by default) and a cap on the desk's files (5 GB). The
+Overview shows how much is used. When the desk's files reach their cap, or everything reaches the total, new desk work
+waits until there's room; chat keeps working. Deleted desk items go to the trash and are removed after 7 days
+(adjustable), along with any desk screenshots (none are saved today: the live view is kept in memory only). The desk
+also has its own hard cap, `KITH_DESK_MAX_GB` (5 by default).
+
+## Moving Kith to another machine
+
+Everything Kith keeps is in two Docker volumes plus your `.env`:
+
+- `kith_kith-data`: the database (settings, chats, memories, reports, skills), the chat archive, the encrypted API key
+  and Google tokens.
+- `kith_desk-data`: the desk's files, its trash and the desk browser's saved data.
+- `.env`: your settings and secrets.
+
+(`kith_whisper-data` and `kith_piper-data` only hold downloaded models and voices; they download again on their own.)
+
+**Keep `KITH_SECRET_KEY` exactly the same.** The API key you saved in the parent view and the Google tokens are
+encrypted with it; with a different key they can't be read (you'd have to enter them again).
+
+1. On the old machine, stop Kith and back up:
+
+   ```bash
+   docker compose --profile voice down
+   for v in kith-data desk-data; do
+     docker run --rm -v kith_$v:/v -v "$PWD":/backup alpine tar czf /backup/$v.tgz -C /v .
+   done
+   ```
+
+   Copy `kith-data.tgz`, `desk-data.tgz` and `.env` to the new machine (keep `.env` private: it has your secrets).
+
+2. On the new machine, get Kith (the same version), put `.env` in the Kith folder, and restore:
+
+   ```bash
+   for v in kith-data desk-data; do
+     docker volume create kith_$v
+     docker run --rm -v kith_$v:/v -v "$PWD":/backup alpine sh -c "cd /v && tar xzf /backup/$v.tgz"
+   done
+   docker run --rm -v kith_desk-data:/v alpine chown -R 1001:1001 /v
+   ```
+
+3. Adjust `.env` for the new machine if you like (see Light and full, or `KITH_PUBLIC_URL` if the address changed),
+   then start it:
+
+   ```bash
+   docker compose --profile voice up -d --build
+   ```
+
+4. Check the parent view: the Set-up checklist, Settings › Claude ("Key …abcd is set"), Settings › Voice ("Check the
+   voice servers") and Storage. If you use Pocket ID and the address changed, update the redirect URL there too.

@@ -21,6 +21,7 @@ import { logActivity } from "./desk/activity.js";
 import { dueSchedules, listSchedules, markRan } from "./companion/schedules.js";
 import type { Studio } from "./desk/studio.js";
 import { heartbeat } from "./companion/heartbeat.js";
+import { diskUsage } from "./disk.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -38,6 +39,7 @@ export async function runOnce(deps: SchedulerDeps, now = Date.now()) {
   await retryReports(deps);
   await schedules(deps, now);
   await checkins(deps, now);
+  await disk(deps, now);
   await journal(deps, now);
   await heartbeat({
     db: deps.db, llm: deps.llm, safety: deps.safety,
@@ -64,6 +66,17 @@ export function retention(db: DB, now = Date.now()) {
   // Reports, summaries and the journal are kept for a year so both can look back.
   run(db, "DELETE FROM reports WHERE ts < ?", now - 365 * DAY);
   run(db, "DELETE FROM spend WHERE ts < ?", now - 400 * DAY);
+}
+
+let lastTidy = 0;
+/** Keeps an eye on disk use, and tidies the desk's trash about once an hour. */
+async function disk(deps: SchedulerDeps, now: number) {
+  if (!deps.studio) return;
+  if (now - lastTidy > 3_600_000) {
+    lastTidy = now;
+    await deps.studio.desk.tidy(loadParentSettings(deps.db).disk.keepDays).catch(() => undefined);
+  }
+  deps.studio.disk = await diskUsage(deps.db, deps.studio.desk, true);
 }
 
 async function retryReports(deps: SchedulerDeps) {

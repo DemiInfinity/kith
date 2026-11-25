@@ -55,6 +55,8 @@ export class DeskClient {
   act(a: DeskAction) {
     return this.req<LiveView & { navigated: boolean }>("POST", "/browser/action", a, 30_000);
   }
+  usage() { return this.req<{ items: number; trash: number; screenshots: number; browser: number; total: number; capItems: number }>("GET", "/usage"); }
+  tidy(keepDays: number) { return this.req<{ freed: number }>("POST", "/tidy", { keepDays }); }
   sleepBrowser() { return this.req<{ slept: boolean }>("POST", "/browser/sleep", {}); }
   clearBrowser() { return this.req<{ ok: boolean }>("POST", "/browser/clear", {}, 30_000); }
   release() { return this.req<{ ok: boolean }>("POST", "/browser/release", {}); }

@@ -15,11 +15,13 @@ import path from "node:path";
 import type { BrowserContext, Page, Request, Route } from "playwright-core";
 import { looksLikeRobotCheck, pageAllowed, resourceAllowed, type BrowseRules } from "./rules.js";
 import { homePage } from "./home.js";
+import { clearBrowserCaches } from "./disk.js";
 
 export interface Visit { url: string; title: string; text: string; why: string; jobId: number | null; ts: number }
 /** A standard 16:9 desktop. */
 export const VIEW = { width: 1280, height: 720 };
 const MAX_TABS = 8;
+const IDLE_MINUTES = Math.max(1, Number(process.env.DESK_BROWSER_IDLE_MINUTES ?? 2));
 const PROFILE = path.join(process.env.DESK_DIR ?? "./desk-data", "browser");
 
 export interface TabInfo { title: string; url: string }
@@ -117,9 +119,9 @@ async function newTab(): Promise<Page> {
 
 function keepAlive() {
   if (closeTimer) clearTimeout(closeTimer);
-  // Shut the browser after 3 quiet minutes (storage stays on disk, so nothing is lost); hand
-  // control back after 3 too. It starts again the next time anyone uses it.
-  closeTimer = setTimeout(() => void shutdown(), 3 * 60_000);
+  // Chromium only runs while it's needed: it shuts after 2 quiet minutes (storage stays on disk, so
+  // nothing is lost) and starts again the next time a desk job or a person uses it.
+  closeTimer = setTimeout(() => void shutdown(), IDLE_MINUTES * 60_000);
   if (driver) idleRelease();
 }
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -133,6 +135,8 @@ async function shutdown() {
   ctx = null; tabs = []; driver = null;
   live = { ...live, busy: false, tabs: [], active: 0 };
   await c?.close().catch(() => undefined);
+  // Free the disk: Chromium's caches go (cookies and site data stay).
+  try { clearBrowserCaches(PROFILE); } catch { /* fine */ }
 }
 
 async function robotCheck(page: Page, status = 200) {

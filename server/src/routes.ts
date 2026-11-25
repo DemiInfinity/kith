@@ -1,3 +1,5 @@
+import { describe, voiceSetup } from "./voice/settings.js";
+import { diskUsage } from "./disk.js";
 import { heartbeatStatus } from "./companion/heartbeat.js";
 import { deleteSkill, enabledSkills, EXAMPLES, listSkills, saveSkill } from "./companion/skills.js";
 import { canStoreKeys, checkKey, currentKey, keyStatus, looksLikeKey, removeKey, saveKey } from "./apikey.js";
@@ -57,7 +59,7 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       profile: loadProfile(db),
       helplines: s.helplines,
       quietHours: s.quietHours,
-      voices: config.voice.voices.map((v) => v.label),
+      voices: voiceSetup(db).voices.map((v) => v.label),
       kinds: KIND_NAMES,
       looks: OFFERED_LOOKS,
       push: { ready: pushReady(), publicKey: config.push.publicKey },
@@ -147,13 +149,14 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const pcm = req.body as Buffer;
     if (!Buffer.isBuffer(pcm) || pcm.length < 3200) return reply.code(400).send({ error: "I didn't catch anything." });
     try {
-      return { text: await transcribe(config.voice.sttHost, config.voice.sttPort, pcm, config.voice.language) };
+      const vs = voiceSetup(db);
+      return { text: await transcribe(vs.sttHost, vs.sttPort, pcm, vs.language, vs.whisperModel) };
     } catch (err) {
       return reply.code(503).send({ error: (err as Error).message });
     }
   });
 
-  const voiceFor = (label: string) => (config.voice.voices.find((v) => v.label === label) ?? config.voice.voices[0])?.voice ?? "";
+  const voiceFor = (label: string) => { const vv = voiceSetup(db).voices; return (vv.find((v) => v.label === label) ?? vv[0])?.voice ?? ""; };
   app.post("/api/voice/tts", { preHandler: child, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
     const { messageId, preview } = z.object({ messageId: z.number().int().optional(), preview: z.string().max(40).optional() }).parse(req.body);
     let text: string;
@@ -168,7 +171,8 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
       text = m.text;
     }
     try {
-      const wavBuf = await synthesize(config.voice.ttsHost, config.voice.ttsPort, speakable(text).slice(0, 1500), voiceFor(voice));
+      const vs = voiceSetup(db);
+      const wavBuf = await synthesize(vs.ttsHost, vs.ttsPort, speakable(text).slice(0, 1500), voiceFor(voice));
       return reply.header("Content-Type", "audio/wav").header("Cache-Control", "no-store").send(wavBuf);
     } catch (err) {
       return reply.code(503).send({ error: (err as Error).message });
@@ -219,6 +223,18 @@ export function registerRoutes(app: FastifyInstance, d: AppDeps) {
     const a = z.object({ x: z.number(), y: z.number() }).parse(req.body);
     try { return await studio.desk.act({ type: "move", x: a.x, y: a.y }); }
     catch (err) { return reply.code(422).send({ error: (err as Error).message }); }
+  });
+  // Voice: what's in use, and what the voice servers actually offer (Wyoming "describe").
+  app.get("/api/parent/voice", { preHandler: parent }, async () => {
+    const vs = voiceSetup(db);
+    const [stt, tts] = await Promise.all([describe(vs.sttHost, vs.sttPort), describe(vs.ttsHost, vs.ttsPort)]);
+    return { setup: { ...vs, envWhisperModel: process.env.KITH_WHISPER_MODEL ?? "tiny-int8" }, stt: { ...stt, installed: stt.installed.slice(0, 40) }, tts: { ok: tts.ok, error: tts.error, installed: tts.installed.filter((n) => /^en_/.test(n)).slice(0, 80) } };
+  });
+  // Disk: Kith's data and the desk's files, against the parent's budget.
+  app.get("/api/parent/disk", { preHandler: parent }, async () => {
+    const u = await diskUsage(db, studio.desk, true);
+    studio.disk = u;
+    return u;
   });
   // The heartbeat (always on): when it last beat and what it decided.
   app.get("/api/heartbeat", { preHandler: either }, async () => heartbeatStatus(db));

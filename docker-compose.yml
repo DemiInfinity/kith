@@ -2,6 +2,9 @@
 #   cp .env.example .env   # then fill it in (see docs/setup.md)
 #   docker compose up -d --build
 #   docker compose --profile voice up -d --build   # also start local whisper + piper
+#
+# Memory limits come from .env (KITH_MEM_*), so moving between a small machine ("light") and a
+# bigger one ("full") is just a change of settings. Defaults are the light profile; see docs/setup.md.
 name: kith
 
 services:
@@ -13,6 +16,9 @@ services:
       KITH_DESK_URL: http://desk:8790
       KITH_STT_HOST: ${KITH_STT_HOST:-whisper}
       KITH_TTS_HOST: ${KITH_TTS_HOST:-piper}
+      # Keep Node's heap inside the container's memory limit.
+      NODE_OPTIONS: --max-old-space-size=${KITH_NODE_HEAP_MB:-384}
+    mem_limit: ${KITH_MEM_APP:-512m}
     ports:
       - "${KITH_BIND:-127.0.0.1}:${KITH_PORT:-8787}:8787"
     volumes:
@@ -30,15 +36,17 @@ services:
       KITH_DESK_TOKEN: ${KITH_DESK_TOKEN:?set KITH_DESK_TOKEN in .env}
       DESK_EGRESS_PROXY: http://egress:3128
       HOME: /tmp/home
+      DESK_MAX_GB: ${KITH_DESK_MAX_GB:-5}
+      DESK_BROWSER_IDLE_MINUTES: ${KITH_DESK_BROWSER_IDLE_MINUTES:-2}
     volumes:
       - desk-data:/desk
     networks: [deskland]
     read_only: true
     tmpfs: [/tmp]
-    shm_size: 512m
+    shm_size: ${KITH_DESK_SHM:-256m}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 1g
+    mem_limit: ${KITH_MEM_DESK:-768m}
     pids_limit: 256
     restart: unless-stopped
 
@@ -53,7 +61,7 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    mem_limit: 128m
+    mem_limit: ${KITH_MEM_EGRESS:-128m}
     restart: unless-stopped
 
   # Local speech-to-text (Wyoming protocol). Audio is processed in memory and never stored.
@@ -64,6 +72,7 @@ services:
       - whisper-data:/data
     networks: [default]
     profiles: [voice]
+    mem_limit: ${KITH_MEM_WHISPER:-1536m}
     restart: unless-stopped
 
   # Local text-to-speech. If you already run Piper elsewhere, skip this and set KITH_TTS_HOST.
@@ -74,6 +83,7 @@ services:
       - piper-data:/data
     networks: [default]
     profiles: [voice]
+    mem_limit: ${KITH_MEM_PIPER:-512m}
     restart: unless-stopped
 
 networks:

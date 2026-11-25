@@ -6,11 +6,16 @@ import type { BrowseRules } from "./rules.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import { DeskStore, type Format } from "./store.js";
+import { usage, tidy } from "./disk.js";
 import { act, browse, clearStorage, sleep, liveView, release, takeOver, takenOver } from "./browser.js";
 
 const PORT = Number(process.env.DESK_PORT ?? 8790);
 const TOKEN = process.env.KITH_DESK_TOKEN ?? "";
-const store = new DeskStore(process.env.DESK_DIR ?? "./desk-data");
+const DIR = process.env.DESK_DIR ?? "./desk-data";
+const store = new DeskStore(DIR);
+// Tidy once at start and every 6 hours (the Kith server also asks, with the parent's setting).
+tidy(DIR);
+setInterval(() => tidy(DIR), 6 * 3_600_000).unref();
 
 if (!TOKEN) {
   console.error("KITH_DESK_TOKEN is not set; the desk refuses to start without it.");
@@ -54,6 +59,13 @@ const server = http.createServer(async (req, res) => {
     if (!authorised(req)) return send(res, 401, { error: "unauthorised" });
 
     const parts = url.pathname.split("/").filter(Boolean);
+    // Disk use, and tidying (trash and any screenshots older than keepDays).
+    if (parts[0] === "usage" && req.method === "GET") return send(res, 200, usage(DIR));
+    if (parts[0] === "tidy" && req.method === "POST") {
+      const b = await readJson(req);
+      const days = Math.max(1, Math.min(90, Number(b.keepDays) || 7));
+      return send(res, 200, { freed: tidy(DIR, days), usage: usage(DIR) });
+    }
     if (parts[0] === "status") {
       if (req.method === "GET") return send(res, 200, status);
       if (req.method === "PUT") {

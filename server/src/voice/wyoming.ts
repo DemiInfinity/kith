@@ -63,9 +63,10 @@ export function exchange(
 }
 
 /** Speech to text: 16 kHz, 16-bit mono PCM in, text out. */
-export async function transcribe(host: string, port: number, pcm: Buffer, language = "en"): Promise<string> {
+export async function transcribe(host: string, port: number, pcm: Buffer, language = "en", model = ""): Promise<string> {
   const fmt = { rate: 16000, width: 2, channels: 1 };
-  const events = [encodeEvent("transcribe", { language }), encodeEvent("audio-start", fmt)];
+  // "name" asks for a particular model; servers that only have one loaded just use theirs.
+  const events = [encodeEvent("transcribe", model ? { language, name: model } : { language }), encodeEvent("audio-start", fmt)];
   const CHUNK = 16000 * 2; // one second
   for (let i = 0; i < pcm.length; i += CHUNK) events.push(encodeEvent("audio-chunk", fmt, pcm.subarray(i, i + CHUNK)));
   events.push(encodeEvent("audio-stop", {}));

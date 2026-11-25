@@ -65,3 +65,25 @@ describe("desk store", () => {
     expect(store.read("../../etc")).toBeNull();
   });
 });
+
+describe("disk use on the desk", () => {
+  it("measures, tidies old trash, and refuses writes past the cap", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { usage, tidy } = await import("../src/disk.js");
+    const { DeskStore } = await import("../src/store.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "desk-"));
+    const store = new DeskStore(dir, 2000);
+    expect(store.write({ kind: "notes", title: "Small", format: "md", content: "# Hi\\n\\nA little note." }).ok).toBe(true);
+    expect(store.write({ kind: "notes", title: "Big", format: "md", content: "x".repeat(3000) }).ok).toBe(false);
+    fs.mkdirSync(path.join(dir, "trash", "old-1"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "trash", "old-1", "v1.md"), "old");
+    const old = (Date.now() - 10 * 86_400_000) / 1000;
+    fs.utimesSync(path.join(dir, "trash", "old-1"), old, old);
+    expect(usage(dir).trash).toBeGreaterThan(0);
+    tidy(dir, 7);
+    expect(usage(dir).trash).toBe(0);
+    expect(usage(dir).items).toBeGreaterThan(0);
+  });
+});

@@ -15,7 +15,46 @@ const CATEGORIES: [Category, string][] = [
   ["adult", "Adult and explicit"], ["gambling", "Gambling"], ["dating", "Dating"], ["social", "Social media and stranger chat"],
   ["harm", "Weapons, drugs, gore and self-harm"], ["proxies", "Proxies, VPNs and ways around filters"],
 ];
-interface Settings { safeguardsDoc: string; heartbeat: { checklist: string }; budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
+interface VoiceS { sttHost: string; sttPort: number; ttsHost: string; ttsPort: number; whisperModel: string; voices: { label: string; voice: string }[] }
+interface DiskS { totalGb: number; deskGb: number; keepDays: number }
+interface DiskUsage { data: number; desk: { items: number; trash: number; screenshots: number; browser: number; total: number } | null; total: number; totalCap: number; deskCap: number; keepDays: number; overTotal: boolean; overDesk: boolean }
+const gb = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0, n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB`);
+
+function StorageBars({ u }: { u: DiskUsage }) {
+  const pct = (a: number, b: number) => `${Math.min(100, (a / Math.max(1, b)) * 100)}%`;
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <span className="spread"><b>{gb(u.total)}</b><span className="small">of {gb(u.totalCap)} in total</span></span>
+      <span className="bar" style={{ height: 8 }}><span style={{ width: pct(u.total, u.totalCap), background: u.overTotal ? "var(--ember)" : "var(--lilac)" }} /></span>
+      {u.desk && <>
+        <span className="spread"><span className="small">Desk files</span><span className="small">{gb(u.desk.items)} of {gb(u.deskCap)}</span></span>
+        <span className="bar" style={{ height: 6 }}><span style={{ width: pct(u.desk.items, u.deskCap), background: u.overDesk ? "var(--ember)" : "var(--sky, #9CC2E8)" }} /></span>
+      </>}
+      <span className="small">Kith’s data {gb(u.data)}{u.desk ? ` · desk files ${gb(u.desk.items)} · trash ${gb(u.desk.trash)} · browser data ${gb(u.desk.browser)}` : " · desk not reachable right now"}. Trash goes after {u.keepDays} days.</span>
+      {(u.overTotal || u.overDesk) && <div className="pwarn"><Icon name="warn" size={18} /><span>{u.overDesk ? "The desk’s files have reached their limit" : "Kith has reached its disk budget"}, so new desk work waits. Delete things on the desk, or raise the limit below.</span></div>}
+    </div>
+  );
+}
+
+function VoiceCheck({ v }: { v: VoiceS }) {
+  const [r, setR] = useState<{ setup: { sttHost: string; sttPort: number; ttsHost: string; ttsPort: number; envWhisperModel: string }; stt: { ok: boolean; installed: string[]; error?: string }; tts: { ok: boolean; installed: string[]; error?: string } } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => { setBusy(true); try { setR(await api("/api/parent/voice")); } catch { setR(null); } setBusy(false); };
+  const loaded = r?.stt.installed ?? [];
+  const mismatch = r?.stt.ok && v.whisperModel && !loaded.includes(v.whisperModel);
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <button type="button" className="btn ghost small" style={{ alignSelf: "flex-start" }} onClick={check} disabled={busy}><IL i="speaker">{busy ? "Checking…" : "Check the voice servers"}</IL></button>
+      {r && <>
+        <div className="pcheck"><span className={`pcheck-dot ${r.stt.ok ? "ok" : ""}`}><Icon name={r.stt.ok ? "check" : "warn"} size={14} /></span><span><b>Listening</b> ({r.setup.sttHost}:{r.setup.sttPort})<br /><span className="small">{r.stt.ok ? `Model loaded: ${loaded.join(", ") || "unknown"}` : r.stt.error}</span></span></div>
+        <div className="pcheck"><span className={`pcheck-dot ${r.tts.ok ? "ok" : ""}`}><Icon name={r.tts.ok ? "check" : "warn"} size={14} /></span><span><b>Speaking</b> ({r.setup.ttsHost}:{r.setup.ttsPort})<br /><span className="small">{r.tts.ok ? `${r.tts.installed.length} English voices available` : r.tts.error}</span></span></div>
+        {mismatch && <div className="pwarn"><Icon name="warn" size={18} /><span>The listening server has <b>{loaded.join(", ")}</b> loaded, not {v.whisperModel}. The bundled Whisper loads one model when it starts: set <code className="hc-code">KITH_WHISPER_MODEL={v.whisperModel}</code> in .env, then <code className="hc-code">docker compose --profile voice up -d whisper</code>. A shared Wyoming server uses whatever models it has.</span></div>}
+      </>}
+    </div>
+  );
+}
+
+interface Settings { voice: VoiceS; disk: DiskS; safeguardsDoc: string; heartbeat: { checklist: string }; budgets: Budgets; quietHours: { start: string; end: string }; maxCheckinsPerDay: number; helplines: Helpline[]; retentionDays: number; connections: Connection[]; browser: BrowserSettings; safeguards: string }
 interface Overview {
   energy: { mode: string; percent: number; usd: { week: number; window: number; month: number; deskWeek: number; windowAllowance: number; chatWeekBudget: number }; fullBackAt: number | null; weekResetsAt: number };
   desk: { percent: number; canWork: boolean; usd: { today: number; week: number; allowanceLeft: number; dailySlice: number } };
@@ -117,6 +156,9 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   const [builtIn, setBuiltIn] = useState("");
   useEffect(() => { api<{ builtIn: string }>("/api/parent/safeguards").then((r) => setBuiltIn(r.builtIn)).catch(() => undefined); }, []);
   const docText = s.safeguardsDoc || builtIn;
+  const [vrows, setVrows] = useState(() => [0, 1, 2].map((i) => initial.voice?.voices[i] ?? { label: "", voice: "" }));
+  const [disk, setDisk] = useState<DiskUsage | null>(null);
+  useEffect(() => { api<DiskUsage>("/api/parent/disk").then(setDisk).catch(() => undefined); }, []);
   const b = s.budgets;
   const setB = (k: keyof Budgets, v: number) => setS({ ...s, budgets: { ...b, [k]: v } });
   const setC = (i: number, patch: Partial<Connection>) => setS({ ...s, connections: s.connections.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
@@ -137,7 +179,7 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
   return (
     <div className={`psettings ${section === "connectors" ? "single" : ""}`}>
       {section === "settings" && <nav className="psec-nav" aria-label="Settings sections">
-        {([["set-claude", "sparkle", "Claude"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
+        {([["set-claude", "sparkle", "Claude"], ["set-heartbeat", "heart", "Heartbeat"], ["set-budgets", "fire", "Budgets"], ["set-voice", "speaker", "Voice"], ["set-storage", "folder", "Storage"], ["set-quiet", "moon", "Quiet hours"], ["set-help", "phone", "Grown-up? numbers"], ["set-safeguards", "shield", "Safeguards"], ["set-browser", "compass", "Browser"]] as const).map(([id, ic, l]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><Icon name={ic} size={16} />{l}</a>
         ))}
       </nav>}
@@ -169,6 +211,53 @@ function SettingsForm({ initial, onSaved, section = "settings", companion = "Pip
               {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => <option key={d} value={i}>{d}</option>)}
             </select>
           </label>
+        </div>
+      </section>
+
+      <section className="card psec" id="set-voice">
+        <h3 className="psec-h"><span className="psec-ic"><Icon name="speaker" size={18} /></span>Voice</h3>
+        <span className="small">Calls use Whisper to listen and Piper to speak, over the Wyoming protocol. Leave a box empty to use the server’s .env. Smaller models use less memory: on a small machine, keep listening on <b>tiny</b>. You can point either one at a Wyoming server that’s already running (another machine, or Home Assistant’s).</span>
+        <label className="field">Listening model (Whisper)
+          <select className="select" value={s.voice.whisperModel} onChange={(e) => setS({ ...s, voice: { ...s.voice, whisperModel: e.target.value } })}>
+            <option value="">Whatever the server has loaded</option>
+            <option value="tiny-int8">tiny (fastest, least memory, about 150 MB)</option>
+            <option value="base-int8">base (better, about 250 MB)</option>
+            <option value="small-int8">small (best of these, about 600 MB; needs a bigger machine)</option>
+          </select></label>
+        <b style={{ fontSize: 14 }}>Voices your child can pick (Piper)</b>
+        <span className="small">A name your child sees, and a Piper voice (e.g. en_GB-alba-medium). Piper fetches voices it doesn’t have yet. Leave all empty to use the .env voices.</span>
+        {vrows.map((row, i) => {
+          const setRow = (p: Partial<{ label: string; voice: string }>) => {
+            const next = vrows.map((x, j) => (j === i ? { ...x, ...p } : x));
+            setVrows(next);
+            // Only complete rows are saved; half-typed ones wait until they're done.
+            setS((cur) => ({ ...cur, voice: { ...cur.voice, voices: next.filter((x) => x.label.trim() && /^[A-Za-z0-9_-]{3,80}$/.test(x.voice)) } }));
+          };
+          return (
+            <div key={i} className="grid2">
+              <input className="input" aria-label={`Voice ${i + 1} name`} placeholder={["Wren", "Robin", "Fern"][i]} value={row.label} maxLength={20} onChange={(e) => setRow({ label: e.target.value })} />
+              <input className="input" aria-label={`Voice ${i + 1} Piper voice`} placeholder={["en_GB-cori-medium", "en_GB-alan-medium", "en_GB-jenny_dioco-medium"][i]} value={row.voice} maxLength={80} onChange={(e) => setRow({ voice: e.target.value.trim() })} />
+            </div>
+          );
+        })}
+        <div className="grid2">
+          <label className="field">Listening server<input className="input" placeholder="whisper (from .env)" value={s.voice.sttHost} onChange={(e) => setS({ ...s, voice: { ...s.voice, sttHost: e.target.value.trim() } })} /></label>
+          <label className="field">Port<input className="input" type="number" placeholder="10300" value={s.voice.sttPort || ""} onChange={(e) => setS({ ...s, voice: { ...s.voice, sttPort: Number(e.target.value) || 0 } })} /></label>
+          <label className="field">Speaking server<input className="input" placeholder="piper (from .env)" value={s.voice.ttsHost} onChange={(e) => setS({ ...s, voice: { ...s.voice, ttsHost: e.target.value.trim() } })} /></label>
+          <label className="field">Port<input className="input" type="number" placeholder="10200" value={s.voice.ttsPort || ""} onChange={(e) => setS({ ...s, voice: { ...s.voice, ttsPort: Number(e.target.value) || 0 } })} /></label>
+        </div>
+        <VoiceCheck v={s.voice} />
+        <span className="small">Save first, then check. The bundled voice containers keep their models in memory while they run; on a small machine you can leave them off (no <code className="hc-code">--profile voice</code>) and use a Wyoming server on another machine instead.</span>
+      </section>
+
+      <section className="card psec" id="set-storage">
+        <h3 className="psec-h"><span className="psec-ic"><Icon name="folder" size={18} /></span>Storage</h3>
+        <span className="small">A disk budget for Kith: its own data (database, chat archive, block lists) plus the desk’s files. When the desk’s files reach their limit, or everything reaches the total, new desk work waits until there’s room. Trash and any desk screenshots are deleted after the days below; the desk browser’s caches are cleared whenever it stops.</span>
+        {disk ? <StorageBars u={disk} /> : <span className="small">Measuring…</span>}
+        <div className="grid2">
+          <label className="field">Total budget (GB)<input className="input" type="number" min={1} step={1} value={s.disk.totalGb} onChange={(e) => setS({ ...s, disk: { ...s.disk, totalGb: Math.max(1, Number(e.target.value) || 1) } })} /></label>
+          <label className="field">Desk files (GB)<input className="input" type="number" min={0.5} step={0.5} value={s.disk.deskGb} onChange={(e) => setS({ ...s, disk: { ...s.disk, deskGb: Math.max(0.5, Number(e.target.value) || 0.5) } })} /></label>
+          <label className="field">Keep trash for (days)<input className="input" type="number" min={1} max={90} value={s.disk.keepDays} onChange={(e) => setS({ ...s, disk: { ...s.disk, keepDays: Math.min(90, Math.max(1, Number(e.target.value) || 7)) } })} /></label>
         </div>
       </section>
 
@@ -319,7 +408,9 @@ export function Parent({ me }: { me: Me }) {
   const [t, setT] = useState<Transparency | null>(null);
   const [tab, setTab] = useState<PTab>("overview");
   const [testMsg, setTestMsg] = useState("");
+  const [disk, setDisk] = useState<DiskUsage | null>(null);
   const load = useCallback(() => {
+    api<DiskUsage>("/api/parent/disk").then(setDisk).catch(() => undefined);
     api<Overview>("/api/parent/overview").then(setO).catch(() => undefined);
     api<Transparency>("/api/transparency").then(setT).catch(() => undefined);
   }, []);
@@ -427,6 +518,12 @@ export function Parent({ me }: { me: Me }) {
                   <span className="small">{Math.round(o.lowPower.month.share * 100)}% this month ({o.lowPower.month.turns} turns)</span>
                 </div>
               </div>
+              {disk && (
+                <div className="card pstorage">
+                  <span className="ptile-h"><span className="psec-ic"><Icon name="folder" size={16} /></span>Storage</span>
+                  <StorageBars u={disk} />
+                </div>
+              )}
               <div className="pcols">
                 <div className="stack" style={{ gap: 16 }}>{reports}{summaries}</div>
                 <div className="stack" style={{ gap: 16 }}>

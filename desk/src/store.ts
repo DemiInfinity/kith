@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { scanItem } from "./scan.js";
+import { DESK_MAX_BYTES, dirBytes } from "./disk.js";
 
 export const FORMATS = ["html", "md", "svg", "json"] as const;
 export type Format = (typeof FORMATS)[number];
@@ -23,7 +24,7 @@ export interface ItemMeta {
 const ID = /^[a-z0-9-]{4,64}$/;
 
 export class DeskStore {
-  constructor(private dir: string) {
+  constructor(private dir: string, private maxBytes = DESK_MAX_BYTES) {
     fs.mkdirSync(path.join(dir, "items"), { recursive: true });
     fs.mkdirSync(path.join(dir, "trash"), { recursive: true });
   }
@@ -65,6 +66,10 @@ export class DeskStore {
     if (!FORMATS.includes(input.format)) return { ok: false as const, problems: ["unknown format"] };
     const scan = scanItem(input.format, input.content);
     if (!scan.ok) return { ok: false as const, problems: scan.problems };
+    // The desk's files have a size limit (DESK_MAX_GB, 5 GB by default).
+    if (dirBytes(path.join(this.dir, "items")) + Buffer.byteLength(input.content) > this.maxBytes) {
+      return { ok: false as const, problems: ["The desk is full. Delete some things to make room."] };
+    }
     const now = Date.now();
     const existing = input.id ? this.meta(input.id) : null;
     const id = existing?.id ?? input.id ?? `${slug(input.title)}-${crypto.randomBytes(3).toString("hex")}`;
